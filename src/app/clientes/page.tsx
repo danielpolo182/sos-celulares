@@ -60,6 +60,91 @@ function formatPhone(v: string) {
 function rawCPF(v: string) { return v.replace(/\D/g, '') }
 function rawPhone(v: string) { return v.replace(/\D/g, '') }
 
+function clienteToForm(c: Cliente): FormData {
+  return {
+    nome: c.nome ?? '',
+    telefone: c.telefone ? formatPhone(c.telefone) : '',
+    cpf: c.cpf ? formatCPF(c.cpf) : '',
+    email: c.email ?? '',
+    data_nascimento: c.data_nascimento ?? '',
+    cep: c.endereco?.cep ?? '',
+    logradouro: c.endereco?.logradouro ?? '',
+    numero: c.endereco?.numero ?? '',
+    complemento: c.endereco?.complemento ?? '',
+    bairro: c.endereco?.bairro ?? '',
+    cidade: c.endereco?.cidade ?? '',
+    estado: c.endereco?.estado ?? '',
+  }
+}
+
+function highlight(text: string, query: string) {
+  if (!query.trim()) return <span>{text}</span>
+  const idx = text.toLowerCase().indexOf(query.toLowerCase())
+  if (idx === -1) return <span>{text}</span>
+  return (
+    <span>
+      {text.slice(0, idx)}
+      <strong style={{ color: '#4338ca', fontWeight: 600 }}>{text.slice(idx, idx + query.length)}</strong>
+      {text.slice(idx + query.length)}
+    </span>
+  )
+}
+
+type DropdownProps = {
+  results: Cliente[]
+  query: string
+  field: 'nome' | 'cpf' | 'telefone'
+  onSelect: (c: Cliente) => void
+  visible: boolean
+}
+
+function Dropdown({ results, query, field, onSelect, visible }: DropdownProps) {
+  if (!visible || results.length === 0) return null
+  return (
+    <div style={{
+      position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
+      background: '#fff', border: '1px solid #e2e8f0',
+      borderRadius: 8, marginTop: 4,
+      boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
+      overflow: 'hidden',
+    }}>
+      {results.map((c, i) => (
+        <div
+          key={c.id}
+          onMouseDown={e => { e.preventDefault(); onSelect(c) }}
+          style={{
+            padding: '10px 14px',
+            borderBottom: i < results.length - 1 ? '1px solid #f1f5f9' : 'none',
+            cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 10,
+            background: '#fff',
+            transition: 'background 0.1s',
+          }}
+          onMouseEnter={e => (e.currentTarget.style.background = '#f5f3ff')}
+          onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
+        >
+          <div style={{
+            width: 32, height: 32, borderRadius: '50%',
+            background: '#e0e7ff', color: '#4338ca',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 13, fontWeight: 600, flexShrink: 0,
+          }}>{c.nome.charAt(0).toUpperCase()}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: '#0f172a' }}>
+              {field === 'nome' ? highlight(c.nome, query) : c.nome}
+            </div>
+            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1, display: 'flex', gap: 8 }}>
+              {c.cpf && <span>{field === 'cpf' ? highlight(formatCPF(c.cpf), query) : formatCPF(c.cpf)}</span>}
+              {c.telefone && <span>{field === 'telefone' ? highlight(formatPhone(c.telefone), query) : formatPhone(c.telefone)}</span>}
+            </div>
+          </div>
+          <span style={{ fontSize: 11, color: '#a5b4fc', fontWeight: 500 }}>usar →</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function ClientesPage() {
   const supabase = createClient()
   const [clientes, setClientes] = useState<Cliente[]>([])
@@ -70,10 +155,14 @@ export default function ClientesPage() {
   const [saving, setSaving] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [error, setError] = useState('')
-  const [searching, setSearching] = useState(false)
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
+
+  // Dropdown state per field
+  const [dropdown, setDropdown] = useState<{ field: 'nome' | 'cpf' | 'telefone'; results: Cliente[] } | null>(null)
+  const [activeField, setActiveField] = useState<string | null>(null)
+
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const fieldTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const dropdownTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const fetchClientes = useCallback(async (q = '') => {
     setLoading(true)
@@ -93,8 +182,7 @@ export default function ClientesPage() {
       }
     }
 
-    const { data, error } = await query
-    if (error) console.error('Fetch error:', error)
+    const { data } = await query
     setClientes(data ?? [])
     setLoading(false)
   }, [supabase])
@@ -107,46 +195,42 @@ export default function ClientesPage() {
     return () => { if (searchTimer.current) clearTimeout(searchTimer.current) }
   }, [search, fetchClientes])
 
-  async function searchByField(field: 'cpf' | 'telefone' | 'email', value: string) {
-    const raw = field === 'email' ? value : value.replace(/\D/g, '')
-    if (raw.length < 6) return
-    setSearching(true)
-    const { data } = await supabase
-      .from('clientes')
-      .select('*')
-      .is('deleted_at', null)
-      .ilike(field, `%${raw}%`)
-      .limit(1)
-      .single()
+  async function searchDropdown(field: 'nome' | 'cpf' | 'telefone', value: string) {
+    const raw = value.replace(/\D/g, '')
+    const searchVal = field === 'nome' ? value : raw
+    if (searchVal.length < 2) { setDropdown(null); return }
 
-    if (data) {
-      setForm({
-        nome: data.nome ?? '',
-        telefone: data.telefone ? formatPhone(data.telefone) : '',
-        cpf: data.cpf ? formatCPF(data.cpf) : '',
-        email: data.email ?? '',
-        data_nascimento: data.data_nascimento ?? '',
-        cep: data.endereco?.cep ?? '',
-        logradouro: data.endereco?.logradouro ?? '',
-        numero: data.endereco?.numero ?? '',
-        complemento: data.endereco?.complemento ?? '',
-        bairro: data.endereco?.bairro ?? '',
-        cidade: data.endereco?.cidade ?? '',
-        estado: data.endereco?.estado ?? '',
-      })
-      setEditId(data.id)
+    let query = supabase.from('clientes').select('*').is('deleted_at', null).limit(5)
+
+    if (field === 'nome') {
+      query = query.ilike('nome', `%${value}%`)
+    } else {
+      query = query.ilike(field, `%${raw}%`)
     }
-    setSearching(false)
+
+    const { data } = await query.order('nome')
+    if (data && data.length > 0) {
+      setDropdown({ field, results: data })
+    } else {
+      setDropdown(null)
+    }
   }
 
-  function handleFieldChange(field: keyof FormData, value: string) {
+  function handleFormField(field: keyof FormData, value: string) {
     setForm(f => ({ ...f, [field]: value }))
-    if (field === 'cpf' || field === 'telefone' || field === 'email') {
-      if (fieldTimer.current) clearTimeout(fieldTimer.current)
-      fieldTimer.current = setTimeout(() => {
-        searchByField(field as 'cpf' | 'telefone' | 'email', value)
-      }, 600)
+
+    if (field === 'nome' || field === 'cpf' || field === 'telefone') {
+      if (dropdownTimer.current) clearTimeout(dropdownTimer.current)
+      dropdownTimer.current = setTimeout(() => {
+        searchDropdown(field as 'nome' | 'cpf' | 'telefone', value)
+      }, 250)
     }
+  }
+
+  function selectFromDropdown(c: Cliente) {
+    setForm(clienteToForm(c))
+    setEditId(c.id)
+    setDropdown(null)
   }
 
   async function fetchCEP(cep: string) {
@@ -171,26 +255,15 @@ export default function ClientesPage() {
     setForm(emptyForm)
     setEditId(null)
     setError('')
+    setDropdown(null)
     setShowModal(true)
   }
 
   function openEdit(c: Cliente) {
-    setForm({
-      nome: c.nome,
-      telefone: c.telefone ? formatPhone(c.telefone) : '',
-      cpf: c.cpf ? formatCPF(c.cpf) : '',
-      email: c.email ?? '',
-      data_nascimento: c.data_nascimento ?? '',
-      cep: c.endereco?.cep ?? '',
-      logradouro: c.endereco?.logradouro ?? '',
-      numero: c.endereco?.numero ?? '',
-      complemento: c.endereco?.complemento ?? '',
-      bairro: c.endereco?.bairro ?? '',
-      cidade: c.endereco?.cidade ?? '',
-      estado: c.endereco?.estado ?? '',
-    })
+    setForm(clienteToForm(c))
     setEditId(c.id)
     setError('')
+    setDropdown(null)
     setShowModal(true)
   }
 
@@ -218,18 +291,10 @@ export default function ClientesPage() {
 
     if (editId) {
       const { error: err } = await supabase.from('clientes').update(payload).eq('id', editId)
-      if (err) {
-        setError(`Erro ao atualizar: ${err.message} (código: ${err.code})`)
-        setSaving(false)
-        return
-      }
+      if (err) { setError(`Erro ao atualizar: ${err.message} (${err.code})`); setSaving(false); return }
     } else {
       const { error: err } = await supabase.from('clientes').insert(payload)
-      if (err) {
-        setError(`Erro ao salvar: ${err.message} (código: ${err.code})`)
-        setSaving(false)
-        return
-      }
+      if (err) { setError(`Erro ao salvar: ${err.message} (${err.code})`); setSaving(false); return }
     }
 
     setSaving(false)
@@ -258,6 +323,7 @@ export default function ClientesPage() {
   return (
     <div style={{ display: 'flex', height: '100vh', fontFamily: 'var(--font-sans)', overflow: 'hidden' }}>
 
+      {/* LIST */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: '1px solid #e2e8f0' }}>
         <div style={{ padding: '24px 28px 16px', borderBottom: '1px solid #f1f5f9' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
@@ -317,6 +383,7 @@ export default function ClientesPage() {
         </div>
       </div>
 
+      {/* DETAIL */}
       <div style={{ width: 360, background: '#f8fafc', overflowY: 'auto' }}>
         {selectedCliente ? (
           <div style={{ padding: 28 }}>
@@ -340,13 +407,10 @@ export default function ClientesPage() {
                 }}>Excluir</button>
               </div>
             </div>
-
             <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>{selectedCliente.nome}</h2>
-            <span style={{
-              fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20,
-              background: '#ecfdf5', color: '#065f46',
-            }}>{selectedCliente.status_crm}</span>
-
+            <span style={{ fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20, background: '#ecfdf5', color: '#065f46' }}>
+              {selectedCliente.status_crm}
+            </span>
             <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
               {[
                 { label: 'Telefone', value: selectedCliente.telefone ? formatPhone(selectedCliente.telefone) : null },
@@ -361,7 +425,6 @@ export default function ClientesPage() {
                 </div>
               ) : null)}
             </div>
-
             <div style={{ marginTop: 20 }}>
               <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 10 }}>
                 Cadastrado em {new Date(selectedCliente.created_at).toLocaleDateString('pt-BR')}
@@ -380,31 +443,28 @@ export default function ClientesPage() {
         )}
       </div>
 
+      {/* MODAL */}
       {showModal && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 100, padding: 20,
-        }}>
-          <div style={{
-            background: '#fff', borderRadius: 14, width: '100%', maxWidth: 560,
-            maxHeight: '90vh', overflowY: 'auto',
-          }}>
+        <div
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 100, padding: 20,
+          }}
+          onClick={() => setDropdown(null)}
+        >
+          <div
+            style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto' }}
+            onClick={e => e.stopPropagation()}
+          >
             <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ fontSize: 16, fontWeight: 600, color: '#0f172a' }}>
                 {editId ? 'Editar cliente' : 'Novo cliente'}
               </h2>
-              <button onClick={() => setShowModal(false)} style={{
-                background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#94a3b8',
-              }}>×</button>
+              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#94a3b8' }}>×</button>
             </div>
 
             <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {searching && (
-                <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 7, padding: '8px 12px', fontSize: 12, color: '#1d4ed8' }}>
-                  Buscando cliente existente...
-                </div>
-              )}
               {error && (
                 <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 7, padding: '10px 12px', fontSize: 12, color: '#dc2626', wordBreak: 'break-word' }}>
                   <strong>Erro:</strong> {error}
@@ -412,25 +472,78 @@ export default function ClientesPage() {
               )}
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div style={{ gridColumn: '1/-1' }}>
+
+                {/* NOME com dropdown */}
+                <div style={{ gridColumn: '1/-1', position: 'relative' }}>
                   <label style={lbl}>Nome *</label>
-                  <input style={inp} value={form.nome} onChange={e => handleFieldChange('nome', e.target.value)} placeholder="Nome completo" />
+                  <input
+                    style={inp}
+                    value={form.nome}
+                    onChange={e => handleFormField('nome', e.target.value)}
+                    onFocus={() => setActiveField('nome')}
+                    onBlur={() => setTimeout(() => setDropdown(null), 150)}
+                    placeholder="Nome completo"
+                    autoComplete="off"
+                  />
+                  <Dropdown
+                    results={dropdown?.field === 'nome' ? dropdown.results : []}
+                    query={form.nome}
+                    field="nome"
+                    onSelect={selectFromDropdown}
+                    visible={activeField === 'nome' && dropdown?.field === 'nome'}
+                  />
                 </div>
-                <div>
+
+                {/* TELEFONE com dropdown */}
+                <div style={{ position: 'relative' }}>
                   <label style={lbl}>Telefone</label>
-                  <input style={inp} value={form.telefone} onChange={e => handleFieldChange('telefone', formatPhone(e.target.value))} placeholder="(11) 99999-9999" />
+                  <input
+                    style={inp}
+                    value={form.telefone}
+                    onChange={e => handleFormField('telefone', formatPhone(e.target.value))}
+                    onFocus={() => setActiveField('telefone')}
+                    onBlur={() => setTimeout(() => setDropdown(null), 150)}
+                    placeholder="(11) 99999-9999"
+                    autoComplete="off"
+                  />
+                  <Dropdown
+                    results={dropdown?.field === 'telefone' ? dropdown.results : []}
+                    query={form.telefone}
+                    field="telefone"
+                    onSelect={selectFromDropdown}
+                    visible={activeField === 'telefone' && dropdown?.field === 'telefone'}
+                  />
                 </div>
-                <div>
+
+                {/* CPF com dropdown */}
+                <div style={{ position: 'relative' }}>
                   <label style={lbl}>CPF</label>
-                  <input style={inp} value={form.cpf} onChange={e => handleFieldChange('cpf', formatCPF(e.target.value))} placeholder="000.000.000-00" />
+                  <input
+                    style={inp}
+                    value={form.cpf}
+                    onChange={e => handleFormField('cpf', formatCPF(e.target.value))}
+                    onFocus={() => setActiveField('cpf')}
+                    onBlur={() => setTimeout(() => setDropdown(null), 150)}
+                    placeholder="000.000.000-00"
+                    autoComplete="off"
+                  />
+                  <Dropdown
+                    results={dropdown?.field === 'cpf' ? dropdown.results : []}
+                    query={form.cpf}
+                    field="cpf"
+                    onSelect={selectFromDropdown}
+                    visible={activeField === 'cpf' && dropdown?.field === 'cpf'}
+                  />
                 </div>
+
                 <div>
                   <label style={lbl}>E-mail</label>
-                  <input style={inp} type="email" value={form.email} onChange={e => handleFieldChange('email', e.target.value)} placeholder="email@exemplo.com" />
+                  <input style={inp} type="email" value={form.email} onChange={e => handleFormField('email', e.target.value)} placeholder="email@exemplo.com" />
                 </div>
+
                 <div>
                   <label style={lbl}>Data de nascimento</label>
-                  <input style={inp} type="date" value={form.data_nascimento} onChange={e => handleFieldChange('data_nascimento', e.target.value)} />
+                  <input style={inp} type="date" value={form.data_nascimento} onChange={e => handleFormField('data_nascimento', e.target.value)} />
                 </div>
               </div>
 
@@ -442,34 +555,34 @@ export default function ClientesPage() {
                     <input style={inp} value={form.cep}
                       onChange={e => {
                         const v = e.target.value.replace(/\D/g, '').slice(0, 8).replace(/(\d{5})(\d)/, '$1-$2')
-                        handleFieldChange('cep', v)
+                        handleFormField('cep', v)
                         if (v.replace(/\D/g, '').length === 8) fetchCEP(v)
                       }}
                       placeholder="00000-000" />
                   </div>
                   <div>
                     <label style={lbl}>Número</label>
-                    <input style={inp} value={form.numero} onChange={e => handleFieldChange('numero', e.target.value)} placeholder="123" />
+                    <input style={inp} value={form.numero} onChange={e => handleFormField('numero', e.target.value)} placeholder="123" />
                   </div>
                   <div style={{ gridColumn: '1/-1' }}>
                     <label style={lbl}>Logradouro</label>
-                    <input style={inp} value={form.logradouro} onChange={e => handleFieldChange('logradouro', e.target.value)} placeholder="Rua, Avenida..." />
+                    <input style={inp} value={form.logradouro} onChange={e => handleFormField('logradouro', e.target.value)} placeholder="Rua, Avenida..." />
                   </div>
                   <div>
                     <label style={lbl}>Bairro</label>
-                    <input style={inp} value={form.bairro} onChange={e => handleFieldChange('bairro', e.target.value)} placeholder="Bairro" />
+                    <input style={inp} value={form.bairro} onChange={e => handleFormField('bairro', e.target.value)} placeholder="Bairro" />
                   </div>
                   <div>
                     <label style={lbl}>Complemento</label>
-                    <input style={inp} value={form.complemento} onChange={e => handleFieldChange('complemento', e.target.value)} placeholder="Apto, sala..." />
+                    <input style={inp} value={form.complemento} onChange={e => handleFormField('complemento', e.target.value)} placeholder="Apto, sala..." />
                   </div>
                   <div>
                     <label style={lbl}>Cidade</label>
-                    <input style={inp} value={form.cidade} onChange={e => handleFieldChange('cidade', e.target.value)} placeholder="Cidade" />
+                    <input style={inp} value={form.cidade} onChange={e => handleFormField('cidade', e.target.value)} placeholder="Cidade" />
                   </div>
                   <div>
                     <label style={lbl}>Estado</label>
-                    <input style={inp} value={form.estado} onChange={e => handleFieldChange('estado', e.target.value)} placeholder="SP" maxLength={2} />
+                    <input style={inp} value={form.estado} onChange={e => handleFormField('estado', e.target.value)} placeholder="SP" maxLength={2} />
                   </div>
                 </div>
               </div>
