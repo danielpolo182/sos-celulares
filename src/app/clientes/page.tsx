@@ -86,14 +86,15 @@ export default function ClientesPage() {
 
     if (q.trim()) {
       const raw = q.replace(/\D/g, '')
-      if (raw.length >= 3 && /^\d+$/.test(raw.replace(/\s/g, ''))) {
+      if (raw.length >= 3 && /^\d+$/.test(raw)) {
         query = query.or(`cpf.ilike.%${raw}%,telefone.ilike.%${raw}%`)
       } else {
         query = query.ilike('nome', `%${q}%`)
       }
     }
 
-    const { data } = await query
+    const { data, error } = await query
+    if (error) console.error('Fetch error:', error)
     setClientes(data ?? [])
     setLoading(false)
   }, [supabase])
@@ -216,9 +217,19 @@ export default function ClientesPage() {
     }
 
     if (editId) {
-      await supabase.from('clientes').update(payload).eq('id', editId)
+      const { error: err } = await supabase.from('clientes').update(payload).eq('id', editId)
+      if (err) {
+        setError(`Erro ao atualizar: ${err.message} (código: ${err.code})`)
+        setSaving(false)
+        return
+      }
     } else {
-      await supabase.from('clientes').insert(payload)
+      const { error: err } = await supabase.from('clientes').insert(payload)
+      if (err) {
+        setError(`Erro ao salvar: ${err.message} (código: ${err.code})`)
+        setSaving(false)
+        return
+      }
     }
 
     setSaving(false)
@@ -395,8 +406,8 @@ export default function ClientesPage() {
                 </div>
               )}
               {error && (
-                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 7, padding: '8px 12px', fontSize: 12, color: '#dc2626' }}>
-                  {error}
+                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 7, padding: '10px 12px', fontSize: 12, color: '#dc2626', wordBreak: 'break-word' }}>
+                  <strong>Erro:</strong> {error}
                 </div>
               )}
 
