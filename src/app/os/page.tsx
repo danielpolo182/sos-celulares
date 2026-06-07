@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 type OS = {
@@ -26,6 +27,7 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string }
 
 export default function OSPage() {
   const supabase = createClient()
+  const router = useRouter()
   const [items, setItems] = useState<OS[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -69,7 +71,12 @@ export default function OSPage() {
       </div>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
-        <input style={{ ...inp, flex: 1, minWidth: 200 }} placeholder="Buscar por modelo, defeito..." value={search} onChange={e => setSearch(e.target.value)} />
+        <input
+          style={{ ...inp, flex: 1, minWidth: 200 }}
+          placeholder="Buscar por modelo, defeito..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
         <div style={{ display: 'flex', gap: 6 }}>
           {['todos', 'aberta', 'em_andamento', 'pronta', 'entregue'].map(s => (
             <button key={s} onClick={() => setFiltroStatus(s)} style={{
@@ -89,7 +96,11 @@ export default function OSPage() {
         <div style={{ textAlign: 'center', padding: 60 }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>🔧</div>
           <p style={{ fontSize: 14, fontWeight: 500, color: '#374151' }}>Nenhuma OS encontrada</p>
-          <Link href="/os/nova" style={{ display: 'inline-block', marginTop: 16, padding: '9px 18px', background: '#6366f1', color: '#fff', borderRadius: 8, textDecoration: 'none', fontSize: 13, fontWeight: 500 }}>+ Nova OS</Link>
+          <Link href="/os/nova" style={{
+            display: 'inline-block', marginTop: 16, padding: '9px 18px',
+            background: '#6366f1', color: '#fff', borderRadius: 8,
+            textDecoration: 'none', fontSize: 13, fontWeight: 500,
+          }}>+ Nova OS</Link>
         </div>
       ) : (
         <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
@@ -97,7 +108,10 @@ export default function OSPage() {
             <thead>
               <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                 {['OS', 'Cliente', 'Aparelho', 'Defeito', 'Valor', 'Status', 'Data'].map(h => (
-                  <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
+                  <th key={h} style={{
+                    padding: '10px 16px', textAlign: 'left', fontSize: 11,
+                    fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em',
+                  }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -105,18 +119,26 @@ export default function OSPage() {
               {items.map(os => {
                 const st = STATUS_CONFIG[os.status] ?? STATUS_CONFIG.aberta
                 return (
-                  <tr key={os.id} style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = '#fafafa')}
-                    onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
+                  <tr
+                    key={os.id}
+                    onClick={() => router.push(`/os/${os.id}`)}
+                    style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#fafafa' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#fff' }}
+                  >
                     <td style={{ padding: '12px 16px', fontWeight: 600, color: '#6366f1' }}>#{os.numero}</td>
                     <td style={{ padding: '12px 16px', color: '#0f172a' }}>{os.clientes?.nome ?? '—'}</td>
                     <td style={{ padding: '12px 16px', color: '#374151' }}>{os.modelo ?? '—'}</td>
-                    <td style={{ padding: '12px 16px', color: '#64748b', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{os.defeito_relatado}</td>
+                    <td style={{ padding: '12px 16px', color: '#64748b', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {os.defeito_relatado}
+                    </td>
                     <td style={{ padding: '12px 16px', color: '#0f172a', fontWeight: 500 }}>
                       {os.valor_orcamento ? `R$ ${os.valor_orcamento.toFixed(2).replace('.', ',')}` : '—'}
                     </td>
                     <td style={{ padding: '12px 16px' }}>
-                      <span style={{ fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 20, background: st.bg, color: st.color }}>{st.label}</span>
+                      <span style={{ fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 20, background: st.bg, color: st.color }}>
+                        {st.label}
+                      </span>
                     </td>
                     <td style={{ padding: '12px 16px', color: '#94a3b8' }}>
                       {new Date(os.created_at).toLocaleDateString('pt-BR')}
