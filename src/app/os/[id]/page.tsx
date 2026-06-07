@@ -118,6 +118,7 @@ export default function OSDetailPage({ params }: { params: Promise<{ id: string 
   const [os, setOs] = useState<OS | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
+  const [saving, setSaving] = useState(false)
   const [aba, setAba] = useState<'os' | 'checklist'>('os')
 
   const [status, setStatus] = useState('')
