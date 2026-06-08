@@ -24,22 +24,9 @@ type Execucao = {
   data_ref: string
   feito: boolean
   feito_em: string | null
-  no_prazo: boolean | null
 }
 
-type Perfil = {
-  id: string
-  nome: string
-  papel: string
-}
-
-type ResumoFuncionario = {
-  perfil: Perfil
-  total: number
-  feitas: number
-  pendentes: number
-  atrasadas: number
-}
+type Perfil = { id: string; nome: string; papel: string }
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const DIAS_SEMANA_FULL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
@@ -65,11 +52,9 @@ const lbl: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 5
 
 function hojeAtivo(t: Tarefa): boolean {
   const hoje = new Date()
-  const diaSemana = hoje.getDay()
-  const diaMes = hoje.getDate()
   if (t.frequencia === 'diaria') return true
-  if (t.frequencia === 'semanal') return t.dias_semana?.includes(diaSemana) ?? false
-  if (t.frequencia === 'mensal') return t.dia_mes === diaMes
+  if (t.frequencia === 'semanal') return t.dias_semana?.includes(hoje.getDay()) ?? false
+  if (t.frequencia === 'mensal') return t.dia_mes === hoje.getDate()
   return false
 }
 
@@ -86,14 +71,13 @@ export default function RotinasPage() {
   const supabase = createClient()
   const [aba, setAba] = useState<'minha' | 'gestor' | 'configurar'>('minha')
   const [tarefas, setTarefas] = useState<Tarefa[]>([])
+  const [tarefasInativas, setTarefasInativas] = useState<Tarefa[]>([])
   const [execucoes, setExecucoes] = useState<Execucao[]>([])
   const [perfis, setPerfis] = useState<Perfil[]>([])
   const [meuPerfil, setMeuPerfil] = useState<Perfil | null>(null)
   const [loading, setLoading] = useState(true)
   const [hoje] = useState(new Date().toISOString().split('T')[0])
   const [filtroFreq, setFiltroFreq] = useState<'todas' | 'diaria' | 'semanal' | 'mensal'>('diaria')
-
-  // Modal nova tarefa
   const [showModal, setShowModal] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [fTitulo, setFTitulo] = useState('')
@@ -109,15 +93,15 @@ export default function RotinasPage() {
   const fetchAll = useCallback(async () => {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
-
-    const [{ data: t }, { data: e }, { data: p }, { data: mp }] = await Promise.all([
+    const [{ data: tAtivas }, { data: tInativas }, { data: e }, { data: p }, { data: mp }] = await Promise.all([
       supabase.from('rotina_tarefas').select('*').eq('ativo', true).order('ordem'),
+      supabase.from('rotina_tarefas').select('*').eq('ativo', false).order('titulo'),
       supabase.from('rotina_execucoes').select('*').eq('data_ref', hoje),
       supabase.from('perfis').select('id,nome,papel').eq('ativo', true),
       user ? supabase.from('perfis').select('id,nome,papel').eq('id', user.id).single() : Promise.resolve({ data: null }),
     ])
-
-    setTarefas((t ?? []) as Tarefa[])
+    setTarefas((tAtivas ?? []) as Tarefa[])
+    setTarefasInativas((tInativas ?? []) as Tarefa[])
     setExecucoes((e ?? []) as Execucao[])
     setPerfis((p ?? []) as Perfil[])
     setMeuPerfil(mp as Perfil | null)
@@ -125,12 +109,7 @@ export default function RotinasPage() {
   }, [supabase, hoje])
 
   useEffect(() => { fetchAll() }, [fetchAll])
-
-  // Atualiza a cada 60 segundos para checar atrasos
-  useEffect(() => {
-    const interval = setInterval(() => fetchAll(), 60000)
-    return () => clearInterval(interval)
-  }, [fetchAll])
+  useEffect(() => { const i = setInterval(() => fetchAll(), 60000); return () => clearInterval(i) }, [fetchAll])
 
   async function toggleExecucao(tarefa: Tarefa) {
     if (!meuPerfil) return
@@ -138,13 +117,10 @@ export default function RotinasPage() {
     const agora = new Date()
     const noPrazo = tarefa.horario_limit ? (() => {
       const [h, m] = tarefa.horario_limit!.split(':').map(Number)
-      const limite = new Date(agora)
-      limite.setHours(h, m, 0, 0)
-      return agora <= limite
+      const limite = new Date(agora); limite.setHours(h, m, 0, 0); return agora <= limite
     })() : true
-
     if (existing) {
-      await supabase.from('rotina_execucoes').update({ feito: !existing.feito, feito_em: !existing.feito ? agora.toISOString() : null, no_prazo: noPrazo }).eq('id', existing.id)
+      await supabase.from('rotina_execucoes').update({ feito: !existing.feito, feito_em: !existing.feito ? agora.toISOString() : null }).eq('id', existing.id)
     } else {
       await supabase.from('rotina_execucoes').insert({ tarefa_id: tarefa.id, usuario_id: meuPerfil.id, data_ref: hoje, feito: true, feito_em: agora.toISOString(), no_prazo: noPrazo })
     }
@@ -155,17 +131,26 @@ export default function RotinasPage() {
     return execucoes.find(e => e.tarefa_id === tarefaId && (userId ? e.usuario_id === userId : e.usuario_id === meuPerfil?.id))
   }
 
-  // Tarefas do dia de hoje que se aplicam ao usuário
+  async function desativar(t: Tarefa) {
+    // Apenas desativa — não apaga
+    await supabase.from('rotina_tarefas').update({ ativo: false }).eq('id', t.id)
+    fetchAll()
+  }
+
+  async function reativar(t: Tarefa) {
+    await supabase.from('rotina_tarefas').update({ ativo: true }).eq('id', t.id)
+    fetchAll()
+  }
+
   const tarefasHoje = tarefas.filter(t => hojeAtivo(t) && (t.responsavel_id === null || t.responsavel_id === meuPerfil?.id))
   const feitas = tarefasHoje.filter(t => getExec(t.id)?.feito)
   const pct = tarefasHoje.length > 0 ? Math.round(feitas.length / tarefasHoje.length * 100) : 0
 
-  // Resumo por funcionário (para o gestor)
-  const resumoFuncionarios: ResumoFuncionario[] = perfis.map(p => {
-    const tarefasP = tarefas.filter(t => hojeAtivo(t) && (t.responsavel_id === null || t.responsavel_id === p.id))
-    const feitasP = tarefasP.filter(t => getExec(t.id, p.id)?.feito)
-    const atrasadasP = tarefasP.filter(t => !getExec(t.id, p.id)?.feito && isAtrasada(t, getExec(t.id, p.id)))
-    return { perfil: p, total: tarefasP.length, feitas: feitasP.length, pendentes: tarefasP.length - feitasP.length, atrasadas: atrasadasP.length }
+  const resumoFuncionarios = perfis.map(p => {
+    const tp = tarefas.filter(t => hojeAtivo(t) && (t.responsavel_id === null || t.responsavel_id === p.id))
+    const fp = tp.filter(t => getExec(t.id, p.id)?.feito)
+    const ap = tp.filter(t => !getExec(t.id, p.id)?.feito && isAtrasada(t, getExec(t.id, p.id)))
+    return { perfil: p, total: tp.length, feitas: fp.length, pendentes: tp.length - fp.length, atrasadas: ap.length }
   })
 
   function abrirNovaTarefa() {
@@ -174,8 +159,10 @@ export default function RotinasPage() {
   }
 
   function abrirEdit(t: Tarefa) {
-    setFTitulo(t.titulo); setFDesc(t.descricao ?? ''); setFCategoria(t.categoria); setFFreq(t.frequencia as typeof fFreq)
-    setFDiasSemana(t.dias_semana ?? []); setFDiaMes(t.dia_mes ? String(t.dia_mes) : ''); setFHorario(t.horario_limit ?? ''); setFResponsavel(t.responsavel_id ?? ''); setEditId(t.id); setShowModal(true)
+    setFTitulo(t.titulo); setFDesc(t.descricao ?? ''); setFCategoria(t.categoria)
+    setFFreq(t.frequencia as typeof fFreq); setFDiasSemana(t.dias_semana ?? [])
+    setFDiaMes(t.dia_mes ? String(t.dia_mes) : ''); setFHorario(t.horario_limit ?? '')
+    setFResponsavel(t.responsavel_id ?? ''); setEditId(t.id); setShowModal(true)
   }
 
   async function salvarTarefa() {
@@ -185,17 +172,11 @@ export default function RotinasPage() {
       titulo: fTitulo.trim(), descricao: fDesc || null, categoria: fCategoria, frequencia: fFreq,
       dias_semana: fFreq === 'semanal' ? fDiasSemana : null,
       dia_mes: fFreq === 'mensal' && fDiaMes ? parseInt(fDiaMes) : null,
-      horario_limit: fHorario || null,
-      responsavel_id: fResponsavel || null,
+      horario_limit: fHorario || null, responsavel_id: fResponsavel || null,
     }
     if (editId) await supabase.from('rotina_tarefas').update(payload).eq('id', editId)
-    else await supabase.from('rotina_tarefas').insert(payload)
+    else await supabase.from('rotina_tarefas').insert({ ...payload, ativo: true })
     setSaving(false); setShowModal(false); fetchAll()
-  }
-
-  async function toggleAtivo(t: Tarefa) {
-    await supabase.from('rotina_tarefas').update({ ativo: !t.ativo }).eq('id', t.id)
-    fetchAll()
   }
 
   const tarefasFiltradas = tarefas.filter(t => filtroFreq === 'todas' || t.frequencia === filtroFreq)
@@ -203,40 +184,30 @@ export default function RotinasPage() {
 
   return (
     <div style={{ padding: '28px 36px', fontFamily: 'var(--font-sans)' }}>
-
-      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 600, color: '#0f172a', letterSpacing: '-0.02em' }}>Rotinas & Checklist</h1>
           <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>{diaAtual} · {new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })}</p>
         </div>
         {aba === 'configurar' && (
-          <button onClick={abrirNovaTarefa} style={{ padding: '9px 18px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
-            + Nova tarefa
-          </button>
+          <button onClick={abrirNovaTarefa} style={{ padding: '9px 18px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>+ Nova tarefa</button>
         )}
       </div>
 
-      {/* Abas */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid #e2e8f0' }}>
-        {([['minha', '✅ Minhas tarefas'], ['gestor', '👁 Painel do gestor'], ['configurar', '⚙ Configurar']] as const).map(([k, l]) => (
+        {([['minha', '✅ Minhas tarefas'], ['gestor', '👁 Painel gestor'], ['configurar', '⚙ Configurar']] as const).map(([k, l]) => (
           <button key={k} onClick={() => setAba(k)} style={{ padding: '10px 18px', fontSize: 13, fontWeight: aba === k ? 600 : 400, border: 'none', background: 'none', cursor: 'pointer', color: aba === k ? '#6366f1' : '#64748b', borderBottom: aba === k ? '2px solid #6366f1' : '2px solid transparent', marginBottom: -1 }}>{l}</button>
         ))}
       </div>
 
-      {/* ═══ ABA MINHAS TAREFAS ═══ */}
+      {/* ═══ MINHAS TAREFAS ═══ */}
       {aba === 'minha' && (
         <div>
-          {/* Progress bar */}
           <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '18px 22px', marginBottom: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <div>
-                <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>
-                  {feitas.length} de {tarefasHoje.length} tarefas concluídas
-                </p>
-                <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
-                  {pct === 100 ? '🎉 Todas as tarefas do dia concluídas!' : `${tarefasHoje.length - feitas.length} pendente${tarefasHoje.length - feitas.length > 1 ? 's' : ''}`}
-                </p>
+                <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{feitas.length} de {tarefasHoje.length} concluídas</p>
+                <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{pct === 100 ? '🎉 Tudo feito!' : `${tarefasHoje.length - feitas.length} pendente(s)`}</p>
               </div>
               <div style={{ fontSize: 28, fontWeight: 700, color: pct === 100 ? '#10b981' : '#6366f1' }}>{pct}%</div>
             </div>
@@ -245,73 +216,35 @@ export default function RotinasPage() {
             </div>
           </div>
 
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Carregando...</div>
-          ) : tarefasHoje.length === 0 ? (
+          {loading ? <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Carregando...</div> :
+           tarefasHoje.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 60 }}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
               <p style={{ fontSize: 14, fontWeight: 500, color: '#374151' }}>Nenhuma tarefa para hoje</p>
-              <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 4 }}>As tarefas do dia aparecerão aqui automaticamente</p>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {/* Atrasadas primeiro */}
               {tarefasHoje.filter(t => !getExec(t.id)?.feito && isAtrasada(t, getExec(t.id))).length > 0 && (
                 <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '10px 16px', marginBottom: 4, fontSize: 13, color: '#991b1b', fontWeight: 500 }}>
                   ⚠ {tarefasHoje.filter(t => !getExec(t.id)?.feito && isAtrasada(t, getExec(t.id))).length} tarefa(s) atrasada(s)
                 </div>
               )}
-
               {tarefasHoje.map(t => {
-                const exec = getExec(t.id)
-                const feita = exec?.feito ?? false
-                const atrasada = !feita && isAtrasada(t, exec)
+                const exec = getExec(t.id); const feita = exec?.feito ?? false; const atrasada = !feita && isAtrasada(t, exec)
                 const cat = CATEGORIA_CONFIG[t.categoria] ?? CATEGORIA_CONFIG.geral
-
                 return (
-                  <div key={t.id} onClick={() => toggleExecucao(t)} style={{
-                    background: feita ? '#f0fdf4' : atrasada ? '#fef2f2' : '#fff',
-                    border: `1px solid ${feita ? '#bbf7d0' : atrasada ? '#fecaca' : '#e2e8f0'}`,
-                    borderRadius: 10, padding: '14px 16px',
-                    display: 'flex', alignItems: 'center', gap: 14,
-                    cursor: 'pointer', transition: 'all 0.15s',
-                  }}>
-                    {/* Checkbox */}
-                    <div style={{
-                      width: 24, height: 24, borderRadius: 6, flexShrink: 0,
-                      border: `2px solid ${feita ? '#10b981' : atrasada ? '#ef4444' : '#d1d5db'}`,
-                      background: feita ? '#10b981' : 'transparent',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      transition: 'all 0.15s',
-                    }}>
+                  <div key={t.id} onClick={() => toggleExecucao(t)} style={{ background: feita ? '#f0fdf4' : atrasada ? '#fef2f2' : '#fff', border: `1px solid ${feita ? '#bbf7d0' : atrasada ? '#fecaca' : '#e2e8f0'}`, borderRadius: 10, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14, cursor: 'pointer', transition: 'all 0.15s' }}>
+                    <div style={{ width: 24, height: 24, borderRadius: 6, flexShrink: 0, border: `2px solid ${feita ? '#10b981' : atrasada ? '#ef4444' : '#d1d5db'}`, background: feita ? '#10b981' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {feita && <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>✓</span>}
                     </div>
-
-                    {/* Ícone categoria */}
-                    <div style={{ width: 34, height: 34, borderRadius: 8, background: cat.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
-                      {cat.icon}
-                    </div>
-
-                    {/* Conteúdo */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontSize: 14, fontWeight: 500, color: feita ? '#065f46' : '#0f172a', textDecoration: feita ? 'line-through' : 'none', opacity: feita ? 0.7 : 1 }}>
-                        {t.titulo}
-                      </p>
+                    <div style={{ width: 34, height: 34, borderRadius: 8, background: cat.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>{cat.icon}</div>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontSize: 14, fontWeight: 500, color: feita ? '#065f46' : '#0f172a', textDecoration: feita ? 'line-through' : 'none', opacity: feita ? 0.7 : 1 }}>{t.titulo}</p>
                       {t.descricao && <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{t.descricao}</p>}
                     </div>
-
-                    {/* Horário e status */}
                     <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      {t.horario_limit && (
-                        <p style={{ fontSize: 12, fontWeight: 500, color: atrasada ? '#ef4444' : feita ? '#10b981' : '#64748b' }}>
-                          {atrasada ? '⚠ ' : ''}até {t.horario_limit.slice(0, 5)}
-                        </p>
-                      )}
-                      {exec?.feito_em && (
-                        <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
-                          feito às {new Date(exec.feito_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                      )}
+                      {t.horario_limit && <p style={{ fontSize: 12, fontWeight: 500, color: atrasada ? '#ef4444' : feita ? '#10b981' : '#64748b' }}>{atrasada ? '⚠ ' : ''}até {t.horario_limit.slice(0, 5)}</p>}
+                      {exec?.feito_em && <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>às {new Date(exec.feito_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>}
                     </div>
                   </div>
                 )
@@ -321,156 +254,109 @@ export default function RotinasPage() {
         </div>
       )}
 
-      {/* ═══ ABA PAINEL GESTOR ═══ */}
+      {/* ═══ PAINEL GESTOR ═══ */}
       {aba === 'gestor' && (
         <div>
-          {/* Cards por funcionário */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14, marginBottom: 24 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14, marginBottom: 24 }}>
             {resumoFuncionarios.map(r => {
               const pctF = r.total > 0 ? Math.round(r.feitas / r.total * 100) : 0
               return (
                 <div key={r.perfil.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '18px 20px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#e0e7ff', color: '#4338ca', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 600 }}>
-                        {r.perfil.nome.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{r.perfil.nome}</p>
-                        <p style={{ fontSize: 11, color: '#94a3b8', textTransform: 'capitalize' }}>{r.perfil.papel}</p>
-                      </div>
+                      <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#e0e7ff', color: '#4338ca', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 600 }}>{r.perfil.nome.charAt(0).toUpperCase()}</div>
+                      <div><p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{r.perfil.nome}</p><p style={{ fontSize: 11, color: '#94a3b8', textTransform: 'capitalize' }}>{r.perfil.papel}</p></div>
                     </div>
-                    <span style={{ fontSize: 20, fontWeight: 700, color: pctF === 100 ? '#10b981' : pctF >= 50 ? '#f59e0b' : '#ef4444' }}>
-                      {pctF}%
-                    </span>
+                    <span style={{ fontSize: 20, fontWeight: 700, color: pctF === 100 ? '#10b981' : pctF >= 50 ? '#f59e0b' : '#ef4444' }}>{pctF}%</span>
                   </div>
-
                   <div style={{ height: 6, background: '#f1f5f9', borderRadius: 3, overflow: 'hidden', marginBottom: 12 }}>
                     <div style={{ height: '100%', width: `${pctF}%`, background: pctF === 100 ? '#10b981' : pctF >= 50 ? '#f59e0b' : '#ef4444', borderRadius: 3 }} />
                   </div>
-
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <div style={{ flex: 1, background: '#ecfdf5', borderRadius: 8, padding: '8px', textAlign: 'center' }}>
-                      <p style={{ fontSize: 18, fontWeight: 700, color: '#065f46' }}>{r.feitas}</p>
-                      <p style={{ fontSize: 11, color: '#064e3b' }}>Feitas</p>
-                    </div>
-                    <div style={{ flex: 1, background: r.pendentes > 0 ? '#fef3c7' : '#f8fafc', borderRadius: 8, padding: '8px', textAlign: 'center' }}>
-                      <p style={{ fontSize: 18, fontWeight: 700, color: r.pendentes > 0 ? '#92400e' : '#94a3b8' }}>{r.pendentes}</p>
-                      <p style={{ fontSize: 11, color: r.pendentes > 0 ? '#78350f' : '#94a3b8' }}>Pendentes</p>
-                    </div>
-                    <div style={{ flex: 1, background: r.atrasadas > 0 ? '#fef2f2' : '#f8fafc', borderRadius: 8, padding: '8px', textAlign: 'center' }}>
-                      <p style={{ fontSize: 18, fontWeight: 700, color: r.atrasadas > 0 ? '#991b1b' : '#94a3b8' }}>{r.atrasadas}</p>
-                      <p style={{ fontSize: 11, color: r.atrasadas > 0 ? '#7f1d1d' : '#94a3b8' }}>Atrasadas</p>
-                    </div>
+                    {[{ label: 'Feitas', v: r.feitas, bg: '#ecfdf5', c: '#065f46' }, { label: 'Pendentes', v: r.pendentes, bg: r.pendentes > 0 ? '#fef3c7' : '#f8fafc', c: r.pendentes > 0 ? '#92400e' : '#94a3b8' }, { label: 'Atrasadas', v: r.atrasadas, bg: r.atrasadas > 0 ? '#fef2f2' : '#f8fafc', c: r.atrasadas > 0 ? '#991b1b' : '#94a3b8' }].map(s => (
+                      <div key={s.label} style={{ flex: 1, background: s.bg, borderRadius: 8, padding: '8px', textAlign: 'center' }}>
+                        <p style={{ fontSize: 18, fontWeight: 700, color: s.c }}>{s.v}</p>
+                        <p style={{ fontSize: 11, color: s.c }}>{s.label}</p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )
             })}
           </div>
-
-          {/* Tabela detalhada de todas as tarefas de hoje */}
-          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
-            <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1f5f9' }}>
-              <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Tarefas de hoje — detalhe por funcionário</h3>
-            </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                  {['Tarefa', 'Categoria', 'Horário limite', ...perfis.map(p => p.nome)].map(h => (
-                    <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {tarefas.filter(t => hojeAtivo(t)).map(t => {
-                  const cat = CATEGORIA_CONFIG[t.categoria] ?? CATEGORIA_CONFIG.geral
-                  return (
-                    <tr key={t.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '10px 14px', fontWeight: 500, color: '#0f172a' }}>{t.titulo}</td>
-                      <td style={{ padding: '10px 14px' }}>
-                        <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: cat.bg, color: cat.color }}>{cat.icon} {cat.label}</span>
-                      </td>
-                      <td style={{ padding: '10px 14px', fontSize: 12, color: '#64748b' }}>{t.horario_limit ? t.horario_limit.slice(0, 5) : '—'}</td>
-                      {perfis.map(p => {
-                        if (t.responsavel_id && t.responsavel_id !== p.id) {
-                          return <td key={p.id} style={{ padding: '10px 14px', textAlign: 'center', color: '#e2e8f0' }}>—</td>
-                        }
-                        const exec = getExec(t.id, p.id)
-                        const atrasada = !exec?.feito && isAtrasada(t, exec)
-                        return (
-                          <td key={p.id} style={{ padding: '10px 14px', textAlign: 'center' }}>
-                            {exec?.feito ? (
-                              <span title={exec.feito_em ? `Feito às ${new Date(exec.feito_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}>
-                                <span style={{ fontSize: 16 }}>✅</span>
-                                {exec.feito_em && <div style={{ fontSize: 10, color: '#94a3b8' }}>{new Date(exec.feito_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>}
-                              </span>
-                            ) : atrasada ? (
-                              <span style={{ fontSize: 16 }}>🔴</span>
-                            ) : (
-                              <span style={{ fontSize: 16 }}>⬜</span>
-                            )}
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
         </div>
       )}
 
-      {/* ═══ ABA CONFIGURAR ═══ */}
+      {/* ═══ CONFIGURAR ═══ */}
       {aba === 'configurar' && (
         <div>
-          {/* Filtro frequência */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
             {(['todas', 'diaria', 'semanal', 'mensal'] as const).map(f => (
-              <button key={f} onClick={() => setFiltroFreq(f)} style={{
-                padding: '7px 14px', borderRadius: 7, fontSize: 12, cursor: 'pointer', border: '1px solid',
-                fontWeight: filtroFreq === f ? 500 : 400,
-                background: filtroFreq === f ? '#e0e7ff' : '#fff',
-                color: filtroFreq === f ? '#3730a3' : '#64748b',
-                borderColor: filtroFreq === f ? '#818cf8' : '#e2e8f0',
-              }}>
+              <button key={f} onClick={() => setFiltroFreq(f)} style={{ padding: '7px 14px', borderRadius: 7, fontSize: 12, cursor: 'pointer', border: '1px solid', fontWeight: filtroFreq === f ? 500 : 400, background: filtroFreq === f ? '#e0e7ff' : '#fff', color: filtroFreq === f ? '#3730a3' : '#64748b', borderColor: filtroFreq === f ? '#818cf8' : '#e2e8f0' }}>
                 {f === 'todas' ? 'Todas' : FREQ_CONFIG[f].label}
               </button>
             ))}
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {/* Tarefas ativas */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
             {tarefasFiltradas.map(t => {
               const cat = CATEGORIA_CONFIG[t.categoria] ?? CATEGORIA_CONFIG.geral
               const freq = FREQ_CONFIG[t.frequencia]
               return (
-                <div key={t.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, opacity: t.ativo ? 1 : 0.5 }}>
+                <div key={t.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
                   <div style={{ width: 32, height: 32, borderRadius: 8, background: cat.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, flexShrink: 0 }}>{cat.icon}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ fontSize: 13, fontWeight: 500, color: '#0f172a' }}>{t.titulo}</p>
                     <div style={{ display: 'flex', gap: 8, marginTop: 3, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 11, color: freq.color, fontWeight: 500 }}>{freq.label}</span>
-                      {t.frequencia === 'semanal' && t.dias_semana && (
-                        <span style={{ fontSize: 11, color: '#64748b' }}>{t.dias_semana.map(d => DIAS_SEMANA[d]).join(', ')}</span>
-                      )}
+                      {t.frequencia === 'semanal' && t.dias_semana && <span style={{ fontSize: 11, color: '#64748b' }}>{t.dias_semana.map(d => DIAS_SEMANA[d]).join(', ')}</span>}
                       {t.horario_limit && <span style={{ fontSize: 11, color: '#64748b' }}>até {t.horario_limit.slice(0, 5)}</span>}
-                      {t.responsavel_id && <span style={{ fontSize: 11, color: '#64748b' }}>→ {perfis.find(p => p.id === t.responsavel_id)?.nome ?? 'Específico'}</span>}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                     <button onClick={() => abrirEdit(t)} style={{ padding: '5px 10px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, background: '#fff', cursor: 'pointer', color: '#374151' }}>Editar</button>
-                    <button onClick={() => toggleAtivo(t)} style={{ padding: '5px 10px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, background: '#fff', cursor: 'pointer', color: t.ativo ? '#ef4444' : '#10b981' }}>
-                      {t.ativo ? 'Desativar' : 'Ativar'}
-                    </button>
+                    <button onClick={() => desativar(t)} style={{ padding: '5px 10px', border: '1px solid #fecaca', borderRadius: 6, fontSize: 12, background: '#fff', cursor: 'pointer', color: '#ef4444' }}>Desativar</button>
                   </div>
                 </div>
               )
             })}
           </div>
+
+          {/* Tarefas desativadas */}
+          {tarefasInativas.length > 0 && (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+                <span style={{ fontSize: 12, fontWeight: 500, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>
+                  {tarefasInativas.length} tarefa{tarefasInativas.length > 1 ? 's' : ''} desativada{tarefasInativas.length > 1 ? 's' : ''}
+                </span>
+                <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {tarefasInativas.map(t => {
+                  const cat = CATEGORIA_CONFIG[t.categoria] ?? CATEGORIA_CONFIG.geral
+                  const freq = FREQ_CONFIG[t.frequencia]
+                  return (
+                    <div key={t.id} style={{ background: '#f8fafc', border: '1px dashed #e2e8f0', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, opacity: 0.7 }}>
+                      <div style={{ width: 32, height: 32, borderRadius: 8, background: cat.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, flexShrink: 0 }}>{cat.icon}</div>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontSize: 13, fontWeight: 500, color: '#64748b', textDecoration: 'line-through' }}>{t.titulo}</p>
+                        <span style={{ fontSize: 11, color: freq.color, fontWeight: 500 }}>{freq.label}</span>
+                      </div>
+                      <button onClick={() => reativar(t)} style={{ padding: '6px 14px', border: '1px solid #86efac', borderRadius: 7, fontSize: 12, fontWeight: 500, background: '#f0fdf4', cursor: 'pointer', color: '#065f46' }}>
+                        ↩ Reativar
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* MODAL NOVA/EDITAR TAREFA */}
+      {/* MODAL */}
       {showModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }}>
           <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto' }}>
@@ -479,68 +365,30 @@ export default function RotinasPage() {
               <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#94a3b8' }}>×</button>
             </div>
             <div style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div><label style={lbl}>Título *</label><input style={inp} value={fTitulo} onChange={e => setFTitulo(e.target.value)} placeholder="Ex: Varrer e passar pano na loja" /></div>
-              <div><label style={lbl}>Descrição (opcional)</label><input style={inp} value={fDesc} onChange={e => setFDesc(e.target.value)} placeholder="Detalhes ou instruções..." /></div>
-
+              <div><label style={lbl}>Título *</label><input style={inp} value={fTitulo} onChange={e => setFTitulo(e.target.value)} placeholder="Ex: Varrer e passar pano" /></div>
+              <div><label style={lbl}>Descrição</label><input style={inp} value={fDesc} onChange={e => setFDesc(e.target.value)} placeholder="Detalhes..." /></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={lbl}>Categoria</label>
-                  <select style={inp} value={fCategoria} onChange={e => setFCategoria(e.target.value)}>
-                    {Object.entries(CATEGORIA_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={lbl}>Frequência</label>
-                  <select style={inp} value={fFreq} onChange={e => setFFreq(e.target.value as typeof fFreq)}>
-                    <option value="diaria">Diária</option>
-                    <option value="semanal">Semanal</option>
-                    <option value="mensal">Mensal</option>
-                  </select>
-                </div>
+                <div><label style={lbl}>Categoria</label><select style={inp} value={fCategoria} onChange={e => setFCategoria(e.target.value)}>{Object.entries(CATEGORIA_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}</select></div>
+                <div><label style={lbl}>Frequência</label><select style={inp} value={fFreq} onChange={e => setFFreq(e.target.value as typeof fFreq)}><option value="diaria">Diária</option><option value="semanal">Semanal</option><option value="mensal">Mensal</option></select></div>
               </div>
-
               {fFreq === 'semanal' && (
-                <div>
-                  <label style={lbl}>Dias da semana</label>
+                <div><label style={lbl}>Dias da semana</label>
                   <div style={{ display: 'flex', gap: 6 }}>
                     {DIAS_SEMANA.map((d, i) => (
-                      <button key={i} onClick={() => setFDiasSemana(ds => ds.includes(i) ? ds.filter(x => x !== i) : [...ds, i])} style={{
-                        flex: 1, padding: '8px 4px', borderRadius: 7, border: '1px solid', cursor: 'pointer', fontSize: 12, fontWeight: 500,
-                        background: fDiasSemana.includes(i) ? '#e0e7ff' : '#fff',
-                        color: fDiasSemana.includes(i) ? '#3730a3' : '#64748b',
-                        borderColor: fDiasSemana.includes(i) ? '#818cf8' : '#e2e8f0',
-                      }}>{d}</button>
+                      <button key={i} onClick={() => setFDiasSemana(ds => ds.includes(i) ? ds.filter(x => x !== i) : [...ds, i])} style={{ flex: 1, padding: '8px 4px', borderRadius: 7, border: '1px solid', cursor: 'pointer', fontSize: 12, fontWeight: 500, background: fDiasSemana.includes(i) ? '#e0e7ff' : '#fff', color: fDiasSemana.includes(i) ? '#3730a3' : '#64748b', borderColor: fDiasSemana.includes(i) ? '#818cf8' : '#e2e8f0' }}>{d}</button>
                     ))}
                   </div>
                 </div>
               )}
-
-              {fFreq === 'mensal' && (
-                <div>
-                  <label style={lbl}>Dia do mês (1–31)</label>
-                  <input style={inp} type="number" min="1" max="31" value={fDiaMes} onChange={e => setFDiaMes(e.target.value)} placeholder="Ex: 1 = primeiro dia do mês" />
-                </div>
-              )}
-
+              {fFreq === 'mensal' && <div><label style={lbl}>Dia do mês (1–31)</label><input style={inp} type="number" min="1" max="31" value={fDiaMes} onChange={e => setFDiaMes(e.target.value)} /></div>}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={lbl}>Horário limite</label>
-                  <input style={inp} type="time" value={fHorario} onChange={e => setFHorario(e.target.value)} />
-                </div>
-                <div>
-                  <label style={lbl}>Responsável (vazio = todos)</label>
-                  <select style={inp} value={fResponsavel} onChange={e => setFResponsavel(e.target.value)}>
-                    <option value="">Todos os funcionários</option>
-                    {perfis.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-                  </select>
-                </div>
+                <div><label style={lbl}>Horário limite</label><input style={inp} type="time" value={fHorario} onChange={e => setFHorario(e.target.value)} /></div>
+                <div><label style={lbl}>Responsável</label><select style={inp} value={fResponsavel} onChange={e => setFResponsavel(e.target.value)}><option value="">Todos</option>{perfis.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}</select></div>
               </div>
             </div>
             <div style={{ padding: '12px 22px', borderTop: '1px solid #f1f5f9', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button onClick={() => setShowModal(false)} style={{ padding: '8px 16px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer', color: '#374151' }}>Cancelar</button>
-              <button onClick={salvarTarefa} disabled={saving} style={{ padding: '8px 18px', background: saving ? '#a5b4fc' : '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer' }}>
-                {saving ? 'Salvando...' : editId ? 'Salvar' : 'Criar tarefa'}
-              </button>
+              <button onClick={salvarTarefa} disabled={saving} style={{ padding: '8px 18px', background: saving ? '#a5b4fc' : '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer' }}>{saving ? 'Salvando...' : editId ? 'Salvar' : 'Criar'}</button>
             </div>
           </div>
         </div>
