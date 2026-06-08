@@ -8,10 +8,15 @@ import { useRouter } from 'next/navigation'
 const navItems = [
   { href: '/dashboard', icon: '⊞', label: 'Dashboard' },
   { href: '/os', icon: '🔧', label: 'Ordens de Serviço' },
+  { href: '/garantias', icon: '🛡', label: 'Garantias' },
   { href: '/clientes', icon: '👥', label: 'Clientes' },
+  { href: '/crm', icon: '📣', label: 'CRM & Acompanhamento' },
   { href: '/pdv', icon: '💳', label: 'PDV / Vendas' },
   { href: '/estoque', icon: '📦', label: 'Estoque' },
+  { href: '/fornecedores', icon: '🏭', label: 'Fornecedores' },
+  { href: '/rotinas', icon: '✅', label: 'Rotinas' },
   { href: '/pos-venda', icon: '⭐', label: 'Pós-venda' },
+  { href: '/configuracoes', icon: '⚙️', label: 'Configurações' },
 ]
 
 export default function Sidebar() {
