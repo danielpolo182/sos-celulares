@@ -1,6 +1,13 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+// Rotas por nível de acesso
+const ROTAS_ADMIN_GERENTE = ['/configuracoes']
+const ROTAS_FINANCEIRO    = ['/relatorios']
+const ROTAS_TECNICO       = ['/os', '/estoque', '/rotinas', '/garantias']
+const ROTAS_ATENDENTE     = ['/clientes', '/crm', '/pdv', '/os']
+const ROTAS_PUBLICAS      = ['/auth']
+
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
@@ -9,13 +16,9 @@ export async function middleware(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
       cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
+        getAll() { return request.cookies.getAll() },
         setAll(cookiesToSet: { name: string; value: string; options?: Record<string, unknown> }[]) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          )
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({ request })
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options as Parameters<typeof supabaseResponse.cookies.set>[2])
@@ -26,20 +29,32 @@ export async function middleware(request: NextRequest) {
   )
 
   const { data: { user } } = await supabase.auth.getUser()
+  const path = request.nextUrl.pathname
+  const isAuthPage = path.startsWith('/auth')
+  const isPublic   = path === '/'
 
-  const isAuthPage = request.nextUrl.pathname.startsWith('/auth')
-  const isPublic = request.nextUrl.pathname === '/'
-
+  // Não autenticado — redireciona para login
   if (!user && !isAuthPage && !isPublic) {
     const url = request.nextUrl.clone()
     url.pathname = '/auth/login'
     return NextResponse.redirect(url)
   }
 
+  // Autenticado em página de auth — redireciona para dashboard
   if (user && isAuthPage) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)
+  }
+
+  // Verificar papel do usuário para rotas restritas
+  if (user && (ROTAS_ADMIN_GERENTE.some(r => path.startsWith(r)))) {
+    const { data: perfil } = await supabase.from('perfis').select('papel').eq('id', user.id).single()
+    if (perfil && !['admin', 'gerente'].includes(perfil.papel)) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
   }
 
   return supabaseResponse
