@@ -388,7 +388,7 @@ export default function NovaOSPage() {
   const ACESSORIOS_LIST = ['Capinha', 'Película', 'Carregador', 'Cabo USB', 'Fone', 'Caixa']
 
   return (
-    <div style={{ padding: '28px 36px', fontFamily: 'var(--font-sans)', maxWidth: 860, margin: '0 auto' }}>
+    <div style={{ padding: '24px 32px', fontFamily: 'var(--font-sans)', width: '100%' }}>
 
       <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', gap: 12 }}>
         <button onClick={() => router.back()} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#94a3b8' }}>←</button>
