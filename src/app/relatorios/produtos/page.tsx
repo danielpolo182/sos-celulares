@@ -62,7 +62,7 @@ export default function RelProdutos() {
                   <td style={{ padding:'9px 14px',fontWeight:500,color:'#0f172a' }}>{p.nome}{p.cadastro_rapido&&<span style={{ fontSize:10,background:'#fef3c7',color:'#92400e',padding:'1px 6px',borderRadius:10,marginLeft:6 }}>incompleto</span>}</td>
                   <td style={{ padding:'9px 14px',color:'#94a3b8',fontFamily:'monospace',fontSize:11 }}>{p.codigo_interno??'—'}</td>
                   <td style={{ padding:'9px 14px',color:'#64748b',fontSize:12 }}>{p.produto_grupos?.nome??'—'}</td>
-                  <td style={{ padding:'9px 14px',fontFamily:'monospace',fontSize:12',color:'#374151 }}>{p.custo_final>0?`R$ ${Number(p.custo_final).toFixed(2).replace('.',',')}`:'-'}</td>
+                  <td style={{ padding:'9px 14px',fontFamily:'monospace',fontSize:12,color:'#374151' }}>{p.custo_final>0?`R$ ${Number(p.custo_final).toFixed(2).replace('.',',')}`:'-'}</td>
                   <td style={{ padding:'9px 14px',fontWeight:500,fontFamily:'monospace',fontSize:12 }}>R$ {Number(p.preco_venda??0).toFixed(2).replace('.',',')}</td>
                   <td style={{ padding:'9px 14px' }}>{p.margem_pct>0?<span style={{ fontSize:12,fontWeight:600,color:p.margem_pct>=30?'#065f46':p.margem_pct>=15?'#92400e':'#991b1b' }}>{Number(p.margem_pct).toFixed(1)}%</span>:'—'}</td>
                   <td style={{ padding:'9px 14px' }}><span style={{ fontSize:12,fontWeight:500,color:baixo?'#991b1b':'#374151' }}>{est?est.qtd_atual:'—'}</span></td>
