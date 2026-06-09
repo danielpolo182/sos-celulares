@@ -122,13 +122,13 @@ export default function ContratosPage() {
       ${c.requer_assinatura_gestor ? '<div class="ass-box"><div class="ass-linha">Responsável técnico</div></div>' : ''}
     </div>` : ''}
     <script>window.onload=()=>{window.print()}<\/script></body></html>`
-    const w = window.open('', '_blank'); w?.document.write(html); w?.document.close()
+    const _b = new Blob([html], { type: 'text/html;charset=utf-8' }); const _u = URL.createObjectURL(_b); const _w = window.open(_u, '_blank'); if (_w) _w.onload = () => URL.revokeObjectURL(_u)
   }
 
   const ativos = contratos.filter(c => c.ativo).length
 
   return (
-    <div style={{ padding: '28px 36px', fontFamily: 'var(--font-sans)', maxWidth: 900, margin: '0 auto' }}>
+    <div style={{ padding: '24px 32px', fontFamily: 'var(--font-sans)',  }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 600, color: '#0f172a', letterSpacing: '-0.02em' }}>Contratos</h1>
@@ -179,7 +179,7 @@ export default function ContratosPage() {
       {/* MODAL */}
       {showModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }}>
-          <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 800, maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ background: '#fff', borderRadius: 14, width: '100%',  maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '16px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
               <h2 style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>{editId ? 'Editar contrato' : 'Novo contrato'}</h2>
               <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#94a3b8' }}>×</button>

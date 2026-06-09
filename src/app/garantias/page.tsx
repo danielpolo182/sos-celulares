@@ -275,7 +275,10 @@ export default function GarantiasPage() {
     <div style="margin-top:16px;font-size:9px;text-align:center">Assinatura do recebedor</div>
     <div style="border-top:1px solid #000;margin-top:24px;padding-top:4px;font-size:9px;text-align:center">_________________________</div>
     <script>window.onload=()=>{window.print()}<\/script></body></html>`
-    const w = window.open('', '_blank'); w?.document.write(html); w?.document.close()
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const w = window.open(url, '_blank')
+    if (w) w.onload = () => URL.revokeObjectURL(url)
   }
 
   function exportCSV() {

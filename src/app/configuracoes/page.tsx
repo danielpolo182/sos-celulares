@@ -26,6 +26,7 @@ const MENU: MenuSection[] = [
   { key: 'rotinas_cfg',icon: '✅', label: 'Rotinas',          subsections: [] },
   { key: 'integ',     icon: '🔌', label: 'Integrações',       subsections: [{ key: 'pix', label: 'PIX' }, { key: 'certificado', label: 'Certificado digital' }] },
   { key: 'alertas',    icon: '🔔', label: 'Alertas',           subsections: [] },
+  { key: 'historico',  icon: '📜', label: 'Histórico',         subsections: [] },
 ]
 
 const inp: React.CSSProperties = { width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, color: '#1e293b', background: '#fff', outline: 'none', fontFamily: 'inherit' }

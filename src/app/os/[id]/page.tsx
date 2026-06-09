@@ -381,8 +381,10 @@ export default function OSDetailPage({ params }: { params: Promise<{ id: string 
       <script>window.onload=()=>{window.print()}<\/script></body></html>`
     }
 
-    const w = window.open('', '_blank', 'noopener')
-    if (w) { w.document.write(html); w.document.close() }
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const w = window.open(url, '_blank')
+    if (w) { w.onload = () => URL.revokeObjectURL(url) }
   }
 
   const inp: React.CSSProperties = { width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, color: '#1e293b', background: '#fff', outline: 'none', fontFamily: 'inherit' }

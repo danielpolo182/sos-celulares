@@ -188,7 +188,7 @@ export default function PDVPage() {
     <div class="line"></div>
     <div class="center">Obrigado pela preferência!</div>
     <script>window.onload=()=>{window.print()}<\/script></body></html>`
-    const w = window.open('', '_blank'); w?.document.write(html); w?.document.close()
+    const _b = new Blob([html], { type: 'text/html;charset=utf-8' }); const _u = URL.createObjectURL(_b); const _w = window.open(_u, '_blank'); if (_w) _w.onload = () => URL.revokeObjectURL(_u)
   }
 
   const caixaAberta = caixaHoje?.aberto_em && !caixaHoje?.fechado_em
