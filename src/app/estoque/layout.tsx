@@ -1,18 +1,12 @@
 import Sidebar from '@/components/layout/Sidebar'
+import TopBar from '@/components/layout/TopBar'
 
-export default function AppLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#f8fafc' }}>
       <Sidebar />
-      <main style={{
-        marginLeft: '240px',
-        flex: 1,
-        minHeight: '100vh',
-      }}>
+      <TopBar />
+      <main style={{ marginLeft: '240px', marginTop: '52px', flex: 1, minHeight: 'calc(100vh - 52px)', display: 'flex', flexDirection: 'column' }}>
         {children}
       </main>
     </div>
