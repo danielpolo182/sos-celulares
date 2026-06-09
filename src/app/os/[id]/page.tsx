@@ -327,7 +327,7 @@ export default function OSDetailPage({ params }: { params: Promise<{ id: string 
   const lucroOrc = itensOrc.reduce((s, i) => s + (i.preco_unit - i.custo_unit) * i.quantidade, 0)
 
   return (
-    <div style={{ padding: '28px 36px', fontFamily: 'var(--font-sans)', maxWidth: 960, margin: '0 auto' }}>
+    <div style={{ padding: '24px 32px', fontFamily: 'var(--font-sans)', width: '100%' }}>
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>

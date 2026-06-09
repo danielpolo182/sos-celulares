@@ -222,7 +222,7 @@ export default function CRMPage() {
   const card: React.CSSProperties = { background:'#fff', border:'1px solid #e2e8f0', borderRadius:12, padding:'18px 22px', marginBottom:14 }
 
   return (
-    <div style={{ padding:'28px 36px', fontFamily:'var(--font-sans)', maxWidth:1100, margin:'0 auto' }}>
+    <div style={{ padding:'24px 32px', fontFamily:'var(--font-sans)', width:'100%' }}>
       <div style={{ marginBottom:20 }}>
         <h1 style={{ fontSize:20, fontWeight:600, color:'#0f172a', letterSpacing:'-0.02em' }}>CRM & Acompanhamento</h1>
         <p style={{ fontSize:13, color:'#94a3b8', marginTop:2 }}>
