@@ -493,7 +493,7 @@ export default function GarantiasPage() {
                         🖨 Imprimir recibo de devolução
                       </button>
                       {PROXIMOS_STATUS[garantiaSel.status].map(novoSt => (
-                        <button key={novoSt} onClick={() => mudarStatus(garantiaSel, novoSt)} disabled={mudandoStatus} style={{ padding: '9px 14px', border: `1px solid ${STATUS_CFG[novoSt]?.border ?? '#e2e8f0'}`, borderRadius: 8, fontSize: 13, background: STATUS_CFG[novoSt]?.bg ?? '#fff', cursor: 'pointer', color: STATUS_CFG[novoSt]?.color ?? '#374151', fontWeight: 500, textAlign: 'left' }}>
+                        <button key={novoSt} onClick={() => mudarStatus(garantiaSel, novoSt)} disabled={mudandoStatus} style={{ padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, background: STATUS_CFG[novoSt]?.bg ?? '#fff', cursor: 'pointer', color: STATUS_CFG[novoSt]?.color ?? '#374151', fontWeight: 500, textAlign: 'left' }}>
                           → {STATUS_CFG[novoSt]?.icon} {STATUS_CFG[novoSt]?.label}
                         </button>
                       ))}
