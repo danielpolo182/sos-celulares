@@ -246,6 +246,7 @@ export default function OSDetailPage({ params }: { params: Promise<{ id: string 
 
   function toggleChecklist(key: string, val: 'ok' | 'falha' | 'nao_testado') { setChecklist(c => ({ ...c, [key]: val })) }
 
+
   function imprimir() {
     if (!os) return
     const formato = cfgLoja.recibo_os_formato || 'a4'
@@ -258,133 +259,506 @@ export default function OSDetailPage({ params }: { params: Promise<{ id: string 
     const taxaMensal = cfgLoja.retirada_taxa_mensal || '10'
     const garantiaDias = cfgLoja.garantia_dias || '90'
     const senha = parseSenha(os.senha_aparelho)
-    let senhaTexto = 'Não fornecida'
+    let senhaTexto = 'Não informada'
     if (senha) {
       if (senha.tipo === 'pin') senhaTexto = `PIN: ${senha.valor}`
       else if (senha.tipo === 'senha') senhaTexto = `Senha: ${senha.valor}`
-      else if (senha.tipo === 'padrao') senhaTexto = `Padrão: ${senha.sequencia.map((n: number) => n + 1).join(' → ')}`
+      else if (senha.tipo === 'padrao') senhaTexto = `Padrão: ${senha.sequencia.map((n: number) => n + 1).join('-')}`
     }
     const vFinal = valorFinal ? parseFloat(valorFinal) : (os.valor_orcamento ?? 0)
     const vDesc = desconto ? parseFloat(desconto) : 0
     const vTotal = (vFinal - vDesc).toFixed(2).replace('.', ',')
-    const dataAbertura = new Date(os.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-    const dataLimite = new Date(new Date(os.created_at).getTime() + parseInt(prazoRetirada) * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR')
-    const itensHtml = itensOrc.map(i => `<div class="ln"><span>${i.descricao} x${i.quantidade}</span><span>R$ ${i.subtotal.toFixed(2).replace('.', ',')}</span></div>`).join('')
+    const dataOS = new Date(os.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    const horaOS = new Date(os.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    const dataLimite = new Date(new Date(os.created_at).getTime() + parseInt(prazoRetirada) * 86400000).toLocaleDateString('pt-BR')
+    const itensRows = itensOrc.map(i =>
+      `<tr><td>${i.descricao}</td><td class="c">${i.quantidade}</td><td class="r">R$&nbsp;${i.preco_unit.toFixed(2).replace('.',',')}</td><td class="r">R$&nbsp;${i.subtotal.toFixed(2).replace('.',',')}</td></tr>`
+    ).join('')
 
     let html = ''
-    if (formato === '80mm' || formato === '58mm') {
-      const largura = formato === '58mm' ? '54mm' : '76mm'
-      const fs = formato === '58mm' ? '10px' : '11px'
-      html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>OS ${os.numero}</title>
-      <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:${fs};width:${largura};padding:4px}
-      @page{size:${largura} auto;margin:2mm}
-      .ct{text-align:center}.b{font-weight:bold}.div{border-top:1px dashed #000;margin:4px 0}
-      .rw{display:flex;justify-content:space-between;margin:2px 0}.ttl{font-size:13px;font-weight:bold;text-align:center;margin-bottom:1px}
-      </style></head><body>
-      <div class="ttl">${nomeLoja}</div>
-      ${endLoja ? `<div class="ct" style="font-size:8px">${endLoja}</div>` : ''}
-      ${telLoja ? `<div class="ct" style="font-size:8px">${telLoja}</div>` : ''}
-      <div class="ct b" style="font-size:9px;margin:3px 0">ORDEM DE SERVIÇO</div>
-      <div class="div"></div>
-      <div class="rw"><span>OS Nº</span><span class="b">${os.numero}</span></div>
-      <div class="rw"><span>Data</span><span>${dataAbertura}</span></div>
-      <div class="div"></div>
-      <div class="b">CLIENTE</div>
-      <div>${os.clientes?.nome ?? '—'}</div>
-      ${os.clientes?.telefone ? `<div>${formatPhone(os.clientes.telefone)}</div>` : ''}
-      <div class="div"></div>
-      <div class="b">APARELHO</div>
-      <div>${os.modelo ?? '—'}</div>
-      <div style="font-size:9px">IMEI: ${os.imei ?? '—'}</div>
-      <div style="font-size:9px">Senha: ${senhaTexto}</div>
-      <div class="div"></div>
-      <div class="b">DEFEITO</div>
-      <div style="line-height:1.5">${os.defeito_relatado}</div>
-      <div class="div"></div>
-      ${itensHtml ? `<div class="b">ORÇAMENTO</div>${itensHtml}` : ''}
-      <div class="rw b"><span>TOTAL</span><span>R$ ${vTotal}</span></div>
-      <div class="rw"><span>Pgto</span><span>${formaPagamento || '—'} · ${pago ? 'PAGO' : 'Pendente'}</span></div>
-      <div class="div"></div>
-      <div style="font-size:8px">Retirada: ${prazoRetirada} dias (até ${dataLimite})</div>
-      <div style="font-size:8px">Garantia: ${garantiaDias} dias</div>
-      <div style="font-size:8px">Armazen. após prazo: R$${taxaMensal}/mês</div>
-      <div class="div"></div>
-      <div style="margin-top:14px;font-size:8px;text-align:center">Assinatura</div>
-      <div style="border-top:1px solid #000;margin-top:16px;padding-top:2px;font-size:8px;text-align:center">________________________</div>
-      <script>window.onload=()=>{window.print()}<\/script></body></html>`
-    } else {
-      // A4 paisagem — duas vias
-      const via = (titulo: string, cor: string) => `<div class="via">
-        <div class="cab">
-          <div class="la"><b style="font-size:13px">${nomeLoja}</b><div style="font-size:7px;color:#94a3b8">Assistência Técnica</div></div>
-          <div class="li">${endLoja ? `📍 ${endLoja}<br>` : ''}${telLoja ? `📞 ${telLoja}<br>` : ''}${emailLoja ? `✉ ${emailLoja}` : ''}</div>
-          <div class="ob"><div style="font-size:7px;color:#818cf8;text-transform:uppercase;letter-spacing:1px">${titulo}</div><div style="font-size:16px;font-weight:bold;color:${cor}">OS Nº ${os.numero}</div><div style="font-size:7px;color:#64748b">${dataAbertura}</div></div>
-        </div>
-        <div class="co">
-          <div class="cl">
-            <div class="s"><div class="st" style="border-color:${cor};color:${cor}">CLIENTE</div>
-              <div class="ln"><span>Nome</span><b>${os.clientes?.nome ?? '—'}</b></div>
-              <div class="ln"><span>Telefone</span>${os.clientes?.telefone ? formatPhone(os.clientes.telefone) : '—'}</div>
-              <div class="ln"><span>CPF</span>${os.clientes?.cpf ?? '—'}</div>
-            </div>
-            <div class="s mt"><div class="st" style="border-color:${cor};color:${cor}">APARELHO</div>
-              <div class="ln"><span>Modelo</span><b>${os.modelo ?? '—'}</b></div>
-              <div class="ln"><span>IMEI</span>${os.imei ?? '—'}</div>
-              <div class="ln"><span>Senha</span>${senhaTexto}</div>
-            </div>
-          </div>
-          <div class="cl">
-            <div class="s"><div class="st" style="border-color:${cor};color:${cor}">DEFEITO RELATADO</div><div class="tx">${os.defeito_relatado}</div></div>
-            <div class="s mt"><div class="st" style="border-color:${cor};color:${cor}">FINANCEIRO</div>
-              ${itensHtml}
-              <div class="ln tot"><span>TOTAL</span><b>R$ ${vTotal}</b></div>
-              <div class="ln"><span>Pagamento</span>${formaPagamento || '—'} · ${pago ? '✓ PAGO' : 'Pendente'}</div>
-            </div>
-          </div>
-          <div class="cl">
-            <div class="s po"><div class="st" style="border-color:#dc2626;color:#dc2626">PRAZO DE RETIRADA</div>
-              <p>Prazo: <b>${prazoRetirada} dias</b>. Limite: <b>${dataLimite}</b>.</p>
-              <p>Após o prazo: armazenamento de <b>R$ ${taxaMensal},00/mês</b>.</p>
-            </div>
-            <div class="s po mt"><div class="st" style="border-color:#92400e;color:#92400e">GARANTIA</div>
-              <p>Garantia de <b>${garantiaDias} dias</b> sobre o serviço realizado.</p>
-              <p>Não cobre mal uso, queda ou umidade.</p>
-            </div>
-            <div class="ac">
-              <p>Ao assinar, o cliente declara estar ciente das condições acima.</p>
-              <div class="ar"><div class="as"><div class="al"></div><div class="alb">Assinatura do cliente</div></div><div class="as"><div class="al"></div><div class="alb">Técnico responsável</div></div></div>
-            </div>
-          </div>
-        </div>
-        <div class="rf">Em conformidade com o CDC (Lei 8.078/90). ${nomeLoja}${cnpjLoja ? ` — CNPJ ${cnpjLoja}` : ''}</div>
-      </div>`
 
-      html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>OS ${os.numero}</title>
-      <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:9px;background:#fff}
-      @page{size:A4 landscape;margin:8mm}.pg{width:277mm;display:flex;gap:5mm}
-      .via{flex:1;border:1.5px solid #334155;border-radius:4px;display:flex;flex-direction:column;overflow:hidden}
-      .sp{width:5mm;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:2px}
-      .sp-l{flex:1;border-left:2px dashed #94a3b8}.sp-t{writing-mode:vertical-rl;font-size:7px;color:#94a3b8;letter-spacing:2px;text-transform:uppercase;white-space:nowrap}
-      .cab{background:#0f172a;color:#f8fafc;padding:8px 10px;display:flex;align-items:center;gap:8px}
-      .la{flex:1}.li{font-size:7.5px;color:#94a3b8;line-height:1.7;flex:1}.ob{text-align:right}
-      .co{display:flex;flex:1}.cl{flex:1;padding:7px 9px;border-right:1px solid #e2e8f0;display:flex;flex-direction:column}.cl:last-child{border-right:none}
-      .s{display:flex;flex-direction:column;gap:2px}.mt{margin-top:7px}.st{font-size:7px;font-weight:bold;letter-spacing:.8px;padding-bottom:3px;border-bottom:1.5px solid;margin-bottom:3px;text-transform:uppercase}
-      .ln{display:flex;justify-content:space-between;gap:4px;padding:1.5px 0;border-bottom:1px dotted #f1f5f9;font-size:8px}.ln span{color:#64748b}
-      .ln.tot{background:#f0fdf4;padding:3px 4px;border-radius:3px;margin-top:2px;font-size:9px;border-bottom:none}.ln.tot b{color:#065f46;font-size:11px}
-      .tx{font-size:8px;color:#374151;line-height:1.5;background:#f8fafc;padding:4px 6px;border-radius:3px}
-      .po p{font-size:7.5px;color:#374151;line-height:1.5;margin-top:2px}
-      .ac{margin-top:auto;padding-top:5px;border-top:1px solid #e2e8f0}.ac p{font-size:7px;color:#64748b;line-height:1.4;margin-bottom:6px;font-style:italic}
-      .ar{display:flex;gap:8px}.as{flex:1}.al{border-top:1px solid #000;margin-top:14px;margin-bottom:2px}.alb{font-size:6.5px;color:#64748b;text-align:center}
-      .rf{background:#f8fafc;border-top:1px solid #e2e8f0;padding:4px 10px;font-size:6.5px;color:#94a3b8}
-      </style></head><body>
-      <div class="pg">${via('VIA DA ASSISTÊNCIA', '#6366f1')}<div class="sp"><div class="sp-l"></div><div class="sp-t">recortar aqui</div><div class="sp-l"></div></div>${via('VIA DO CLIENTE', '#0f172a')}</div>
-      <script>window.onload=()=>{window.print()}<\/script></body></html>`
+    /* ─────────────────────────────────────────
+       58mm — Bobina térmica estreita
+       Largura real do papel: 58mm → área útil ~54mm
+       Fonte pequena, espaço mínimo, tudo sequencial
+    ───────────────────────────────────────── */
+    if (formato === '58mm') {
+      html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+  @page { size: 58mm auto; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Courier New', monospace;
+    font-size: 9pt;
+    width: 54mm;
+    padding: 3mm 2mm;
+    color: #000;
+    background: #fff;
+  }
+  .center { text-align: center; }
+  .right { text-align: right; }
+  .bold { font-weight: bold; }
+  .nome-loja { font-size: 12pt; font-weight: bold; text-align: center; letter-spacing: 1px; margin-bottom: 1mm; }
+  .sub-loja { font-size: 7.5pt; text-align: center; color: #444; margin-bottom: 1mm; }
+  .dashed { border-top: 1px dashed #000; margin: 2mm 0; }
+  .solid { border-top: 1px solid #000; margin: 2mm 0; }
+  .os-header { text-align: center; margin: 2mm 0; }
+  .os-numero { font-size: 16pt; font-weight: bold; letter-spacing: -1px; }
+  .os-label { font-size: 7pt; text-transform: uppercase; letter-spacing: 2px; color: #555; }
+  .section-title { font-size: 7pt; text-transform: uppercase; letter-spacing: 1.5px; font-weight: bold; color: #333; margin-bottom: 1mm; }
+  .row { display: flex; justify-content: space-between; margin-bottom: 0.5mm; }
+  .row span:first-child { color: #555; font-size: 8pt; }
+  .row span:last-child { font-weight: bold; font-size: 8pt; text-align: right; max-width: 32mm; }
+  .defeito-box { font-size: 8pt; line-height: 1.5; margin-bottom: 1mm; }
+  .item-row { display: flex; justify-content: space-between; padding: 1mm 0; border-bottom: 1px dotted #ccc; font-size: 8pt; }
+  .total-row { display: flex; justify-content: space-between; padding: 1mm 0; font-size: 10pt; font-weight: bold; }
+  .aviso { font-size: 7pt; line-height: 1.6; color: #333; }
+  .ass-label { font-size: 7pt; text-align: center; color: #555; }
+  .ass-line { border-top: 1px solid #000; margin-top: 8mm; margin-bottom: 1mm; }
+  .footer { font-size: 6.5pt; text-align: center; color: #777; margin-top: 2mm; }
+</style></head><body>
+
+<div class="nome-loja">${nomeLoja}</div>
+${endLoja ? `<div class="sub-loja">${endLoja}</div>` : ''}
+${telLoja ? `<div class="sub-loja">${telLoja}</div>` : ''}
+${cnpjLoja ? `<div class="sub-loja">CNPJ: ${cnpjLoja}</div>` : ''}
+
+<div class="solid"></div>
+
+<div class="os-header">
+  <div class="os-label">Ordem de Serviço</div>
+  <div class="os-numero">#${os.numero}</div>
+  <div class="sub-loja">${dataOS} às ${horaOS}</div>
+</div>
+
+<div class="dashed"></div>
+
+<div class="section-title">▸ Cliente</div>
+<div class="row"><span>Nome</span><span>${os.clientes?.nome ?? '—'}</span></div>
+${os.clientes?.telefone ? `<div class="row"><span>Tel.</span><span>${formatPhone(os.clientes.telefone)}</span></div>` : ''}
+${os.clientes?.cpf ? `<div class="row"><span>CPF</span><span>${os.clientes.cpf}</span></div>` : ''}
+
+<div class="dashed"></div>
+
+<div class="section-title">▸ Aparelho</div>
+<div class="row"><span>Modelo</span><span>${os.modelo ?? '—'}</span></div>
+${os.imei ? `<div class="row"><span>IMEI</span><span>${os.imei}</span></div>` : ''}
+${os.cor ? `<div class="row"><span>Cor</span><span>${os.cor}</span></div>` : ''}
+<div class="row"><span>Senha</span><span>${senhaTexto}</span></div>
+
+<div class="dashed"></div>
+
+<div class="section-title">▸ Defeito relatado</div>
+<div class="defeito-box">${os.defeito_relatado}</div>
+
+<div class="dashed"></div>
+
+<div class="section-title">▸ Financeiro</div>
+${itensOrc.length > 0 ? itensOrc.map(i =>
+  `<div class="item-row"><span>${i.descricao} x${i.quantidade}</span><span>R$ ${i.subtotal.toFixed(2).replace('.',',')}</span></div>`
+).join('') : ''}
+<div class="total-row"><span>TOTAL</span><span>R$ ${vTotal}</span></div>
+<div class="row"><span>Pagamento</span><span>${formaPagamento || '—'}</span></div>
+<div class="row"><span>Status</span><span>${pago ? '✓ PAGO' : 'PENDENTE'}</span></div>
+
+<div class="dashed"></div>
+
+<div class="section-title">▸ Condições</div>
+<div class="aviso">
+  Prazo p/ retirada: <b>${prazoRetirada} dias</b> (${dataLimite})<br>
+  Após prazo: R$ ${taxaMensal},00/mês armazen.<br>
+  Garantia do serviço: <b>${garantiaDias} dias</b><br>
+  Não cobre queda, umidade ou mau uso.
+</div>
+
+<div class="dashed"></div>
+
+<div class="ass-label">Assinatura do cliente</div>
+<div class="ass-line"></div>
+<div class="ass-label">_________________________</div>
+
+<div class="footer">
+  Em conformidade com o CDC (Lei 8.078/90)<br>
+  ${nomeLoja}${cnpjLoja ? ` · CNPJ ${cnpjLoja}` : ''}
+</div>
+
+<script>window.onload = () => { window.print(); }<\/script>
+</body></html>`
+
+    /* ─────────────────────────────────────────
+       80mm — Bobina térmica padrão
+       Largura real: 80mm → área útil ~76mm
+       Layout mais generoso, tabela de itens
+    ───────────────────────────────────────── */
+    } else if (formato === '80mm') {
+      html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+  @page { size: 80mm auto; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Courier New', monospace;
+    font-size: 9.5pt;
+    width: 76mm;
+    padding: 3mm 3mm;
+    color: #000;
+    background: #fff;
+  }
+  .center { text-align: center; }
+  .right { text-align: right; }
+  .bold { font-weight: bold; }
+  .nome-loja { font-size: 14pt; font-weight: bold; text-align: center; letter-spacing: 1px; margin-bottom: 1mm; }
+  .sub-loja { font-size: 8pt; text-align: center; color: #444; line-height: 1.6; }
+  .dashed { border-top: 1px dashed #000; margin: 2.5mm 0; }
+  .solid { border-top: 2px solid #000; margin: 2mm 0; }
+  .double { border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 1.5mm 0; margin: 2mm 0; }
+  .os-badge {
+    text-align: center; padding: 2mm 0;
+    border: 1px solid #000; border-radius: 2mm;
+    margin: 2mm 0;
+  }
+  .os-numero { font-size: 20pt; font-weight: bold; letter-spacing: -1px; }
+  .os-label { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 2px; color: #555; }
+  .section { margin-bottom: 2mm; }
+  .section-title {
+    font-size: 7.5pt; font-weight: bold;
+    text-transform: uppercase; letter-spacing: 1.5px;
+    border-bottom: 1px solid #000;
+    padding-bottom: 0.5mm; margin-bottom: 1.5mm;
+  }
+  .row { display: flex; justify-content: space-between; margin-bottom: 0.7mm; font-size: 8.5pt; }
+  .row .label { color: #555; min-width: 18mm; }
+  .row .value { font-weight: bold; text-align: right; }
+  .defeito-box {
+    font-size: 8.5pt; line-height: 1.6;
+    background: #f5f5f5; padding: 1.5mm 2mm;
+    border-left: 2px solid #000; margin-bottom: 1mm;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 8pt; }
+  table th { border-bottom: 1px solid #000; padding: 1mm 0.5mm; text-align: left; font-size: 7.5pt; }
+  table th:last-child, table td:last-child { text-align: right; }
+  table td { padding: 1mm 0.5mm; border-bottom: 1px dotted #ccc; }
+  .total-row { display: flex; justify-content: space-between; padding: 1.5mm 0; font-size: 12pt; font-weight: bold; border-top: 2px solid #000; margin-top: 1mm; }
+  .status-pago { display: inline-block; padding: 0.5mm 3mm; border: 1.5px solid #000; font-size: 8pt; font-weight: bold; }
+  .aviso-box { border: 1px solid #555; padding: 1.5mm 2mm; margin: 1mm 0; }
+  .aviso-title { font-size: 7pt; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 1mm; }
+  .aviso-text { font-size: 7.5pt; line-height: 1.6; }
+  .ass-area { margin-top: 5mm; }
+  .ass-line { display: flex; gap: 5mm; margin-top: 3mm; }
+  .ass-box { flex: 1; }
+  .ass-l { border-top: 1px solid #000; margin-bottom: 1mm; }
+  .ass-label { font-size: 7pt; text-align: center; color: #555; }
+  .footer { font-size: 6.5pt; text-align: center; color: #777; margin-top: 3mm; border-top: 1px dashed #ccc; padding-top: 1.5mm; }
+</style></head><body>
+
+<div class="nome-loja">${nomeLoja}</div>
+<div class="sub-loja">
+  ${endLoja ? endLoja + '<br>' : ''}
+  ${telLoja ? telLoja : ''}${emailLoja ? ' · ' + emailLoja : ''}
+  ${cnpjLoja ? '<br>CNPJ: ' + cnpjLoja : ''}
+</div>
+
+<div class="solid"></div>
+
+<div class="os-badge">
+  <div class="os-label">Ordem de Serviço</div>
+  <div class="os-numero">#${os.numero}</div>
+  <div class="sub-loja">${dataOS} · ${horaOS}</div>
+</div>
+
+<div class="section">
+  <div class="section-title">Cliente</div>
+  <div class="row"><span class="label">Nome</span><span class="value">${os.clientes?.nome ?? '—'}</span></div>
+  ${os.clientes?.telefone ? `<div class="row"><span class="label">Telefone</span><span class="value">${formatPhone(os.clientes.telefone)}</span></div>` : ''}
+  ${os.clientes?.cpf ? `<div class="row"><span class="label">CPF</span><span class="value">${os.clientes.cpf}</span></div>` : ''}
+</div>
+
+<div class="section">
+  <div class="section-title">Aparelho</div>
+  <div class="row"><span class="label">Modelo</span><span class="value">${os.modelo ?? '—'}</span></div>
+  ${os.imei ? `<div class="row"><span class="label">IMEI</span><span class="value">${os.imei}</span></div>` : ''}
+  ${os.cor ? `<div class="row"><span class="label">Cor</span><span class="value">${os.cor}</span></div>` : ''}
+  <div class="row"><span class="label">Senha</span><span class="value">${senhaTexto}</span></div>
+</div>
+
+<div class="section">
+  <div class="section-title">Defeito relatado</div>
+  <div class="defeito-box">${os.defeito_relatado}</div>
+</div>
+
+<div class="section">
+  <div class="section-title">Orçamento</div>
+  ${itensOrc.length > 0 ? `
+  <table>
+    <thead><tr><th>Item</th><th>Qtd</th><th>Unit.</th><th>Total</th></tr></thead>
+    <tbody>${itensRows}</tbody>
+  </table>` : ''}
+  <div class="total-row">
+    <span>TOTAL</span>
+    <span>R$ ${vTotal}</span>
+  </div>
+  <div class="row" style="margin-top:1mm">
+    <span class="label">Pagamento</span>
+    <span class="value">${formaPagamento || '—'} &nbsp; <span class="status-pago">${pago ? '✓ PAGO' : 'PENDENTE'}</span></span>
+  </div>
+</div>
+
+<div class="aviso-box">
+  <div class="aviso-title">⚠ Prazo e condições</div>
+  <div class="aviso-text">
+    <b>Retirada:</b> ${prazoRetirada} dias · Até ${dataLimite}<br>
+    <b>Armazenamento:</b> R$ ${taxaMensal},00/mês após prazo<br>
+    <b>Garantia:</b> ${garantiaDias} dias sobre o serviço realizado<br>
+    Não cobre queda, umidade ou mau uso.
+  </div>
+</div>
+
+<div class="ass-area">
+  <div style="font-size:7.5pt;margin-bottom:2mm">Declaro estar ciente das condições acima:</div>
+  <div class="ass-line">
+    <div class="ass-box"><div class="ass-l"></div><div class="ass-label">Assinatura do cliente</div></div>
+    <div class="ass-box"><div class="ass-l"></div><div class="ass-label">Técnico responsável</div></div>
+  </div>
+</div>
+
+<div class="footer">
+  Em conformidade com o CDC (Lei 8.078/90)<br>
+  ${nomeLoja}${cnpjLoja ? ' · CNPJ ' + cnpjLoja : ''}
+</div>
+
+<script>window.onload = () => { window.print(); }<\/script>
+</body></html>`
+
+    /* ─────────────────────────────────────────
+       A4 — Impressora comum, duas vias
+       Layout completo, tipografia moderna,
+       duas colunas lado a lado para cortar
+    ───────────────────────────────────────── */
+    } else {
+      const via = (titulo: string, accentColor: string) => `
+<div class="via">
+  <header class="header">
+    <div class="header-brand">
+      <div class="brand-icon">📱</div>
+      <div>
+        <div class="brand-name">${nomeLoja}</div>
+        <div class="brand-sub">Assistência Técnica</div>
+      </div>
+    </div>
+    <div class="header-contact">
+      ${endLoja ? `<span>📍 ${endLoja}</span>` : ''}
+      ${telLoja ? `<span>📞 ${telLoja}</span>` : ''}
+      ${emailLoja ? `<span>✉ ${emailLoja}</span>` : ''}
+      ${cnpjLoja ? `<span>CNPJ: ${cnpjLoja}</span>` : ''}
+    </div>
+    <div class="header-os">
+      <div class="via-label" style="color:${accentColor}">${titulo}</div>
+      <div class="os-num" style="color:${accentColor}">#${os.numero}</div>
+      <div class="os-date">${dataOS} · ${horaOS}</div>
+    </div>
+  </header>
+
+  <div class="body">
+    <div class="col">
+      <section>
+        <h3 class="section-title" style="border-color:${accentColor};color:${accentColor}">Cliente</h3>
+        <div class="field"><span class="field-label">Nome</span><span class="field-value">${os.clientes?.nome ?? '—'}</span></div>
+        <div class="field"><span class="field-label">Telefone</span><span class="field-value">${os.clientes?.telefone ? formatPhone(os.clientes.telefone) : '—'}</span></div>
+        <div class="field"><span class="field-label">CPF</span><span class="field-value">${os.clientes?.cpf ?? '—'}</span></div>
+      </section>
+      <section style="margin-top:8px">
+        <h3 class="section-title" style="border-color:${accentColor};color:${accentColor}">Aparelho</h3>
+        <div class="field"><span class="field-label">Modelo</span><span class="field-value bold">${os.modelo ?? '—'}</span></div>
+        <div class="field"><span class="field-label">IMEI</span><span class="field-value mono">${os.imei ?? '—'}</span></div>
+        ${os.cor ? `<div class="field"><span class="field-label">Cor</span><span class="field-value">${os.cor}</span></div>` : ''}
+        <div class="field"><span class="field-label">Senha</span><span class="field-value">${senhaTexto}</span></div>
+      </section>
+    </div>
+
+    <div class="col">
+      <section>
+        <h3 class="section-title" style="border-color:${accentColor};color:${accentColor}">Defeito relatado</h3>
+        <div class="text-block">${os.defeito_relatado}</div>
+      </section>
+      <section style="margin-top:8px">
+        <h3 class="section-title" style="border-color:${accentColor};color:${accentColor}">Orçamento</h3>
+        ${itensOrc.length > 0 ? `
+        <table class="items-table">
+          <thead><tr><th>Descrição</th><th>Qtd</th><th>Unitário</th><th>Total</th></tr></thead>
+          <tbody>${itensRows}</tbody>
+        </table>` : ''}
+        <div class="total-block">
+          <span>Total</span>
+          <span class="total-value" style="color:${accentColor}">R$ ${vTotal}</span>
+        </div>
+        <div class="field" style="margin-top:4px">
+          <span class="field-label">Pagamento</span>
+          <span class="field-value">${formaPagamento || '—'}
+            <span class="status-badge ${pago ? 'pago' : 'pendente'}">${pago ? '✓ PAGO' : 'PENDENTE'}</span>
+          </span>
+        </div>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="policy-box" style="border-color:#dc2626">
+        <h3 class="section-title" style="border-color:#dc2626;color:#dc2626">Prazo de retirada</h3>
+        <p><b>${prazoRetirada} dias</b> a partir da data de entrada.</p>
+        <p>Data limite: <b>${dataLimite}</b></p>
+        <p>Após o prazo: <b>R$ ${taxaMensal},00/mês</b> de armazenamento.</p>
+      </section>
+      <section class="policy-box" style="border-color:#d97706;margin-top:6px">
+        <h3 class="section-title" style="border-color:#d97706;color:#d97706">Garantia</h3>
+        <p>Garantia de <b>${garantiaDias} dias</b> sobre o serviço realizado.</p>
+        <p>Não cobre danos por queda, umidade ou mau uso.</p>
+        <p>Cada serviço possui garantia independente.</p>
+      </section>
+      <div class="signature-area">
+        <p class="signature-note">Ao assinar, o cliente declara estar ciente e de acordo com todas as condições acima.</p>
+        <div class="sig-row">
+          <div class="sig-box"><div class="sig-line"></div><div class="sig-label">Assinatura do cliente</div></div>
+          <div class="sig-box"><div class="sig-line"></div><div class="sig-label">Técnico responsável</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    Em conformidade com o Código de Defesa do Consumidor (Lei 8.078/90) · ${nomeLoja}${cnpjLoja ? ' · CNPJ ' + cnpjLoja : ''}
+  </footer>
+</div>`
+
+      html = `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="utf-8">
+<title>OS #${os.numero} — ${nomeLoja}</title>
+<style>
+  @page { size: A4 landscape; margin: 8mm; }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Inter', Arial, sans-serif;
+    font-size: 8.5pt;
+    color: #1e293b;
+    background: #fff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .page {
+    width: 277mm;
+    display: flex;
+    gap: 5mm;
+    align-items: stretch;
+  }
+  .via {
+    flex: 1;
+    border: 1px solid #e2e8f0;
+    border-radius: 4pt;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .separator {
+    width: 5mm;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2mm;
+  }
+  .sep-line { flex: 1; border-left: 1.5px dashed #cbd5e1; }
+  .sep-text {
+    writing-mode: vertical-rl;
+    font-size: 6pt;
+    color: #94a3b8;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    font-family: Arial;
+  }
+
+  /* Header */
+  .header {
+    background: #0f172a;
+    color: #f8fafc;
+    padding: 7pt 10pt;
+    display: flex;
+    align-items: center;
+    gap: 8pt;
+  }
+  .header-brand { display: flex; align-items: center; gap: 7pt; flex: 1.2; }
+  .brand-icon { font-size: 22pt; line-height: 1; }
+  .brand-name { font-size: 13pt; font-weight: 700; letter-spacing: -0.5px; }
+  .brand-sub { font-size: 6.5pt; color: #64748b; margin-top: 1pt; }
+  .header-contact { flex: 1.5; display: flex; flex-direction: column; gap: 1.5pt; }
+  .header-contact span { font-size: 7pt; color: #94a3b8; line-height: 1.4; }
+  .header-os { text-align: right; }
+  .via-label { font-size: 6.5pt; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600; opacity: 0.85; }
+  .os-num { font-size: 22pt; font-weight: 700; letter-spacing: -1.5px; line-height: 1; }
+  .os-date { font-size: 7pt; color: #64748b; margin-top: 2pt; }
+
+  /* Body */
+  .body { display: flex; flex: 1; }
+  .col { flex: 1; padding: 8pt 9pt; border-right: 1px solid #f1f5f9; display: flex; flex-direction: column; }
+  .col:last-child { border-right: none; }
+
+  /* Sections */
+  .section-title {
+    font-size: 6.5pt; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1px; padding-bottom: 3pt;
+    border-bottom: 1.5px solid; margin-bottom: 5pt;
+  }
+  .field { display: flex; justify-content: space-between; align-items: baseline; padding: 1.5pt 0; border-bottom: 1px solid #f8fafc; gap: 4pt; }
+  .field-label { font-size: 7.5pt; color: #64748b; flex-shrink: 0; }
+  .field-value { font-size: 8pt; font-weight: 500; text-align: right; }
+  .field-value.bold { font-weight: 700; }
+  .field-value.mono { font-family: 'Courier New', monospace; font-size: 7.5pt; }
+  .text-block { font-size: 8pt; color: #374151; line-height: 1.6; background: #f8fafc; padding: 5pt 6pt; border-radius: 3pt; border-left: 2pt solid #e2e8f0; }
+
+  /* Items table */
+  .items-table { width: 100%; border-collapse: collapse; font-size: 7.5pt; margin-bottom: 3pt; }
+  .items-table th { background: #f8fafc; padding: 2.5pt 3pt; text-align: left; font-size: 7pt; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0; }
+  .items-table th:nth-child(2), .items-table th:nth-child(3), .items-table th:nth-child(4) { text-align: right; }
+  .items-table td { padding: 2pt 3pt; border-bottom: 1px dotted #e2e8f0; }
+  .items-table td:nth-child(2), .items-table td:nth-child(3), .items-table td:nth-child(4) { text-align: right; }
+  .total-block { display: flex; justify-content: space-between; align-items: center; padding: 4pt 3pt; background: #f0fdf4; border-radius: 3pt; margin-top: 2pt; }
+  .total-block span:first-child { font-size: 8pt; color: #374151; font-weight: 500; }
+  .total-value { font-size: 13pt; font-weight: 700; }
+  .status-badge { display: inline-block; padding: 1pt 5pt; border-radius: 20pt; font-size: 7pt; font-weight: 700; margin-left: 4pt; }
+  .status-badge.pago { background: #dcfce7; color: #166534; }
+  .status-badge.pendente { background: #fef9c3; color: #854d0e; }
+
+  /* Policy */
+  .policy-box { border-left: 2pt solid; padding-left: 6pt; }
+  .policy-box p { font-size: 7.5pt; color: #374151; line-height: 1.7; margin-top: 1.5pt; }
+
+  /* Signature */
+  .signature-area { margin-top: auto; padding-top: 6pt; border-top: 1px solid #e2e8f0; }
+  .signature-note { font-size: 6.5pt; color: #64748b; font-style: italic; margin-bottom: 8pt; line-height: 1.5; }
+  .sig-row { display: flex; gap: 8pt; }
+  .sig-box { flex: 1; }
+  .sig-line { border-top: 1px solid #1e293b; margin-bottom: 2pt; margin-top: 14pt; }
+  .sig-label { font-size: 6.5pt; color: #64748b; text-align: center; }
+
+  /* Footer */
+  .footer { background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 4pt 9pt; font-size: 6pt; color: #94a3b8; }
+</style></head><body>
+<div class="page">
+  ${via('Via da Assistência', '#6366f1')}
+  <div class="separator">
+    <div class="sep-line"></div>
+    <div class="sep-text">recortar aqui</div>
+    <div class="sep-line"></div>
+  </div>
+  ${via('Via do Cliente', '#0f172a')}
+</div>
+<script>window.onload = () => { window.print(); }<\/script>
+</body></html>`
     }
 
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const w = window.open(url, '_blank')
-    if (w) { w.onload = () => URL.revokeObjectURL(url) }
+    if (w) w.onload = () => URL.revokeObjectURL(url)
   }
 
   const inp: React.CSSProperties = { width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, color: '#1e293b', background: '#fff', outline: 'none', fontFamily: 'inherit' }
