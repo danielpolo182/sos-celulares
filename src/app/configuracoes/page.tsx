@@ -25,7 +25,7 @@ const MENU: MenuSection[] = [
   { key: 'pdv_cfg',   icon: '💳', label: 'PDV',               subsections: [] },
   { key: 'rotinas_cfg',icon: '✅', label: 'Rotinas',          subsections: [] },
   { key: 'integ',     icon: '🔌', label: 'Integrações',       subsections: [{ key: 'pix', label: 'PIX' }, { key: 'certificado', label: 'Certificado digital' }] },
-  { key: 'historico', icon: '📜', label: 'Histórico',         subsections: [] },
+  { key: 'alertas',    icon: '🔔', label: 'Alertas',           subsections: [] },
 ]
 
 const inp: React.CSSProperties = { width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, color: '#1e293b', background: '#fff', outline: 'none', fontFamily: 'inherit' }
@@ -127,8 +127,23 @@ export default function ConfiguracoesPage() {
 
   async function reverterConfig(h: Historico) {
     const { data: { user } } = await supabase.auth.getUser()
-    const { data: c } = await supabase.from('sistema_config').select('id').eq('chave', h.chave).single()
-    if (c && h.valor_anterior) await supabase.from('sistema_config').update({ valor: h.valor_anterior, atualizado_por: user?.id }).eq('id', c.id)
+    // Buscar pelo config_id diretamente (mais confiável que buscar por chave)
+    if (h.valor_anterior) {
+      await supabase.from('sistema_config')
+        .update({ valor: h.valor_anterior, atualizado_por: user?.id, updated_at: new Date().toISOString() })
+        .eq('id', (h as any).config_id)
+      // Registrar reversão no histórico
+      await supabase.from('config_historico').insert({
+        config_id: (h as any).config_id,
+        chave: h.chave, escopo: h.escopo,
+        valor_anterior: h.valor_novo,
+        valor_novo: h.valor_anterior,
+        versao: h.versao + 1,
+        usuario_id: user?.id,
+        status: 'revertido',
+        motivo: `Reversão para versão v${h.versao}`,
+      })
+    }
     fetchAll(); fetchHistorico()
   }
 
@@ -327,20 +342,57 @@ export default function ConfiguracoesPage() {
         {activeMenu === 'marca' && (
           <div>
             <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>🎨 Marca & Logo</h2>
-            <p style={{ fontSize: 13, color: '#64748b', marginBottom: 24 }}>Logo e identidade visual da empresa nos documentos.</p>
+            <p style={{ fontSize: 13, color: '#64748b', marginBottom: 24 }}>Logo da empresa que aparece nas OS impressas, recibos e documentos.</p>
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '22px 26px' }}>
-              <div style={{ border: '2px dashed #e2e8f0', borderRadius: 10, padding: '40px 20px', textAlign: 'center', marginBottom: 16, cursor: 'pointer', background: '#f8fafc' }}>
+              <input
+                type="file"
+                id="logo-input"
+                accept="image/png,image/jpeg,image/webp"
+                style={{ display: 'none' }}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file || !empresa) return
+                  const ext = file.name.split('.').pop()
+                  const path = `logos/${empresa.id}.${ext}`
+                  const { error } = await supabase.storage.from('produto-fotos').upload(path, file, { upsert: true })
+                  if (!error) {
+                    const { data: urlData } = supabase.storage.from('produto-fotos').getPublicUrl(path)
+                    await supabase.from('empresas').update({ logo_url: urlData.publicUrl }).eq('id', empresa.id)
+                    fetchAll()
+                  }
+                }}
+              />
+              <div
+                onClick={() => document.getElementById('logo-input')?.click()}
+                style={{ border: '2px dashed #e2e8f0', borderRadius: 10, padding: '40px 20px', textAlign: 'center', marginBottom: 16, cursor: 'pointer', background: '#f8fafc', transition: 'border-color 0.15s' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#a5b4fc' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#e2e8f0' }}
+              >
                 {empresa?.logo_url ? (
-                  <img src={empresa.logo_url} style={{ maxHeight: 80, maxWidth: 200, objectFit: 'contain' }} alt="Logo" />
+                  <div>
+                    <img src={empresa.logo_url} style={{ maxHeight: 80, maxWidth: 200, objectFit: 'contain', marginBottom: 8 }} alt="Logo" />
+                    <p style={{ fontSize: 12, color: '#6366f1' }}>Clique para trocar o logo</p>
+                  </div>
                 ) : (
                   <>
                     <div style={{ fontSize: 32, marginBottom: 8 }}>🏪</div>
-                    <p style={{ fontSize: 14, color: '#374151' }}>Clique para enviar o logo</p>
-                    <p style={{ fontSize: 12, color: '#94a3b8' }}>PNG, JPG — recomendado 400×200px</p>
+                    <p style={{ fontSize: 14, fontWeight: 500, color: '#374151' }}>Clique para enviar o logo</p>
+                    <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>PNG, JPG, WEBP — recomendado 400×200px</p>
                   </>
                 )}
               </div>
-              <p style={{ fontSize: 12, color: '#94a3b8' }}>O logo aparecerá nas OS impressas, recibos e documentos.</p>
+              {empresa?.logo_url && (
+                <button
+                  onClick={async () => {
+                    if (!empresa) return
+                    await supabase.from('empresas').update({ logo_url: null }).eq('id', empresa.id)
+                    fetchAll()
+                  }}
+                  style={{ fontSize: 12, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                >
+                  Remover logo
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -493,6 +545,51 @@ export default function ConfiguracoesPage() {
           </div>
         )}
 
+        {/* ── ALERTAS */}
+        {activeMenu === 'alertas' && (
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>🔔 Estratégia de alertas</h2>
+            <p style={{ fontSize: 13, color: '#64748b', marginBottom: 24 }}>Configure os dias em que o sistema deve alertar para cada situação. Os alertas aparecem nas rotinas, CRM e fechamento do dia.</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '18px 22px' }}>
+                <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid #f1f5f9' }}>⏰ OS pronta não retirada</p>
+                <p style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>Dias após ficar pronta para enviar alerta de cobrança de retirada.</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+                  <ConfigField chave="alerta_os_pronta_1" type="number" />
+                  <ConfigField chave="alerta_os_pronta_2" type="number" />
+                  <ConfigField chave="alerta_os_pronta_3" type="number" />
+                  <ConfigField chave="alerta_os_pronta_4" type="number" />
+                </div>
+              </div>
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '18px 22px' }}>
+                <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid #f1f5f9' }}>📦 Aparelho retido além do prazo</p>
+                <p style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>Dias de retenção para escalar os alertas de cobrança de armazenamento.</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                  <ConfigField chave="alerta_aparelho_1" type="number" />
+                  <ConfigField chave="alerta_aparelho_2" type="number" />
+                  <ConfigField chave="alerta_aparelho_3" type="number" />
+                </div>
+              </div>
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '18px 22px' }}>
+                <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid #f1f5f9' }}>😴 Cliente inativo</p>
+                <p style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>Dias sem OS para escalar os alertas de reengajamento.</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                  <ConfigField chave="alerta_cliente_inativo_1" type="number" />
+                  <ConfigField chave="alerta_cliente_inativo_2" type="number" />
+                  <ConfigField chave="alerta_cliente_inativo_3" type="number" />
+                </div>
+              </div>
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '18px 22px' }}>
+                <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid #f1f5f9' }}>🏭 Resposta do fornecedor</p>
+                <ConfigField chave="alerta_garantia_resposta" type="number" />
+              </div>
+              <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 10, padding: '12px 16px', fontSize: 13, color: '#3730a3' }}>
+                💡 Estes valores alimentam automaticamente as rotinas diárias, o CRM, o fechamento do dia e a view de pendências de WhatsApp.
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── HISTÓRICO */}
         {activeMenu === 'historico' && (
           <div>
@@ -510,8 +607,8 @@ export default function ConfiguracoesPage() {
                     {historico.map(h => (
                       <tr key={h.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                         <td style={{ padding: '10px 14px' }}><code style={{ fontSize: 11, color: '#6366f1' }}>{h.chave}</code></td>
-                        <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 12, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.valor_anterior?.slice(0,30) ?? '—'}</td>
-                        <td style={{ padding: '10px 14px', color: '#374151', fontSize: 12, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.valor_novo.slice(0,30)}</td>
+                        <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 12,  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.valor_anterior?.slice(0,30) ?? '—'}</td>
+                        <td style={{ padding: '10px 14px', color: '#374151', fontSize: 12,  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.valor_novo.slice(0,30)}</td>
                         <td style={{ padding: '10px 14px' }}><span style={{ fontSize: 10, background: '#eef2ff', color: '#4338ca', padding: '1px 6px', borderRadius: 20 }}>v{h.versao}</span></td>
                         <td style={{ padding: '10px 14px', fontSize: 12, color: '#64748b' }}>{(h.perfis as any)?.nome ?? '—'}</td>
                         <td style={{ padding: '10px 14px', fontSize: 11, color: '#94a3b8' }}>{new Date(h.alterado_em).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</td>

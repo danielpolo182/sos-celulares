@@ -103,6 +103,13 @@ export default function OSDetailPage({ params }: { params: Promise<{ id: string 
   const [observacoes, setObservacoes] = useState('')
   const [checklist, setChecklist] = useState<ChecklistState>({})
 
+  // Configs da loja (para impressão)
+  const [cfgLoja, setCfgLoja] = useState<Record<string,string>>({
+    loja_nome: 'SOS Celulares', loja_telefone: '', loja_email: '',
+    loja_endereco: '', loja_cnpj: '', recibo_os_formato: 'a4',
+    garantia_dias: '90', retirada_prazo_dias: '90', retirada_taxa_mensal: '10',
+  })
+
   // Orçamento
   const [itensOrc, setItensOrc] = useState<ItemOrc[]>([])
   const [produtosCompat, setProdutosCompat] = useState<ProdutoOrc[]>([])
@@ -143,7 +150,17 @@ export default function OSDetailPage({ params }: { params: Promise<{ id: string 
 
   useEffect(() => {
     loadOS().then(() => {}).finally(() => setLoading(false))
-  }, [loadOS])
+    // Carregar configs da loja
+    supabase.from('sistema_config').select('chave,valor')
+      .in('chave', ['loja_nome','loja_telefone','loja_email','loja_endereco','loja_cnpj','recibo_os_formato','garantia_dias','retirada_prazo_dias','retirada_taxa_mensal'])
+      .then(({ data }) => {
+        if (data) {
+          const m: Record<string,string> = {}
+          data.forEach((c: any) => { m[c.chave] = c.valor })
+          setCfgLoja(prev => ({ ...prev, ...m }))
+        }
+      })
+  }, [loadOS, supabase])
 
   useEffect(() => {
     if (os) { loadOrcamento(); loadProdutosCompat(os.modelo) }
@@ -231,79 +248,141 @@ export default function OSDetailPage({ params }: { params: Promise<{ id: string 
 
   function imprimir() {
     if (!os) return
+    const formato = cfgLoja.recibo_os_formato || 'a4'
+    const nomeLoja = cfgLoja.loja_nome || 'SOS Celulares'
+    const telLoja = cfgLoja.loja_telefone || ''
+    const emailLoja = cfgLoja.loja_email || ''
+    const endLoja = cfgLoja.loja_endereco || ''
+    const cnpjLoja = cfgLoja.loja_cnpj || ''
+    const prazoRetirada = cfgLoja.retirada_prazo_dias || '90'
+    const taxaMensal = cfgLoja.retirada_taxa_mensal || '10'
+    const garantiaDias = cfgLoja.garantia_dias || '90'
     const senha = parseSenha(os.senha_aparelho)
-    let senhaTexto = 'Não fornecida pelo cliente'
-    if (senha) { if (senha.tipo === 'pin') senhaTexto = `PIN: ${senha.valor}`; else if (senha.tipo === 'senha') senhaTexto = `Senha: ${senha.valor}`; else if (senha.tipo === 'padrao') senhaTexto = `Padrão: ${senha.sequencia.map((n: number) => n + 1).join(' → ')}` }
+    let senhaTexto = 'Não fornecida'
+    if (senha) {
+      if (senha.tipo === 'pin') senhaTexto = `PIN: ${senha.valor}`
+      else if (senha.tipo === 'senha') senhaTexto = `Senha: ${senha.valor}`
+      else if (senha.tipo === 'padrao') senhaTexto = `Padrão: ${senha.sequencia.map((n: number) => n + 1).join(' → ')}`
+    }
     const vFinal = valorFinal ? parseFloat(valorFinal) : (os.valor_orcamento ?? 0)
     const vDesc = desconto ? parseFloat(desconto) : 0
     const vTotal = (vFinal - vDesc).toFixed(2).replace('.', ',')
     const dataAbertura = new Date(os.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-    const dataRetirada = new Date(new Date(os.created_at).getTime() + 90 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR')
-    const itensHtml = itensOrc.length > 0 ? itensOrc.map(i => `<div class="linha"><span>${i.descricao} x${i.quantidade}</span><span>R$ ${i.subtotal.toFixed(2).replace('.', ',')}</span></div>`).join('') : ''
+    const dataLimite = new Date(new Date(os.created_at).getTime() + parseInt(prazoRetirada) * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR')
+    const itensHtml = itensOrc.map(i => `<div class="ln"><span>${i.descricao} x${i.quantidade}</span><span>R$ ${i.subtotal.toFixed(2).replace('.', ',')}</span></div>`).join('')
 
-    const via = (titulo: string, cor: string) => `<div class="via">
-      <div class="cabecalho">
-        <div class="logo-area"><div class="logo-icon">📱</div><div class="logo-texto"><div class="logo-nome">SOS Celulares</div><div class="logo-sub">Assistência Técnica Especializada</div></div></div>
-        <div class="loja-info"><div>📍 Rua das Flores, 123 — Centro</div><div>📞 (11) 99999-9999</div><div>✉ contato@soscelulares.com.br</div></div>
-        <div class="os-badge"><div class="os-via">${titulo}</div><div class="os-num" style="color:${cor}">OS Nº ${os.numero}</div><div class="os-data">${dataAbertura}</div></div>
-      </div>
-      <div class="corpo">
-        <div class="coluna">
-          <div class="secao"><div class="secao-titulo" style="border-color:${cor};color:${cor}">CLIENTE</div>
-            <div class="linha"><span>Nome</span><strong>${os.clientes?.nome ?? '—'}</strong></div>
-            <div class="linha"><span>Telefone</span>${os.clientes?.telefone ? formatPhone(os.clientes.telefone) : '—'}</div>
+    let html = ''
+    if (formato === '80mm' || formato === '58mm') {
+      const largura = formato === '58mm' ? '54mm' : '76mm'
+      const fs = formato === '58mm' ? '10px' : '11px'
+      html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>OS ${os.numero}</title>
+      <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:${fs};width:${largura};padding:4px}
+      @page{size:${largura} auto;margin:2mm}
+      .ct{text-align:center}.b{font-weight:bold}.div{border-top:1px dashed #000;margin:4px 0}
+      .rw{display:flex;justify-content:space-between;margin:2px 0}.ttl{font-size:13px;font-weight:bold;text-align:center;margin-bottom:1px}
+      </style></head><body>
+      <div class="ttl">${nomeLoja}</div>
+      ${endLoja ? `<div class="ct" style="font-size:8px">${endLoja}</div>` : ''}
+      ${telLoja ? `<div class="ct" style="font-size:8px">${telLoja}</div>` : ''}
+      <div class="ct b" style="font-size:9px;margin:3px 0">ORDEM DE SERVIÇO</div>
+      <div class="div"></div>
+      <div class="rw"><span>OS Nº</span><span class="b">${os.numero}</span></div>
+      <div class="rw"><span>Data</span><span>${dataAbertura}</span></div>
+      <div class="div"></div>
+      <div class="b">CLIENTE</div>
+      <div>${os.clientes?.nome ?? '—'}</div>
+      ${os.clientes?.telefone ? `<div>${formatPhone(os.clientes.telefone)}</div>` : ''}
+      <div class="div"></div>
+      <div class="b">APARELHO</div>
+      <div>${os.modelo ?? '—'}</div>
+      <div style="font-size:9px">IMEI: ${os.imei ?? '—'}</div>
+      <div style="font-size:9px">Senha: ${senhaTexto}</div>
+      <div class="div"></div>
+      <div class="b">DEFEITO</div>
+      <div style="line-height:1.5">${os.defeito_relatado}</div>
+      <div class="div"></div>
+      ${itensHtml ? `<div class="b">ORÇAMENTO</div>${itensHtml}` : ''}
+      <div class="rw b"><span>TOTAL</span><span>R$ ${vTotal}</span></div>
+      <div class="rw"><span>Pgto</span><span>${formaPagamento || '—'} · ${pago ? 'PAGO' : 'Pendente'}</span></div>
+      <div class="div"></div>
+      <div style="font-size:8px">Retirada: ${prazoRetirada} dias (até ${dataLimite})</div>
+      <div style="font-size:8px">Garantia: ${garantiaDias} dias</div>
+      <div style="font-size:8px">Armazen. após prazo: R$${taxaMensal}/mês</div>
+      <div class="div"></div>
+      <div style="margin-top:14px;font-size:8px;text-align:center">Assinatura</div>
+      <div style="border-top:1px solid #000;margin-top:16px;padding-top:2px;font-size:8px;text-align:center">________________________</div>
+      <script>window.onload=()=>{window.print()}<\/script></body></html>`
+    } else {
+      // A4 paisagem — duas vias
+      const via = (titulo: string, cor: string) => `<div class="via">
+        <div class="cab">
+          <div class="la"><b style="font-size:13px">${nomeLoja}</b><div style="font-size:7px;color:#94a3b8">Assistência Técnica</div></div>
+          <div class="li">${endLoja ? `📍 ${endLoja}<br>` : ''}${telLoja ? `📞 ${telLoja}<br>` : ''}${emailLoja ? `✉ ${emailLoja}` : ''}</div>
+          <div class="ob"><div style="font-size:7px;color:#818cf8;text-transform:uppercase;letter-spacing:1px">${titulo}</div><div style="font-size:16px;font-weight:bold;color:${cor}">OS Nº ${os.numero}</div><div style="font-size:7px;color:#64748b">${dataAbertura}</div></div>
+        </div>
+        <div class="co">
+          <div class="cl">
+            <div class="s"><div class="st" style="border-color:${cor};color:${cor}">CLIENTE</div>
+              <div class="ln"><span>Nome</span><b>${os.clientes?.nome ?? '—'}</b></div>
+              <div class="ln"><span>Telefone</span>${os.clientes?.telefone ? formatPhone(os.clientes.telefone) : '—'}</div>
+              <div class="ln"><span>CPF</span>${os.clientes?.cpf ?? '—'}</div>
+            </div>
+            <div class="s mt"><div class="st" style="border-color:${cor};color:${cor}">APARELHO</div>
+              <div class="ln"><span>Modelo</span><b>${os.modelo ?? '—'}</b></div>
+              <div class="ln"><span>IMEI</span>${os.imei ?? '—'}</div>
+              <div class="ln"><span>Senha</span>${senhaTexto}</div>
+            </div>
           </div>
-          <div class="secao" style="margin-top:8px"><div class="secao-titulo" style="border-color:${cor};color:${cor}">APARELHO</div>
-            <div class="linha"><span>Modelo</span><strong>${os.modelo ?? '—'}</strong></div>
-            <div class="linha"><span>IMEI</span>${os.imei ?? '—'}</div>
-            <div class="linha"><span>Cor</span>${os.cor ?? '—'}</div>
-            <div class="linha"><span>Senha</span>${senhaTexto}</div>
+          <div class="cl">
+            <div class="s"><div class="st" style="border-color:${cor};color:${cor}">DEFEITO RELATADO</div><div class="tx">${os.defeito_relatado}</div></div>
+            <div class="s mt"><div class="st" style="border-color:${cor};color:${cor}">FINANCEIRO</div>
+              ${itensHtml}
+              <div class="ln tot"><span>TOTAL</span><b>R$ ${vTotal}</b></div>
+              <div class="ln"><span>Pagamento</span>${formaPagamento || '—'} · ${pago ? '✓ PAGO' : 'Pendente'}</div>
+            </div>
+          </div>
+          <div class="cl">
+            <div class="s po"><div class="st" style="border-color:#dc2626;color:#dc2626">PRAZO DE RETIRADA</div>
+              <p>Prazo: <b>${prazoRetirada} dias</b>. Limite: <b>${dataLimite}</b>.</p>
+              <p>Após o prazo: armazenamento de <b>R$ ${taxaMensal},00/mês</b>.</p>
+            </div>
+            <div class="s po mt"><div class="st" style="border-color:#92400e;color:#92400e">GARANTIA</div>
+              <p>Garantia de <b>${garantiaDias} dias</b> sobre o serviço realizado.</p>
+              <p>Não cobre mal uso, queda ou umidade.</p>
+            </div>
+            <div class="ac">
+              <p>Ao assinar, o cliente declara estar ciente das condições acima.</p>
+              <div class="ar"><div class="as"><div class="al"></div><div class="alb">Assinatura do cliente</div></div><div class="as"><div class="al"></div><div class="alb">Técnico responsável</div></div></div>
+            </div>
           </div>
         </div>
-        <div class="coluna">
-          <div class="secao"><div class="secao-titulo" style="border-color:${cor};color:${cor}">DEFEITO RELATADO</div><div class="texto-longo">${os.defeito_relatado}</div></div>
-          ${itensOrc.length > 0 ? `<div class="secao" style="margin-top:8px"><div class="secao-titulo" style="border-color:${cor};color:${cor}">ITENS DO ORÇAMENTO</div>${itensHtml}<div class="linha total"><span>TOTAL</span><strong>R$ ${vTotal}</strong></div></div>` : `<div class="secao" style="margin-top:8px"><div class="secao-titulo" style="border-color:${cor};color:${cor}">FINANCEIRO</div><div class="linha total"><span>TOTAL</span><strong>R$ ${vTotal}</strong></div></div>`}
-          <div class="secao" style="margin-top:8px"><div class="linha"><span>Pagamento</span>${formaPagamento || '—'} · ${pago ? '✓ PAGO' : 'Pendente'}</div></div>
-        </div>
-        <div class="coluna">
-          <div class="secao politica"><div class="secao-titulo" style="border-color:#dc2626;color:#dc2626">PRAZO DE RETIRADA</div>
-            <p>Prazo: <strong>90 dias</strong>. Limite: <strong>${dataRetirada}</strong>.</p>
-            <p style="margin-top:4px">Após o prazo: armazenamento de <strong>R$ 10,00/mês</strong>.</p>
-          </div>
-          <div class="secao politica" style="margin-top:6px"><div class="secao-titulo" style="border-color:#92400e;color:#92400e">GARANTIA</div>
-            <p>• Cobre exclusivamente o serviço realizado.</p><p>• Não cobre mal uso, queda ou umidade.</p><p>• Cada serviço é independente dos demais.</p>
-          </div>
-          <div class="aceite"><p>Ao assinar, o cliente declara estar ciente e de acordo com todas as condições acima.</p>
-            <div class="assinatura-linha"><div class="ass"><div class="ass-linha"></div><div class="ass-label">Assinatura do cliente</div></div><div class="ass"><div class="ass-linha"></div><div class="ass-label">Técnico responsável</div></div></div>
-          </div>
-        </div>
-      </div>
-      <div class="rodape-legal">Em conformidade com o CDC (Lei 8.078/90). SOS Celulares — CNPJ 00.000.000/0001-00</div>
-    </div>`
+        <div class="rf">Em conformidade com o CDC (Lei 8.078/90). ${nomeLoja}${cnpjLoja ? ` — CNPJ ${cnpjLoja}` : ''}</div>
+      </div>`
 
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>OS ${os.numero}</title>
-    <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:9px;background:#fff}
-    @page{size:A4 landscape;margin:8mm}.pagina{width:277mm;display:flex;flex-direction:row;gap:6mm;min-height:190mm}
-    .via{flex:1;border:1.5px solid #334155;border-radius:4px;display:flex;flex-direction:column;overflow:hidden}
-    .separador{width:6mm;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px}
-    .sep-linha{flex:1;border-left:2px dashed #94a3b8}.sep-texto{writing-mode:vertical-rl;font-size:7px;color:#94a3b8;letter-spacing:2px;text-transform:uppercase;white-space:nowrap}
-    .cabecalho{background:#0f172a;color:#f8fafc;padding:8px 10px;display:flex;align-items:center;gap:8px}
-    .logo-area{display:flex;align-items:center;gap:6px;flex:1}.logo-icon{font-size:20px}.logo-nome{font-size:13px;font-weight:bold}.logo-sub{font-size:7px;color:#94a3b8;margin-top:1px}
-    .loja-info{font-size:7.5px;color:#94a3b8;line-height:1.7;flex:1}.os-badge{text-align:right}.os-via{font-size:7px;color:#818cf8;text-transform:uppercase;letter-spacing:1px}
-    .os-num{font-size:16px;font-weight:bold;letter-spacing:-1px}.os-data{font-size:7px;color:#64748b;margin-top:2px}
-    .corpo{display:flex;flex:1;gap:0}.coluna{flex:1;padding:8px 10px;border-right:1px solid #e2e8f0;display:flex;flex-direction:column}.coluna:last-child{border-right:none}
-    .secao{display:flex;flex-direction:column;gap:3px}.secao-titulo{font-size:7px;font-weight:bold;letter-spacing:.8px;padding-bottom:3px;border-bottom:1.5px solid;margin-bottom:4px;text-transform:uppercase}
-    .linha{display:flex;justify-content:space-between;gap:4px;padding:1.5px 0;border-bottom:1px dotted #f1f5f9;font-size:8px}.linha span{color:#64748b}
-    .linha.total{background:#f0fdf4;padding:3px 4px;border-radius:3px;margin-top:2px;font-size:9px;border-bottom:none}.linha.total strong{color:#065f46;font-size:11px}
-    .texto-longo{font-size:8px;color:#374151;line-height:1.5;background:#f8fafc;padding:5px 7px;border-radius:3px}
-    .politica p{font-size:7.5px;color:#374151;line-height:1.5;margin-top:2px}
-    .aceite{margin-top:auto;padding-top:6px;border-top:1px solid #e2e8f0}.aceite p{font-size:7px;color:#64748b;line-height:1.4;margin-bottom:8px;font-style:italic}
-    .assinatura-linha{display:flex;gap:8px}.ass{flex:1}.ass-linha{border-top:1px solid #000;margin-bottom:2px;margin-top:16px}.ass-label{font-size:6.5px;color:#64748b;text-align:center}
-    .rodape-legal{background:#f8fafc;border-top:1px solid #e2e8f0;padding:4px 10px;font-size:6.5px;color:#94a3b8;line-height:1.5}
-    </style></head><body>
-    <div class="pagina">${via('VIA DA ASSISTÊNCIA', '#6366f1')}<div class="separador"><div class="sep-linha"></div><div class="sep-texto">recortar aqui</div><div class="sep-linha"></div></div>${via('VIA DO CLIENTE', '#0f172a')}</div>
-    <script>window.onload=()=>{window.print()}<\/script></body></html>`
-    const w = window.open('', '_blank'); w?.document.write(html); w?.document.close()
+      html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>OS ${os.numero}</title>
+      <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:9px;background:#fff}
+      @page{size:A4 landscape;margin:8mm}.pg{width:277mm;display:flex;gap:5mm}
+      .via{flex:1;border:1.5px solid #334155;border-radius:4px;display:flex;flex-direction:column;overflow:hidden}
+      .sp{width:5mm;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:2px}
+      .sp-l{flex:1;border-left:2px dashed #94a3b8}.sp-t{writing-mode:vertical-rl;font-size:7px;color:#94a3b8;letter-spacing:2px;text-transform:uppercase;white-space:nowrap}
+      .cab{background:#0f172a;color:#f8fafc;padding:8px 10px;display:flex;align-items:center;gap:8px}
+      .la{flex:1}.li{font-size:7.5px;color:#94a3b8;line-height:1.7;flex:1}.ob{text-align:right}
+      .co{display:flex;flex:1}.cl{flex:1;padding:7px 9px;border-right:1px solid #e2e8f0;display:flex;flex-direction:column}.cl:last-child{border-right:none}
+      .s{display:flex;flex-direction:column;gap:2px}.mt{margin-top:7px}.st{font-size:7px;font-weight:bold;letter-spacing:.8px;padding-bottom:3px;border-bottom:1.5px solid;margin-bottom:3px;text-transform:uppercase}
+      .ln{display:flex;justify-content:space-between;gap:4px;padding:1.5px 0;border-bottom:1px dotted #f1f5f9;font-size:8px}.ln span{color:#64748b}
+      .ln.tot{background:#f0fdf4;padding:3px 4px;border-radius:3px;margin-top:2px;font-size:9px;border-bottom:none}.ln.tot b{color:#065f46;font-size:11px}
+      .tx{font-size:8px;color:#374151;line-height:1.5;background:#f8fafc;padding:4px 6px;border-radius:3px}
+      .po p{font-size:7.5px;color:#374151;line-height:1.5;margin-top:2px}
+      .ac{margin-top:auto;padding-top:5px;border-top:1px solid #e2e8f0}.ac p{font-size:7px;color:#64748b;line-height:1.4;margin-bottom:6px;font-style:italic}
+      .ar{display:flex;gap:8px}.as{flex:1}.al{border-top:1px solid #000;margin-top:14px;margin-bottom:2px}.alb{font-size:6.5px;color:#64748b;text-align:center}
+      .rf{background:#f8fafc;border-top:1px solid #e2e8f0;padding:4px 10px;font-size:6.5px;color:#94a3b8}
+      </style></head><body>
+      <div class="pg">${via('VIA DA ASSISTÊNCIA', '#6366f1')}<div class="sp"><div class="sp-l"></div><div class="sp-t">recortar aqui</div><div class="sp-l"></div></div>${via('VIA DO CLIENTE', '#0f172a')}</div>
+      <script>window.onload=()=>{window.print()}<\/script></body></html>`
+    }
+
+    const w = window.open('', '_blank', 'noopener')
+    if (w) { w.document.write(html); w.document.close() }
   }
 
   const inp: React.CSSProperties = { width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, color: '#1e293b', background: '#fff', outline: 'none', fontFamily: 'inherit' }
