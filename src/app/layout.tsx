@@ -1,20 +1,14 @@
-import type { Metadata } from 'next'
-import './globals.css'
+import Sidebar from '@/components/layout/Sidebar'
+import TopBar from '@/components/layout/TopBar'
 
-export const metadata: Metadata = {
-  title: 'SOS Celulares — Sistema de Gestão',
-  description: 'ERP para assistência técnica de celulares',
-  manifest: '/manifest.json',
-}
-
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR">
-      <body>{children}</body>
-    </html>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#f8fafc' }}>
+      <Sidebar />
+      <TopBar />
+      <main style={{ marginLeft: '240px', marginTop: '52px', flex: 1, minHeight: 'calc(100vh - 52px)', display: 'flex', flexDirection: 'column' }}>
+        {children}
+      </main>
+    </div>
   )
 }
