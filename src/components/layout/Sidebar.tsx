@@ -45,21 +45,7 @@ const NAV: NavItem[] = [
     children: [
       { href: '/rotinas',      icon: 'ti-checklist',        label: 'Rotinas' },
       { href: '/fechamento',   icon: 'ti-lock',             label: 'Fechamento' },
-      {
-        href: '/relatorios',
-        icon: 'ti-chart-bar',
-        label: 'Relatórios',
-        children: [
-          { href: '/relatorios/os',         icon: 'ti-tool',         label: 'Ordens de Serviço' },
-          { href: '/relatorios/vendas',     icon: 'ti-receipt',      label: 'Vendas' },
-          { href: '/relatorios/clientes',   icon: 'ti-users',        label: 'Clientes' },
-          { href: '/relatorios/produtos',   icon: 'ti-tag',          label: 'Produtos' },
-          { href: '/relatorios/estoque',    icon: 'ti-package',      label: 'Estoque' },
-          { href: '/relatorios/financeiro', icon: 'ti-cash',         label: 'Financeiro' },
-          { href: '/relatorios/fiscal',     icon: 'ti-file-invoice', label: 'Fiscal' },
-          { href: '/relatorios/logs',       icon: 'ti-terminal-2',   label: 'Logs' },
-        ],
-      },
+      { href: '/relatorios',    icon: 'ti-chart-bar',    label: 'Relatórios' },
     ],
   },
   {
