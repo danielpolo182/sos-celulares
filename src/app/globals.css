@@ -151,3 +151,14 @@ tr:hover td { background: #fafafa; }
   to   { opacity: 1; transform: translateY(0); }
 }
 .fade-in { animation: fadeIn 0.2s ease; }
+
+/* Previne scroll horizontal global */
+html, body {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+/* Garante que containers não ultrapassem a largura */
+* {
+  min-width: 0;
+}

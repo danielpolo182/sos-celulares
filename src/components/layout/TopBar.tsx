@@ -72,7 +72,7 @@ export default function TopBar() {
       height: 52, background: '#0f172a',
       borderBottom: '1px solid rgba(255,255,255,0.06)',
       display: 'flex', alignItems: 'center',
-      paddingLeft: 256, paddingRight: 20, gap: 8,
+      paddingLeft: 240, paddingRight: 20, gap: 8,
       position: 'fixed', top: 0, left: 0, right: 0, zIndex: 40,
       fontFamily: "'Inter', sans-serif",
     }}>
