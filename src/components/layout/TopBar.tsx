@@ -8,7 +8,7 @@ export default function TopBar() {
   const router = useRouter()
   const pathname = usePathname()
   const supabase = createClient()
-  const [pendencias, setPendencias] = useState({ os: 0, wa: 0, rotinas: 0 })
+  const [pendencias, setPendencias] = useState({ os: 0, wa: 0 })
   const [usuario, setUsuario] = useState('')
 
   useEffect(() => {
@@ -18,13 +18,12 @@ export default function TopBar() {
         const { data: p } = await supabase.from('perfis').select('nome').eq('id', user.id).single()
         if (p) setUsuario(p.nome)
       }
-      const hoje = new Date().toISOString().split('T')[0]
       const [{ count: osCount }, { data: waRes }] = await Promise.all([
         supabase.from('ordens_servico').select('id', { count: 'exact', head: true }).in('status', ['aberta','em_andamento']).is('deleted_at', null),
         supabase.from('vw_wa_resumo_dia').select('pendentes'),
       ])
       const waPend = (waRes ?? []).reduce((s: number, r: any) => s + (r.pendentes ?? 0), 0)
-      setPendencias({ os: osCount ?? 0, wa: waPend, rotinas: 0 })
+      setPendencias({ os: osCount ?? 0, wa: waPend })
     }
     load()
     const interval = setInterval(load, 60000)
@@ -33,46 +32,90 @@ export default function TopBar() {
 
   if (pathname?.startsWith('/auth')) return null
 
-  const btn = (label: string, icon: string, href: string, badge?: number, primary?: boolean) => (
+  const PrimaryBtn = ({ label, icon, href }: { label: string; icon: string; href: string }) => (
     <button onClick={() => router.push(href)} style={{
-      display: 'flex', alignItems: 'center', gap: 7, padding: primary ? '9px 18px' : '7px 14px',
-      borderRadius: 8, border: primary ? 'none' : '1px solid rgba(255,255,255,0.15)',
-      background: primary ? '#6366f1' : 'rgba(255,255,255,0.08)',
-      color: '#f8fafc', fontSize: primary ? 13 : 12, fontWeight: primary ? 600 : 500,
-      cursor: 'pointer', position: 'relative', whiteSpace: 'nowrap',
-      fontFamily: 'var(--font-sans)',
-    }}>
-      <span style={{ fontSize: primary ? 15 : 14 }}>{icon}</span>
+      display: 'flex', alignItems: 'center', gap: 6,
+      padding: '7px 16px', borderRadius: 7,
+      border: 'none', background: '#6366f1',
+      color: '#fff', fontSize: 13, fontWeight: 500,
+      cursor: 'pointer', fontFamily: "'Inter', sans-serif",
+      letterSpacing: '-0.01em', whiteSpace: 'nowrap',
+      transition: 'background 0.15s',
+    }}
+      onMouseEnter={e => { e.currentTarget.style.background = '#4f46e5' }}
+      onMouseLeave={e => { e.currentTarget.style.background = '#6366f1' }}>
+      <span style={{ fontSize: 13 }}>{icon}</span>
       {label}
-      {badge !== undefined && badge > 0 && (
-        <span style={{ background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 20, minWidth: 18, textAlign: 'center' }}>{badge}</span>
-      )}
+    </button>
+  )
+
+  const SecondaryBtn = ({ label, icon, href }: { label: string; icon: string; href: string }) => (
+    <button onClick={() => router.push(href)} style={{
+      display: 'flex', alignItems: 'center', gap: 6,
+      padding: '7px 14px', borderRadius: 7,
+      border: '1px solid rgba(255,255,255,0.12)',
+      background: 'rgba(255,255,255,0.06)',
+      color: '#cbd5e1', fontSize: 13, fontWeight: 400,
+      cursor: 'pointer', fontFamily: "'Inter', sans-serif",
+      letterSpacing: '-0.01em', whiteSpace: 'nowrap',
+      transition: 'all 0.15s',
+    }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#f1f5f9' }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = '#cbd5e1' }}>
+      <span style={{ fontSize: 13 }}>{icon}</span>
+      {label}
     </button>
   )
 
   return (
-    <div style={{ height: 52, background: '#0f172a', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', paddingLeft: 256, paddingRight: 20, gap: 8, position: 'fixed', top: 0, left: 0, right: 0, zIndex: 40, flexShrink: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-        {btn('Nova OS', '🔧', '/os/nova', undefined, true)}
-        {btn('Nova venda', '💳', '/pdv')}
-        {btn('Rotinas', '✅', '/rotinas', pendencias.rotinas)}
-        <div style={{ width: 1, height: 24, background: 'rgba(255,255,255,0.1)', margin: '0 4px' }} />
+    <div style={{
+      height: 52, background: '#0f172a',
+      borderBottom: '1px solid rgba(255,255,255,0.06)',
+      display: 'flex', alignItems: 'center',
+      paddingLeft: 256, paddingRight: 20, gap: 8,
+      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 40,
+      fontFamily: "'Inter', sans-serif",
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
+        <PrimaryBtn label="Nova OS" icon="🔧" href="/os/nova" />
+        <SecondaryBtn label="Nova venda" icon="💳" href="/pdv" />
+        <SecondaryBtn label="Rotinas" icon="✅" href="/rotinas" />
+
+        <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.1)', margin: '0 6px' }} />
+
         {pendencias.os > 0 && (
-          <span style={{ fontSize: 12, color: '#fbbf24', display: 'flex', alignItems: 'center', gap: 5 }}>
+          <button onClick={() => router.push('/os')} style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px',
+            borderRadius: 20, border: 'none', background: 'rgba(251,191,36,0.12)',
+            cursor: 'pointer', transition: 'background 0.15s',
+          }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(251,191,36,0.2)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(251,191,36,0.12)' }}>
             <span style={{ background: '#fbbf24', color: '#0f172a', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 20 }}>{pendencias.os}</span>
-            OS pendentes
-          </span>
+            <span style={{ fontSize: 12, color: '#fbbf24', fontWeight: 500 }}>OS pendentes</span>
+          </button>
         )}
+
         {pendencias.wa > 0 && (
-          <span style={{ fontSize: 12, color: '#86efac', display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ background: '#16a34a', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 20 }}>{pendencias.wa}</span>
-            WA pendentes
-          </span>
+          <button onClick={() => router.push('/crm')} style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px',
+            borderRadius: 20, border: 'none', background: 'rgba(16,185,129,0.1)',
+            cursor: 'pointer', transition: 'background 0.15s',
+          }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.18)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.1)' }}>
+            <span style={{ background: '#10b981', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 20 }}>{pendencias.wa}</span>
+            <span style={{ fontSize: 12, color: '#10b981', fontWeight: 500 }}>WA pendentes</span>
+          </button>
         )}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#475569' }}>
-        <span>👤</span>
-        <span style={{ color: '#94a3b8' }}>{usuario || 'Usuário'}</span>
+
+      {/* Usuário */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(99,102,241,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: '#a5b4fc' }}>
+          {usuario.charAt(0).toUpperCase() || 'U'}
+        </div>
+        <span style={{ fontSize: 12.5, color: '#64748b', fontWeight: 400 }}>{usuario || 'Usuário'}</span>
       </div>
     </div>
   )
