@@ -127,25 +127,29 @@ export default function ConfiguracoesPage() {
   async function salvarNumeracao(n: NumeracaoConfig, field: string, value: any) { await supabase.from('numeracao_config').update({ [field]: value }).eq('id', n.id); fetchAll() }
 
   async function reverterConfig(h: Historico) {
-    const { data: { user } } = await supabase.auth.getUser()
-    // Buscar pelo config_id diretamente (mais confiável que buscar por chave)
-    if (h.valor_anterior) {
-      await supabase.from('sistema_config')
-        .update({ valor: h.valor_anterior, atualizado_por: user?.id, updated_at: new Date().toISOString() })
-        .eq('id', (h as any).config_id)
-      // Registrar reversão no histórico
-      await supabase.from('config_historico').insert({
-        config_id: (h as any).config_id,
-        chave: h.chave, escopo: (h as any).escopo ?? 'global',
-        valor_anterior: h.valor_novo,
-        valor_novo: h.valor_anterior,
-        versao: h.versao + 1,
-        usuario_id: user?.id,
-        status: 'revertido',
-        motivo: `Reversão para versão v${h.versao}`,
-      })
+    if (!h.valor_anterior) return
+    // Buscar o id real da config pelo chave
+    const { data: cfg, error } = await supabase
+      .from('sistema_config')
+      .select('id,valor')
+      .eq('chave', h.chave)
+      .eq('escopo', 'global')
+      .single()
+    if (error || !cfg) {
+      alert(`Erro ao encontrar configuração "${h.chave}": ${error?.message}`)
+      return
     }
-    fetchAll(); fetchHistorico()
+    const { error: updateError } = await supabase
+      .from('sistema_config')
+      .update({ valor: h.valor_anterior })
+      .eq('id', cfg.id)
+    if (updateError) {
+      alert(`Erro ao reverter: ${updateError.message}`)
+      return
+    }
+    // Forçar reload completo dos dados
+    await fetchAll()
+    await fetchHistorico()
   }
 
   function toggleMenu(key: string) { setOpenMenus(m => ({ ...m, [key]: !m[key] })) }
@@ -614,7 +618,7 @@ export default function ConfiguracoesPage() {
                         <td style={{ padding: '10px 14px', fontSize: 12, color: '#64748b' }}>{(h.perfis as any)?.nome ?? '—'}</td>
                         <td style={{ padding: '10px 14px', fontSize: 11, color: '#94a3b8' }}>{new Date(h.alterado_em).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</td>
                         <td style={{ padding: '10px 14px' }}>
-                          {h.valor_anterior && <button onClick={() => reverterConfig(h)} style={{ fontSize: 11, padding: '3px 10px', border: '1px solid #fde68a', borderRadius: 6, background: '#fef3c7', cursor: 'pointer', color: '#92400e' }}>↩ Reverter</button>}
+                          {h.valor_anterior && <button onClick={async (e) => { const btn = e.currentTarget; btn.disabled = true; btn.textContent = 'Revertendo...'; await reverterConfig(h); btn.disabled = false; btn.textContent = '↩ Reverter' }} style={{ fontSize: 11, padding: '3px 10px', border: '1px solid #fde68a', borderRadius: 6, background: '#fef3c7', cursor: 'pointer', color: '#92400e' }}>↩ Reverter</button>}
                         </td>
                       </tr>
                     ))}
