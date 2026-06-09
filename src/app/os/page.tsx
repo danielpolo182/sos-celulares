@@ -63,7 +63,7 @@ function abrirWA(telefone: string | null, msg: string) {
 export default function OSPage() {
   const supabase = createClient()
   const router = useRouter()
-  const [aba, setAba] = useState<'lista' | 'pendencias'>('pendencias')
+  const [aba, setAba] = useState<'lista' | 'pendencias'>('lista')
   const [items, setItems] = useState<OS[]>([])
   const [pendencias, setPendencias] = useState<Pendencia[]>([])
   const [loading, setLoading] = useState(true)
