@@ -1,12 +1,8 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-// Rotas por nível de acesso
 const ROTAS_ADMIN_GERENTE = ['/configuracoes']
-const ROTAS_FINANCEIRO    = ['/relatorios']
-const ROTAS_TECNICO       = ['/os', '/estoque', '/rotinas', '/garantias']
-const ROTAS_ATENDENTE     = ['/clientes', '/crm', '/pdv', '/os']
-const ROTAS_PUBLICAS      = ['/auth']
+const ROTAS_PUBLICAS = ['/login']
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -30,25 +26,25 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
   const path = request.nextUrl.pathname
-  const isAuthPage = path.startsWith('/auth')
-  const isPublic   = path === '/'
+  const isLoginPage = path === '/login'
+  const isRoot = path === '/'
 
   // Não autenticado — redireciona para login
-  if (!user && !isAuthPage && !isPublic) {
+  if (!user && !isLoginPage && !isRoot) {
     const url = request.nextUrl.clone()
-    url.pathname = '/auth/login'
+    url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 
-  // Autenticado em página de auth — redireciona para dashboard
-  if (user && isAuthPage) {
+  // Autenticado na página de login — redireciona para dashboard
+  if (user && isLoginPage) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)
   }
 
-  // Verificar papel do usuário para rotas restritas
-  if (user && (ROTAS_ADMIN_GERENTE.some(r => path.startsWith(r)))) {
+  // Verificar papel para rotas restritas
+  if (user && ROTAS_ADMIN_GERENTE.some(r => path.startsWith(r))) {
     const { data: perfil } = await supabase.from('perfis').select('papel').eq('id', user.id).single()
     if (perfil && !['admin', 'gerente'].includes(perfil.papel)) {
       const url = request.nextUrl.clone()
