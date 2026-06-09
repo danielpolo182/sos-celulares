@@ -289,7 +289,7 @@ export default function GarantiasPage() {
   const prazoOk = osEncontrada ? dentroPrazo(osEncontrada.created_at) : false
 
   return (
-    <div style={{ padding: '28px 36px', fontFamily: 'var(--font-sans)', maxWidth: 960, margin: '0 auto' }}>
+    <div style={{ padding: '24px 32px', fontFamily: 'var(--font-sans)', width: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 600, color: '#0f172a', letterSpacing: '-0.02em' }}>Central de Garantias</h1>
