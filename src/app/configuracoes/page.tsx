@@ -135,7 +135,7 @@ export default function ConfiguracoesPage() {
       // Registrar reversão no histórico
       await supabase.from('config_historico').insert({
         config_id: (h as any).config_id,
-        chave: h.chave, escopo: h.escopo,
+        chave: h.chave, escopo: (h as any).escopo ?? 'global',
         valor_anterior: h.valor_novo,
         valor_novo: h.valor_anterior,
         versao: h.versao + 1,
