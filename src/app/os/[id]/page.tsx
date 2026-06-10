@@ -622,8 +622,15 @@ ${itensOrc.length > 0 ? itensOrc.map(i =>
       <div class="signature-area">
         <p class="signature-note">Ao assinar, o cliente declara estar ciente e de acordo com todas as condições acima.</p>
         <div class="sig-row">
-          <div class="sig-box"><div class="sig-line"></div><div class="sig-label">Assinatura do cliente</div></div>
-          <div class="sig-box">${assinaturaLoja ? `<img src="${assinaturaLoja}" style="max-height:40pt;max-width:130pt;display:block;margin-bottom:2pt" />` : ''}<div class="sig-line"></div><div class="sig-label">Técnico responsável</div></div>
+          <div class="sig-box">
+            <div class="sig-line"></div>
+            <div class="sig-label">Assinatura do cliente</div>
+          </div>
+          <div class="sig-box">
+            ${assinaturaLoja ? `<img src="${assinaturaLoja}" style="max-height:36pt;max-width:110pt;display:block;margin-bottom:2pt" />` : ''}
+            <div class="sig-line"></div>
+            <div class="sig-label">Técnico responsável</div>
+          </div>
         </div>
       </div>
     </div>
@@ -740,10 +747,10 @@ ${itensOrc.length > 0 ? itensOrc.map(i =>
 
   /* Signature */
   .signature-area { margin-top: auto; padding-top: 6pt; border-top: 1px solid #e2e8f0; }
-  .signature-note { font-size: 6.5pt; color: #64748b; font-style: italic; margin-bottom: 8pt; line-height: 1.5; }
+  .signature-note { font-size: 6.5pt; color: #64748b; font-style: italic; margin-bottom: 10pt; line-height: 1.5; }
   .sig-row { display: flex; gap: 8pt; }
   .sig-box { flex: 1; }
-  .sig-line { border-top: 1px solid #1e293b; margin-bottom: 2pt; margin-top: 14pt; }
+  .sig-line { border-top: 1px solid #1e293b; margin-bottom: 2pt; margin-top: 22pt; }
   .sig-label { font-size: 6.5pt; color: #64748b; text-align: center; }
 
   /* Footer */

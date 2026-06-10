@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 type Config = { id: string; chave: string; valor: string; valor_padrao: string | null; descricao: string | null; categoria: string; versao: number }
@@ -17,8 +17,8 @@ type MenuSection = {
 
 const MENU: MenuSection[] = [
   { key: 'geral',     icon: '⚙️', label: 'Geral',             subsections: [{ key: 'operacional', label: 'Parâmetros' }, { key: 'impressao', label: 'Impressão' }, { key: 'numeracao', label: 'Numeração' }] },
-  { key: 'empresa',   icon: '🏢', label: 'Empresa',           subsections: [{ key: 'dados_empresa', label: 'Dados' }, { key: 'marca', label: 'Marca & Logo' }] },
   { key: 'loja',      icon: '🏪', label: 'Dados da loja',     subsections: [] },
+  { key: 'marca',     icon: '🎨', label: 'Marca & Logo',      subsections: [] },
   { key: 'plano',     icon: '💎', label: 'Meu plano',         subsections: [] },
   { key: 'usuarios',  icon: '👤', label: 'Usuários',          subsections: [{ key: 'perfis', label: 'Perfis de acesso' }, { key: 'qualidades', label: 'Qualidades de peças' }] },
   { key: 'whatsapp',  icon: '💬', label: 'Modelos WhatsApp',  subsections: [] },
@@ -155,19 +155,23 @@ export default function ConfiguracoesPage() {
 
   function toggleMenu(key: string) { setOpenMenus(m => ({ ...m, [key]: !m[key] })) }
 
-  function ConfigField({ chave, type = 'text', options }: { chave: string; type?: string; options?: { v: string; l: string }[] }) {
-    const c = getConfig(chave)
-    if (!c) return null
-    const val = getVal(chave)
-    const modified = isModified(chave)
+  if (loading) return <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8', fontFamily: 'var(--font-sans)' }}>Carregando...</div>
+  if (!acesso) return <div style={{ padding: 80, textAlign: 'center', fontFamily: 'var(--font-sans)' }}><div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div><p style={{ fontSize: 16, color: '#374151' }}>Acesso restrito a admin e gerente.</p></div>
+
+  // Helpers de render (não são componentes — não causam remount)
+  const renderField = (chave: string, type = 'text', options?: { v: string; l: string }[]) => {
+    const c = getConfig(chave); if (!c) return null
+    const val = getVal(chave); const modified = isModified(chave)
     return (
-      <div style={{ marginBottom: 14 }}>
+      <div key={chave} style={{ marginBottom: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
           <label style={lbl}>{c.descricao ?? c.chave}</label>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             {saved === chave && <span style={{ fontSize: 11, color: '#065f46', background: '#ecfdf5', padding: '1px 8px', borderRadius: 20 }}>✓ Salvo</span>}
-            {modified && <><button onClick={() => setEditando(e => { const n = {...e}; delete n[c.id]; return n })} style={{ fontSize: 11, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Cancelar</button>
-            <button onClick={() => salvarConfig(chave)} disabled={saving === chave} style={{ fontSize: 11, padding: '2px 10px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>{saving === chave ? '...' : 'Salvar'}</button></>}
+            {modified && <>
+              <button onClick={() => setEditando(e => { const n = {...e}; delete n[c.id]; return n })} style={{ fontSize: 11, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Cancelar</button>
+              <button onClick={() => salvarConfig(chave)} disabled={saving === chave} style={{ fontSize: 11, padding: '2px 10px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>{saving === chave ? '...' : 'Salvar'}</button>
+            </>}
           </div>
         </div>
         {options ? (
@@ -181,33 +185,31 @@ export default function ConfiguracoesPage() {
     )
   }
 
-  function WAField({ chave }: { chave: string }) {
+  const renderWAField = (chave: string) => {
     const c = getConfig(chave); if (!c) return null
     const val = getVal(chave); const modified = isModified(chave)
+    const VARIAVEIS_PREVIEW: Record<string, string> = { '{nome}':'João', '{modelo}':'Samsung A32', '{numero}':'42', '{valor}':'180,00', '{dias}':'95', '{defeito}':'Tela quebrada' }
+    const preview = val.replace(/\{[^}]+\}/g, (m: string) => VARIAVEIS_PREVIEW[m] ?? m)
     return (
-      <div style={{ background: '#fff', border: `1px solid ${modified ? '#c7d2fe' : '#e2e8f0'}`, borderRadius: 10, padding: '14px 16px', marginBottom: 14 }}>
+      <div key={chave} style={{ background: '#fff', border: `1px solid ${modified ? '#c7d2fe' : '#e2e8f0'}`, borderRadius: 10, padding: '14px 16px', marginBottom: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <p style={{ fontSize: 13, fontWeight: 500, color: '#0f172a' }}>{c.descricao ?? c.chave}</p>
           <div style={{ display: 'flex', gap: 6 }}>
             {saved === chave && <span style={{ fontSize: 11, color: '#065f46', background: '#ecfdf5', padding: '2px 8px', borderRadius: 20 }}>✓ Salvo</span>}
-            {modified && <><button onClick={() => setEditando(e => { const n = {...e}; delete n[c.id]; return n })} style={{ fontSize: 11, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer' }}>Cancelar</button>
-            <button onClick={() => salvarConfig(chave)} disabled={saving === chave} style={{ fontSize: 11, padding: '3px 12px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>{saving === chave ? '...' : 'Salvar'}</button></>}
+            {modified && <>
+              <button onClick={() => setEditando(e => { const n = {...e}; delete n[c.id]; return n })} style={{ fontSize: 11, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer' }}>Cancelar</button>
+              <button onClick={() => salvarConfig(chave)} disabled={saving === chave} style={{ fontSize: 11, padding: '3px 12px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>{saving === chave ? '...' : 'Salvar'}</button>
+            </>}
           </div>
         </div>
         <textarea value={val} onChange={e => onEdit(chave, e.target.value)} style={{ ...inp, minHeight: 100, resize: 'vertical', lineHeight: 1.7, marginBottom: 8 }} />
         <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 7, padding: '8px 12px' }}>
           <p style={{ fontSize: 11, color: '#0369a1', fontWeight: 500, marginBottom: 3 }}>Preview</p>
-          <p style={{ fontSize: 12, color: '#374151', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
-            {val.replace(/{nome}/g,'João').replace(/{modelo}/g,'Samsung A32').replace(/{numero}/g,'42').replace(/{valor}/g,'180,00').replace(/{dias}/g,'95').replace(/{defeito}/g,'Tela quebrada')}
-          </p>
+          <p style={{ fontSize: 12, color: '#374151', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{preview}</p>
         </div>
       </div>
     )
   }
-
-  if (loading) return <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8', fontFamily: 'var(--font-sans)' }}>Carregando...</div>
-  if (!acesso) return <div style={{ padding: 80, textAlign: 'center', fontFamily: 'var(--font-sans)' }}><div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div><p style={{ fontSize: 16, color: '#374151' }}>Acesso restrito a admin e gerente.</p></div>
-
   return (
     <div style={{ display: 'flex', height: '100vh', fontFamily: 'var(--font-sans)', overflow: 'hidden' }}>
 
@@ -253,10 +255,28 @@ export default function ConfiguracoesPage() {
         {activeMenu === 'loja' && (
           <div>
             <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>🏪 Dados da loja</h2>
-            <p style={{ fontSize: 13, color: '#64748b', marginBottom: 24 }}>Aparecem na OS impressa e nos documentos.</p>
+            <p style={{ fontSize: 13, color: '#64748b', marginBottom: 24 }}>
+              Todas as informações aparecem na OS impressa, recibos e documentos legais.
+            </p>
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '22px 26px' }}>
-              <ConfigField chave="loja_nome" /><ConfigField chave="loja_telefone" /><ConfigField chave="loja_email" />
-              <ConfigField chave="loja_endereco" /><ConfigField chave="loja_horario" /><ConfigField chave="loja_cnpj" />
+              <p style={{ fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.05em', paddingBottom: 8, borderBottom: '1px solid #f1f5f9' }}>Identificação</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 20 }}>
+                <div style={{ gridColumn: '1/-1' }}>{renderField("loja_nome")}</div>
+                {renderField("loja_nome_fantasia")}
+                {renderField("loja_cnpj")}
+                {renderField("loja_ie")}
+                {renderField("loja_im")}
+              </div>
+              <p style={{ fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.05em', paddingBottom: 8, borderBottom: '1px solid #f1f5f9' }}>Contato</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 20 }}>
+                {renderField("loja_telefone")}
+                {renderField("loja_whatsapp")}
+                {renderField("loja_email")}
+                {renderField("loja_site")}
+              </div>
+              <p style={{ fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.05em', paddingBottom: 8, borderBottom: '1px solid #f1f5f9' }}>Endereço e funcionamento</p>
+              {renderField("loja_endereco")}
+              {renderField("loja_horario")}
             </div>
           </div>
         )}
@@ -267,11 +287,11 @@ export default function ConfiguracoesPage() {
             <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>⚙️ Parâmetros operacionais</h2>
             <p style={{ fontSize: 13, color: '#64748b', marginBottom: 24 }}>Prazos e valores usados nas regras do sistema.</p>
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '22px 26px' }}>
-              <ConfigField chave="garantia_dias" type="number" />
-              <ConfigField chave="retirada_prazo_dias" type="number" />
-              <ConfigField chave="retirada_taxa_mensal" type="number" />
-              <ConfigField chave="os_pronta_alerta_dias" type="number" />
-              <ConfigField chave="cliente_inativo_dias" type="number" />
+              {renderField("garantia_dias", "number")}
+              {renderField("retirada_prazo_dias", "number")}
+              {renderField("retirada_taxa_mensal", "number")}
+              {renderField("os_pronta_alerta_dias", "number")}
+              {renderField("cliente_inativo_dias", "number")}
             </div>
           </div>
         )}
@@ -282,9 +302,9 @@ export default function ConfiguracoesPage() {
             <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>🖨 Impressão</h2>
             <p style={{ fontSize: 13, color: '#64748b', marginBottom: 24 }}>Formato de recibo por tipo de documento.</p>
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '22px 26px' }}>
-              <ConfigField chave="recibo_pdv_formato" options={[{v:'58mm',l:'58mm (bobina pequena)'},{v:'80mm',l:'80mm (bobina padrão)'},{v:'a4',l:'A4 (folha normal)'}]} />
-              <ConfigField chave="recibo_os_formato" options={[{v:'a4',l:'A4 (padrão)'},{v:'a5',l:'A5'},{v:'80mm',l:'80mm'}]} />
-              <ConfigField chave="recibo_garantia_formato" options={[{v:'58mm',l:'58mm'},{v:'80mm',l:'80mm'},{v:'a4',l:'A4'}]} />
+              {renderField("recibo_pdv_formato", "text", {[{v:'58mm',l:'58mm (bobina pequena)'},{v:'80mm',l:'80mm (bobina padrão)'},{v:'a4',l:'A4 (folha normal)'}]})}
+              {renderField("recibo_os_formato", "text", {[{v:'a4',l:'A4 (padrão)'},{v:'a5',l:'A5'},{v:'80mm',l:'80mm'}]})}
+              {renderField("recibo_garantia_formato", "text", {[{v:'58mm',l:'58mm'},{v:'80mm',l:'80mm'},{v:'a4',l:'A4'}]})}
             </div>
           </div>
         )}
@@ -324,26 +344,6 @@ export default function ConfiguracoesPage() {
         )}
 
         {/* ── DADOS DA EMPRESA */}
-        {activeMenu === 'dados_empresa' && (
-          <div>
-            <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>🏢 Dados da empresa</h2>
-            <p style={{ fontSize: 13, color: '#64748b', marginBottom: 24 }}>Razão social, CNPJ e informações do grupo empresarial.</p>
-            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '22px 26px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                {[['razao_social','Razão social *'],['nome_fantasia','Nome fantasia'],['cnpj','CNPJ'],['ie','Inscrição Estadual'],['im','Inscrição Municipal'],['telefone','Telefone'],['whatsapp','WhatsApp'],['email','E-mail'],['site','Site']].map(([k,l]) => (
-                  <div key={k}><label style={lbl}>{l}</label><input style={inp} value={(empForm as any)[k] ?? ''} onChange={e => setEmpForm(p => ({...p,[k]:e.target.value}))} /></div>
-                ))}
-              </div>
-              <div style={{ marginTop: 16, display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
-                {empSaved && <span style={{ fontSize: 12, color: '#065f46', background: '#ecfdf5', padding: '6px 12px', borderRadius: 7 }}>✓ Salvo!</span>}
-                <button onClick={salvarEmpresa} disabled={empSaving} style={{ padding: '9px 24px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
-                  {empSaving ? 'Salvando...' : 'Salvar empresa'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* ── MARCA */}
         {activeMenu === 'marca' && (
           <div>
@@ -484,7 +484,7 @@ export default function ConfiguracoesPage() {
               <span style={{ fontSize: 12, fontWeight: 500, color: '#4338ca' }}>Variáveis:</span>
               {VARIAVEIS.map(v => <code key={v} style={{ fontSize: 11, background: '#e0e7ff', color: '#3730a3', padding: '2px 8px', borderRadius: 6 }}>{v}</code>)}
             </div>
-            {['wa_os_recebida','wa_os_andamento','wa_os_pronta','wa_os_entregue','wa_aniversario','wa_cliente_inativo','wa_nunca_retornou','wa_retirada_90dias','wa_os_pronta_nao_retirada'].map(chave => <WAField key={chave} chave={chave} />)}
+            {['wa_os_recebida','wa_os_andamento','wa_os_pronta','wa_os_entregue','wa_aniversario','wa_cliente_inativo','wa_nunca_retornou','wa_retirada_90dias','wa_os_pronta_nao_retirada'].map(chave => {renderWAField(chave)})}
           </div>
         )}
 
@@ -494,11 +494,11 @@ export default function ConfiguracoesPage() {
             <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>💳 PDV</h2>
             <p style={{ fontSize: 13, color: '#64748b', marginBottom: 24 }}>Configurações do ponto de venda.</p>
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '22px 26px' }}>
-              <ConfigField chave="pdv_modo_visualizacao" options={[{v:'padrao',l:'Padrão'},{v:'touch',l:'Touch (tablet)'},{v:'visual',l:'Visual (grade grande)'}]} />
-              <ConfigField chave="pdv_permite_desconto" options={[{v:'true',l:'Sim'},{v:'false',l:'Não'}]} />
-              <ConfigField chave="pdv_desconto_maximo" type="number" />
-              <ConfigField chave="pdv_exige_cliente" options={[{v:'true',l:'Sim'},{v:'false',l:'Não'}]} />
-              <ConfigField chave="caixa_valor_abertura" type="number" />
+              {renderField("pdv_modo_visualizacao", "text", {[{v:'padrao',l:'Padrão'},{v:'touch',l:'Touch (tablet)'},{v:'visual',l:'Visual (grade grande)'}]})}
+              {renderField("pdv_permite_desconto", "text", {[{v:'true',l:'Sim'},{v:'false',l:'Não'}]})}
+              {renderField("pdv_desconto_maximo", "number")}
+              {renderField("pdv_exige_cliente", "text", {[{v:'true',l:'Sim'},{v:'false',l:'Não'}]})}
+              {renderField("caixa_valor_abertura", "number")}
             </div>
           </div>
         )}
@@ -509,11 +509,11 @@ export default function ConfiguracoesPage() {
             <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>✅ Rotinas</h2>
             <p style={{ fontSize: 13, color: '#64748b', marginBottom: 24 }}>Configurações do módulo de rotinas e integração com WhatsApp.</p>
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '22px 26px' }}>
-              <ConfigField chave="rotinas_wa_ativo" options={[{v:'true',l:'Ativo — mostra sublista WhatsApp nas rotinas'},{v:'false',l:'Inativo'}]} />
-              <ConfigField chave="rotinas_wa_aniversario" options={[{v:'true',l:'Sim'},{v:'false',l:'Não'}]} />
-              <ConfigField chave="rotinas_wa_os_pronta" options={[{v:'true',l:'Sim'},{v:'false',l:'Não'}]} />
-              <ConfigField chave="rotinas_wa_90dias" options={[{v:'true',l:'Sim'},{v:'false',l:'Não'}]} />
-              <ConfigField chave="rotinas_wa_inativos" options={[{v:'true',l:'Sim'},{v:'false',l:'Não'}]} />
+              {renderField("rotinas_wa_ativo", "text", {[{v:'true',l:'Ativo — mostra sublista WhatsApp nas rotinas'},{v:'false',l:'Inativo'}]})}
+              {renderField("rotinas_wa_aniversario", "text", {[{v:'true',l:'Sim'},{v:'false',l:'Não'}]})}
+              {renderField("rotinas_wa_os_pronta", "text", {[{v:'true',l:'Sim'},{v:'false',l:'Não'}]})}
+              {renderField("rotinas_wa_90dias", "text", {[{v:'true',l:'Sim'},{v:'false',l:'Não'}]})}
+              {renderField("rotinas_wa_inativos", "text", {[{v:'true',l:'Sim'},{v:'false',l:'Não'}]})}
             </div>
           </div>
         )}
@@ -524,7 +524,7 @@ export default function ConfiguracoesPage() {
             <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>📱 PIX</h2>
             <p style={{ fontSize: 13, color: '#64748b', marginBottom: 24 }}>Configuração da chave PIX para recebimento.</p>
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '22px 26px' }}>
-              <ConfigField chave="pix_chave" /><ConfigField chave="pix_favorecido" />
+              {renderField("pix_chave")}{renderField("pix_favorecido")}
               <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: '12px 16px', marginTop: 8, fontSize: 13, color: '#92400e' }}>
                 ⚠ A integração automática PIX (geração de QR Code) está disponível no plano Enterprise. Entre em contato para habilitar.
               </div>
@@ -566,33 +566,33 @@ export default function ConfiguracoesPage() {
                 <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid #f1f5f9' }}>⏰ OS pronta não retirada</p>
                 <p style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>Dias após ficar pronta para enviar alerta de cobrança de retirada.</p>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-                  <ConfigField chave="alerta_os_pronta_1" type="number" />
-                  <ConfigField chave="alerta_os_pronta_2" type="number" />
-                  <ConfigField chave="alerta_os_pronta_3" type="number" />
-                  <ConfigField chave="alerta_os_pronta_4" type="number" />
+                  {renderField("alerta_os_pronta_1", "number")}
+                  {renderField("alerta_os_pronta_2", "number")}
+                  {renderField("alerta_os_pronta_3", "number")}
+                  {renderField("alerta_os_pronta_4", "number")}
                 </div>
               </div>
               <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '18px 22px' }}>
                 <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid #f1f5f9' }}>📦 Aparelho retido além do prazo</p>
                 <p style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>Dias de retenção para escalar os alertas de cobrança de armazenamento.</p>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-                  <ConfigField chave="alerta_aparelho_1" type="number" />
-                  <ConfigField chave="alerta_aparelho_2" type="number" />
-                  <ConfigField chave="alerta_aparelho_3" type="number" />
+                  {renderField("alerta_aparelho_1", "number")}
+                  {renderField("alerta_aparelho_2", "number")}
+                  {renderField("alerta_aparelho_3", "number")}
                 </div>
               </div>
               <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '18px 22px' }}>
                 <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid #f1f5f9' }}>😴 Cliente inativo</p>
                 <p style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>Dias sem OS para escalar os alertas de reengajamento.</p>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-                  <ConfigField chave="alerta_cliente_inativo_1" type="number" />
-                  <ConfigField chave="alerta_cliente_inativo_2" type="number" />
-                  <ConfigField chave="alerta_cliente_inativo_3" type="number" />
+                  {renderField("alerta_cliente_inativo_1", "number")}
+                  {renderField("alerta_cliente_inativo_2", "number")}
+                  {renderField("alerta_cliente_inativo_3", "number")}
                 </div>
               </div>
               <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '18px 22px' }}>
                 <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid #f1f5f9' }}>🏭 Resposta do fornecedor</p>
-                <ConfigField chave="alerta_garantia_resposta" type="number" />
+                {renderField("alerta_garantia_resposta", "number")}
               </div>
               <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 10, padding: '12px 16px', fontSize: 13, color: '#3730a3' }}>
                 💡 Estes valores alimentam automaticamente as rotinas diárias, o CRM, o fechamento do dia e a view de pendências de WhatsApp.
@@ -639,68 +639,112 @@ export default function ConfiguracoesPage() {
   )
 }
 
-import { useRef as _useRef2 } from 'react'
-
-function AssinaturaSection({ supabase }: { supabase: any }) {
-  const canvasRef = _useRef2<HTMLCanvasElement>(null)
-  const [drawing, setDrawing] = useState(false)
+// ─── AssinaturaSection — FORA do componente principal para evitar remount ───
+function AssinaturaSection({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
   const [assinatura, setAssinatura] = useState('')
   const [assinaturaAtual, setAssinaturaAtual] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [salvo, setSalvo] = useState(false)
+  const [drawing, setDrawing] = useState(false)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }: any) => {
       if (!user) return
       supabase.from('usuario_assinaturas').select('assinatura').eq('usuario_id', user.id).maybeSingle()
-        .then(({ data }: any) => { if (data) setAssinaturaAtual(data.assinatura) })
+        .then(({ data }: any) => { if (data?.assinatura) setAssinaturaAtual(data.assinatura) })
     })
   }, [supabase])
 
-  function draw(e: React.MouseEvent<HTMLCanvasElement>, type: 'start'|'move'|'end') {
+  function onDown(e: React.MouseEvent<HTMLCanvasElement>) {
+    setDrawing(true)
     const c = canvasRef.current; if (!c) return
-    const r = c.getBoundingClientRect(); const ctx = c.getContext('2d')!
-    if (type === 'start') { setDrawing(true); ctx.beginPath(); ctx.moveTo(e.clientX-r.left, e.clientY-r.top) }
-    else if (type === 'move' && drawing) { ctx.strokeStyle='#0f172a'; ctx.lineWidth=2.5; ctx.lineCap='round'; ctx.lineTo(e.clientX-r.left, e.clientY-r.top); ctx.stroke() }
-    else if (type === 'end') { setDrawing(false); setAssinatura(c.toDataURL()) }
+    const r = c.getBoundingClientRect()
+    const ctx = c.getContext('2d')!
+    ctx.beginPath(); ctx.moveTo(e.clientX - r.left, e.clientY - r.top)
   }
-  function limpar() { const c = canvasRef.current; c?.getContext('2d')?.clearRect(0,0,c.width,c.height); setAssinatura('') }
+  function onMove(e: React.MouseEvent<HTMLCanvasElement>) {
+    if (!drawing) return
+    const c = canvasRef.current; if (!c) return
+    const r = c.getBoundingClientRect()
+    const ctx = c.getContext('2d')!
+    ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
+    ctx.lineTo(e.clientX - r.left, e.clientY - r.top); ctx.stroke()
+  }
+  function onUp() {
+    setDrawing(false)
+    setAssinatura(canvasRef.current?.toDataURL() ?? '')
+  }
+  function limpar() {
+    const c = canvasRef.current; if (!c) return
+    c.getContext('2d')?.clearRect(0, 0, c.width, c.height)
+    setAssinatura('')
+  }
 
   async function salvar() {
-    if (!assinatura) return; setSalvando(true)
+    if (!assinatura) return
+    setSalvando(true)
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    await supabase.from('usuario_assinaturas').upsert({ usuario_id: user.id, assinatura }, { onConflict: 'usuario_id' })
-    setAssinaturaAtual(assinatura); setSalvando(false); setSalvo(true); setTimeout(() => setSalvo(false), 2500)
+    if (!user) { setSalvando(false); return }
+    await supabase.from('usuario_assinaturas')
+      .upsert({ usuario_id: user.id, assinatura, updated_at: new Date().toISOString() }, { onConflict: 'usuario_id' })
+    setAssinaturaAtual(assinatura)
+    setSalvando(false); setSalvo(true); setTimeout(() => setSalvo(false), 2500)
   }
+
+  const sl: React.CSSProperties = { display: 'block', fontSize: 11, fontWeight: 500, color: '#64748b', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.04em' }
 
   return (
     <div>
       <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>✍️ Assinatura digital</h2>
-      <p style={{ fontSize: 13, color: '#64748b', marginBottom: 24 }}>Sua assinatura aparece automaticamente nos termos de compra, venda, OS e contratos gerados pelo sistema.</p>
+      <p style={{ fontSize: 13, color: '#64748b', marginBottom: 24 }}>
+        Sua assinatura aparece automaticamente nos termos de compra e venda, OS e contratos gerados pelo sistema.
+      </p>
+
       {assinaturaAtual && (
         <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '18px 22px', marginBottom: 14 }}>
-          <p style={{ fontSize: 12, fontWeight: 500, color: '#64748b', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Assinatura atual</p>
-          <img src={assinaturaAtual} style={{ maxHeight: 80, border: '1px solid #f1f5f9', borderRadius: 8, background: '#fafafa', padding: 8 }} alt="Assinatura" />
+          <label style={sl}>Assinatura atual</label>
+          <div style={{ background: '#fafafa', padding: 8, borderRadius: 8, border: '1px solid #f1f5f9', display: 'inline-block' }}>
+            <img src={assinaturaAtual} style={{ maxHeight: 70, display: 'block' }} alt="Assinatura atual" />
+          </div>
         </div>
       )}
+
       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '18px 22px', marginBottom: 14 }}>
-        <p style={{ fontSize: 12, fontWeight: 500, color: '#64748b', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{assinaturaAtual ? 'Nova assinatura' : 'Desenhe sua assinatura'}</p>
+        <label style={{ ...sl, marginBottom: 10 }}>{assinaturaAtual ? 'Atualizar assinatura' : 'Desenhe sua assinatura'}</label>
         <div style={{ position: 'relative', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fafafa', display: 'inline-block' }}>
-          <canvas ref={canvasRef} width={520} height={140} style={{ display: 'block', cursor: 'crosshair', borderRadius: 10 }}
-            onMouseDown={e => draw(e,'start')} onMouseMove={e => draw(e,'move')} onMouseUp={e => draw(e,'end')} onMouseLeave={e => draw(e,'end')} />
-          {!assinatura && <p style={{ position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',color:'#cbd5e1',fontSize:14,pointerEvents:'none',userSelect:'none' }}>Assine aqui com o mouse...</p>}
+          <canvas
+            ref={canvasRef} width={520} height={140}
+            style={{ display: 'block', cursor: 'crosshair', borderRadius: 10 }}
+            onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
+          />
+          {!assinatura && (
+            <p style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', color: '#cbd5e1', fontSize: 14, pointerEvents: 'none', userSelect: 'none', whiteSpace: 'nowrap' }}>
+              Assine aqui com o mouse...
+            </p>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center' }}>
-          {assinatura && <button onClick={limpar} style={{ fontSize: 12, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}>Limpar</button>}
-          {salvo && <span style={{ fontSize: 12, color: '#065f46', background: '#ecfdf5', padding: '4px 12px', borderRadius: 20 }}>✓ Salvo!</span>}
-          <button onClick={salvar} disabled={salvando || !assinatura} style={{ marginLeft: 'auto', padding: '9px 22px', background: salvando||!assinatura?'#e2e8f0':'#6366f1', color: salvando||!assinatura?'#94a3b8':'#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
+          {assinatura && (
+            <button onClick={limpar} style={{ fontSize: 12, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+              Limpar
+            </button>
+          )}
+          {salvo && (
+            <span style={{ fontSize: 12, color: '#065f46', background: '#ecfdf5', padding: '4px 12px', borderRadius: 20 }}>✓ Salvo!</span>
+          )}
+          <button
+            onClick={salvar}
+            disabled={salvando || !assinatura}
+            style={{ marginLeft: 'auto', padding: '9px 22px', background: salvando || !assinatura ? '#e2e8f0' : '#6366f1', color: salvando || !assinatura ? '#94a3b8' : '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: salvando || !assinatura ? 'not-allowed' : 'pointer' }}
+          >
             {salvando ? 'Salvando...' : 'Salvar assinatura'}
           </button>
         </div>
       </div>
+
       <div style={{ background: '#f0f4ff', border: '1px solid #c7d2fe', borderRadius: 10, padding: '12px 16px', fontSize: 13, color: '#3730a3' }}>
-        💡 Esta assinatura será incluída automaticamente como responsável da loja em todos os documentos gerados.
+        💡 Esta assinatura é vinculada ao seu usuário. Em todos os documentos gerados ela aparecerá como <strong>assinatura do responsável da loja</strong>.
       </div>
     </div>
   )
