@@ -271,7 +271,16 @@ function makeCanvasHandlers(ref: React.RefObject<HTMLCanvasElement | null>, sett
     onMouseLeave: () => { if (drawing) { drawing = false; setter(ref.current?.toDataURL() ?? '') } },
   }
 }
-
+// ── Limpar canvas de assinatura ───────────────────────────
+function limparCanvas(ref: React.RefObject<HTMLCanvasElement | null>, setter: (v: string) => void) {
+  const c = ref.current
+  if (!c) return
+  const ctx = c.getContext('2d')
+  if (!ctx) return
+  ctx.clearRect(0, 0, c.width, c.height)
+  setter('')
+}
+limparCanvas(vendCanvasRef, setAssinaturaVendedor)
   // ── Salvar compra ─────────────────────────────────────────
   async function salvarCompra() {
     if (!modeloSelecionado || !vNome.trim() || !vCPF.trim() || !cValor) return
