@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 type OS = {
   id: string; numero: number; status: string; marca: string | null; modelo: string | null
@@ -26,6 +26,11 @@ type ProdutoOrc = {
 }
 
 type FornecedorOrc = { id: string; nome: string }
+
+type Contrato = {
+  id: string; titulo: string; conteudo: string | null
+  requer_assinatura_cliente: boolean; requer_assinatura_gestor: boolean
+}
 
 const STATUS_FLOW = ['aberta', 'em_andamento', 'pronta', 'entregue']
 const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string; icon: string; waMensagem: string }> = {
@@ -53,15 +58,13 @@ const CHECKLIST_ITEMS = [
 type ChecklistState = Record<string, 'ok' | 'falha' | 'nao_testado'>
 
 const QUALIDADE_CONFIG: Record<string, { label: string; bg: string; color: string }> = {
-  original:       { label: 'Original',       bg: '#E1F5EE', color: '#085041' },
-  premium:        { label: 'Premium',        bg: '#E6F1FB', color: '#0C447C' },
-  compativel:     { label: 'Compatível',     bg: '#FAEEDA', color: '#633806' },
-  recondicionado: { label: 'Recon.',         bg: '#FAECE7', color: '#712B13' },
+  original:       { label: 'Original',   bg: '#E1F5EE', color: '#085041' },
+  premium:        { label: 'Premium',    bg: '#E6F1FB', color: '#0C447C' },
+  compativel:     { label: 'Compatível', bg: '#FAEEDA', color: '#633806' },
+  recondicionado: { label: 'Recon.',     bg: '#FAECE7', color: '#712B13' },
 }
 
-function formatPhone(v: string) {
-  return v.replace(/\D/g, '').slice(0, 11).replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{4,5})(\d{4})$/, '$1-$2')
-}
+function formatPhone(v: string) { return v.replace(/\D/g, '').slice(0, 11).replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{4,5})(\d{4})$/, '$1-$2') }
 function parseSenha(raw: string | null) { if (!raw) return null; try { return JSON.parse(raw) } catch { return null } }
 function gerarMensagemWA(template: string, os: OS, valor: string) {
   const nome = os.clientes?.nome?.split(' ')[0] ?? 'cliente'
@@ -87,6 +90,7 @@ export default function OSDetailPage({ params }: { params: Promise<{ id: string 
   const { id } = use(params)
   const supabase = createClient()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [os, setOs] = useState<OS | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -103,15 +107,14 @@ export default function OSDetailPage({ params }: { params: Promise<{ id: string 
   const [observacoes, setObservacoes] = useState('')
   const [checklist, setChecklist] = useState<ChecklistState>({})
 
-  // Configs da loja (para impressão)
-  const [cfgLoja, setCfgLoja] = useState<Record<string,string>>({
+  const [cfgLoja, setCfgLoja] = useState<Record<string, string>>({
     loja_nome: 'SOS Celulares', loja_telefone: '', loja_email: '',
     loja_endereco: '', loja_cnpj: '', recibo_os_formato: 'a4',
     garantia_dias: '90', retirada_prazo_dias: '90', retirada_taxa_mensal: '10',
   })
   const [assinaturaLoja, setAssinaturaLoja] = useState('')
+  const [contratos, setContratos] = useState<Contrato[]>([])
 
-  // Orçamento
   const [itensOrc, setItensOrc] = useState<ItemOrc[]>([])
   const [produtosCompat, setProdutosCompat] = useState<ProdutoOrc[]>([])
   const [fornecedoresOrc, setFornecedoresOrc] = useState<FornecedorOrc[]>([])
@@ -119,6 +122,9 @@ export default function OSDetailPage({ params }: { params: Promise<{ id: string 
   const [prodResultsOrc, setProdResultsOrc] = useState<ProdutoOrc[]>([])
   const [salvandoOrc, setSalvandoOrc] = useState(false)
   const orcTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Flag para auto-imprimir quando vem de ?imprimir=1
+  const autoImprimirRef = useRef(false)
 
   const loadOS = useCallback(async () => {
     const { data, error } = await supabase.from('ordens_servico').select('*,clientes(id,nome,telefone,cpf)').eq('id', id).single()
@@ -150,27 +156,38 @@ export default function OSDetailPage({ params }: { params: Promise<{ id: string 
   }, [supabase])
 
   useEffect(() => {
-    loadOS().then(() => {}).finally(() => setLoading(false))
-    // Carregar configs da loja
+    loadOS().finally(() => setLoading(false))
+
     supabase.from('sistema_config').select('chave,valor')
-      .in('chave', ['loja_nome','loja_telefone','loja_email','loja_endereco','loja_cnpj','recibo_os_formato','garantia_dias','retirada_prazo_dias','retirada_taxa_mensal'])
+      .in('chave', ['loja_nome', 'loja_telefone', 'loja_email', 'loja_endereco', 'loja_cnpj', 'recibo_os_formato', 'garantia_dias', 'retirada_prazo_dias', 'retirada_taxa_mensal'])
       .then(({ data }) => {
-        if (data) {
-          const m: Record<string,string> = {}
-          data.forEach((c: any) => { m[c.chave] = c.valor })
-          setCfgLoja(prev => ({ ...prev, ...m }))
-        }
+        if (data) { const m: Record<string, string> = {}; data.forEach((c: { chave: string; valor: string }) => { m[c.chave] = c.valor }); setCfgLoja(prev => ({ ...prev, ...m })) }
       })
-    // Carregar assinatura do usuário logado
+
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return
       supabase.from('usuario_assinaturas').select('assinatura').eq('usuario_id', user.id).maybeSingle()
         .then(({ data }) => { if (data?.assinatura) setAssinaturaLoja(data.assinatura) })
     })
-  }, [loadOS, supabase])
+
+    // Carregar contratos ativos com imprimir_na_os=true
+    supabase.from('contratos').select('id,titulo,conteudo,requer_assinatura_cliente,requer_assinatura_gestor')
+      .eq('ativo', true).eq('imprimir_na_os', true)
+      .then(({ data }) => { if (data) setContratos(data as Contrato[]) })
+
+    // Auto-imprimir se veio de ?imprimir=1
+    if (searchParams.get('imprimir') === '1') autoImprimirRef.current = true
+  }, [loadOS, supabase, searchParams])
 
   useEffect(() => {
-    if (os) { loadOrcamento(); loadProdutosCompat(os.modelo) }
+    if (os) {
+      loadOrcamento(); loadProdutosCompat(os.modelo)
+      // Disparar impressão automática após carregar tudo
+      if (autoImprimirRef.current) {
+        autoImprimirRef.current = false
+        setTimeout(() => imprimir(), 800)
+      }
+    }
   }, [os, loadOrcamento, loadProdutosCompat])
 
   function buscarProdOrc(q: string) {
@@ -193,9 +210,7 @@ export default function OSDetailPage({ params }: { params: Promise<{ id: string 
     setSearchOrc(''); setProdResultsOrc([])
   }
 
-  function adicionarAvulsoOrc() {
-    setItensOrc(prev => [...prev, { produto_id: null, fornecedor_id: null, descricao: '', qualidade: 'compativel', quantidade: 1, custo_unit: 0, preco_unit: 0, subtotal: 0, tipo: 'peca' }])
-  }
+  function adicionarAvulsoOrc() { setItensOrc(prev => [...prev, { produto_id: null, fornecedor_id: null, descricao: '', qualidade: 'compativel', quantidade: 1, custo_unit: 0, preco_unit: 0, subtotal: 0, tipo: 'peca' }]) }
 
   function atualizarItemOrc(i: number, field: keyof ItemOrc, value: string | number | null) {
     const novo = [...itensOrc]; const item = { ...novo[i], [field]: value }
@@ -208,16 +223,10 @@ export default function OSDetailPage({ params }: { params: Promise<{ id: string 
   async function salvarOrcamento() {
     setSalvandoOrc(true)
     await supabase.from('os_orcamento_itens').delete().eq('os_id', id)
-    if (itensOrc.length > 0) {
-      await supabase.from('os_orcamento_itens').insert(
-        itensOrc.map(i => ({ os_id: id, produto_id: i.produto_id, fornecedor_id: i.fornecedor_id, descricao: i.descricao, qualidade: i.qualidade, quantidade: i.quantidade, custo_unit: i.custo_unit, preco_unit: i.preco_unit, tipo: i.tipo }))
-      )
-    }
+    if (itensOrc.length > 0) await supabase.from('os_orcamento_itens').insert(itensOrc.map(i => ({ os_id: id, produto_id: i.produto_id, fornecedor_id: i.fornecedor_id, descricao: i.descricao, qualidade: i.qualidade, quantidade: i.quantidade, custo_unit: i.custo_unit, preco_unit: i.preco_unit, tipo: i.tipo })))
     const totalOrc = itensOrc.reduce((s, i) => s + i.subtotal, 0)
     await supabase.from('ordens_servico').update({ valor_orcamento: totalOrc }).eq('id', id)
-    setValorFinal(String(totalOrc))
-    setSalvandoOrc(false)
-    loadOrcamento()
+    setValorFinal(String(totalOrc)); setSalvandoOrc(false); loadOrcamento()
   }
 
   async function baixarEstoque() {
@@ -231,9 +240,7 @@ export default function OSDetailPage({ params }: { params: Promise<{ id: string 
   async function salvar() {
     setSaving(true)
     const obsPayload = JSON.stringify({ texto: observacoes, __checklist: checklist })
-    const statusMudou = status !== os?.status
     const fechandoOS = status === 'entregue' && os?.status !== 'entregue'
-
     await supabase.from('ordens_servico').update({
       status, defeito_tecnico: defeitoTecnico || null, solucao: solucao || null,
       valor_final: valorFinal ? parseFloat(valorFinal) : null,
@@ -241,11 +248,8 @@ export default function OSDetailPage({ params }: { params: Promise<{ id: string 
       forma_pagamento: formaPagamento || null, pago, observacoes: obsPayload,
       ...(fechandoOS ? { entregue_em: new Date().toISOString() } : {}),
     }).eq('id', id)
-
     if (fechandoOS && itensOrc.length > 0) await baixarEstoque()
-
-    if (statusMudou) await supabase.from('events').insert({ type: 'OS_ATUALIZADA', entity: 'os', entity_id: id, payload: { status, pago } })
-
+    await supabase.from('events').insert({ type: 'OS_ATUALIZADA', entity: 'os', entity_id: id, payload: { status, pago } }).catch(() => {})
     const { data } = await supabase.from('ordens_servico').select('*,clientes(id,nome,telefone,cpf)').eq('id', id).single()
     if (data) setOs(data as unknown as OS)
     setSaving(false)
@@ -253,9 +257,98 @@ export default function OSDetailPage({ params }: { params: Promise<{ id: string 
 
   function toggleChecklist(key: string, val: 'ok' | 'falha' | 'nao_testado') { setChecklist(c => ({ ...c, [key]: val })) }
 
-
+  // ─── IMPRESSÃO — sem document.write, sem noopener, usa Blob URL ───────────
   function imprimir() {
     if (!os) return
+    const html = gerarHTMLOS()
+    abrirJanelaImpressao(html)
+  }
+
+  function imprimirContrato(contrato: Contrato) {
+    if (!os) return
+    const html = gerarHTMLContrato(contrato)
+    abrirJanelaImpressao(html)
+  }
+
+  // FIX: usa onafterprint para fechar a janela automaticamente e não travar
+  function abrirJanelaImpressao(html: string) {
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const w = window.open(url, '_blank')
+    if (w) {
+      w.onafterprint = () => { w.close(); URL.revokeObjectURL(url) }
+      // fallback: revogar URL após 30s mesmo sem imprimir
+      setTimeout(() => URL.revokeObjectURL(url), 30000)
+    }
+  }
+
+  function gerarHTMLContrato(contrato: Contrato): string {
+    if (!os) return ''
+    const nomeLoja = cfgLoja.loja_nome || 'SOS Celulares'
+    const cnpjLoja = cfgLoja.loja_cnpj || ''
+    const garantiaDias = cfgLoja.garantia_dias || '90'
+    const prazoRetirada = cfgLoja.retirada_prazo_dias || '90'
+    const taxaMensal = cfgLoja.retirada_taxa_mensal || '10'
+    const vFinal = valorFinal ? parseFloat(valorFinal) : (os.valor_orcamento ?? 0)
+    const vDesc = desconto ? parseFloat(desconto) : 0
+
+    const conteudoPreenchido = (contrato.conteudo ?? '')
+      .replace(/{nome}/g, os.clientes?.nome ?? '—')
+      .replace(/{cpf}/g, os.clientes?.cpf ?? '—')
+      .replace(/{modelo}/g, os.modelo ?? '—')
+      .replace(/{imei}/g, os.imei ?? '—')
+      .replace(/{valor}/g, `R$ ${(vFinal - vDesc).toFixed(2).replace('.', ',')}`)
+      .replace(/{garantia_dias}/g, garantiaDias)
+      .replace(/{prazo_retirada}/g, prazoRetirada)
+      .replace(/{taxa_armazenagem}/g, taxaMensal)
+      .replace(/{empresa_nome}/g, nomeLoja)
+      .replace(/{data}/g, new Date().toLocaleDateString('pt-BR'))
+
+    return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="utf-8">
+<title>${contrato.titulo} — OS #${os.numero}</title>
+<style>
+  @page { size: A4; margin: 20mm 15mm; }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', Arial, sans-serif; font-size: 11pt; color: #1e293b; line-height: 1.7; }
+  .header { text-align: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #0f172a; }
+  .logo-nome { font-size: 18pt; font-weight: 700; color: #0f172a; }
+  .sub { font-size: 9pt; color: #64748b; margin-top: 4px; }
+  h1 { font-size: 14pt; font-weight: 700; text-align: center; margin: 20px 0; color: #0f172a; }
+  .os-ref { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 16px; margin-bottom: 20px; font-size: 10pt; color: #64748b; display: flex; gap: 24px; }
+  .os-ref strong { color: #0f172a; }
+  .conteudo { font-size: 10.5pt; line-height: 1.8; white-space: pre-wrap; margin-bottom: 32px; }
+  .assinaturas { display: flex; gap: 48px; margin-top: 48px; }
+  .ass-box { flex: 1; text-align: center; }
+  .ass-img { max-height: 48px; max-width: 160px; display: block; margin: 0 auto 4px; }
+  .ass-linha { border-top: 1px solid #0f172a; margin-bottom: 6px; }
+  .ass-label { font-size: 9pt; color: #374151; }
+  .footer { margin-top: 32px; text-align: center; font-size: 8pt; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 8px; }
+</style></head><body>
+<div class="header">
+  <div class="logo-nome">${nomeLoja}</div>
+  ${cnpjLoja ? `<div class="sub">CNPJ: ${cnpjLoja}</div>` : ''}
+</div>
+<h1>${contrato.titulo}</h1>
+<div class="os-ref">
+  <span><strong>OS:</strong> #${os.numero}</span>
+  <span><strong>Cliente:</strong> ${os.clientes?.nome ?? '—'}</span>
+  <span><strong>Aparelho:</strong> ${os.modelo ?? '—'}</span>
+  <span><strong>Data:</strong> ${new Date().toLocaleDateString('pt-BR')}</span>
+</div>
+<div class="conteudo">${conteudoPreenchido}</div>
+<div class="assinaturas">
+  ${contrato.requer_assinatura_cliente ? `<div class="ass-box"><div style="height:48px"></div><div class="ass-linha"></div><div class="ass-label">Assinatura do cliente<br>${os.clientes?.nome ?? ''}</div></div>` : ''}
+  ${contrato.requer_assinatura_gestor ? `<div class="ass-box">${assinaturaLoja ? `<img src="${assinaturaLoja}" class="ass-img" />` : '<div style="height:48px"></div>'}<div class="ass-linha"></div><div class="ass-label">Responsável técnico<br>${nomeLoja}</div></div>` : ''}
+</div>
+<div class="footer">${nomeLoja}${cnpjLoja ? ` · CNPJ ${cnpjLoja}` : ''} · OS #${os.numero} · ${new Date().toLocaleDateString('pt-BR')}</div>
+<script>window.onload = () => { window.print(); }<\/script>
+</body></html>`
+  }
+
+  function gerarHTMLOS(): string {
+    if (!os) return ''
     const formato = cfgLoja.recibo_os_formato || 'a4'
     const nomeLoja = cfgLoja.loja_nome || 'SOS Celulares'
     const telLoja = cfgLoja.loja_telefone || ''
@@ -279,486 +372,282 @@ export default function OSDetailPage({ params }: { params: Promise<{ id: string 
     const horaOS = new Date(os.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
     const dataLimite = new Date(new Date(os.created_at).getTime() + parseInt(prazoRetirada) * 86400000).toLocaleDateString('pt-BR')
     const itensRows = itensOrc.map(i =>
-      `<tr><td>${i.descricao}</td><td class="c">${i.quantidade}</td><td class="r">R$&nbsp;${i.preco_unit.toFixed(2).replace('.',',')}</td><td class="r">R$&nbsp;${i.subtotal.toFixed(2).replace('.',',')}</td></tr>`
+      `<tr><td>${i.descricao}</td><td class="c">${i.quantidade}</td><td class="r">R$&nbsp;${i.preco_unit.toFixed(2).replace('.', ',')}</td><td class="r">R$&nbsp;${i.subtotal.toFixed(2).replace('.', ',')}</td></tr>`
     ).join('')
 
-    let html = ''
-
-    /* ─────────────────────────────────────────
-       58mm — Bobina térmica estreita
-       Largura real do papel: 58mm → área útil ~54mm
-       Fonte pequena, espaço mínimo, tudo sequencial
-    ───────────────────────────────────────── */
     if (formato === '58mm') {
-      html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+      return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
   @page { size: 58mm auto; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: 'Courier New', monospace;
-    font-size: 9pt;
-    width: 54mm;
-    padding: 3mm 2mm;
-    color: #000;
-    background: #fff;
-  }
-  .center { text-align: center; }
-  .right { text-align: right; }
-  .bold { font-weight: bold; }
-  .nome-loja { font-size: 12pt; font-weight: bold; text-align: center; letter-spacing: 1px; margin-bottom: 1mm; }
+  body { font-family: 'Courier New', monospace; font-size: 9pt; width: 54mm; padding: 3mm 2mm; color: #000; background: #fff; }
+  .center { text-align: center; } .bold { font-weight: bold; }
+  .nome-loja { font-size: 12pt; font-weight: bold; text-align: center; margin-bottom: 1mm; }
   .sub-loja { font-size: 7.5pt; text-align: center; color: #444; margin-bottom: 1mm; }
   .dashed { border-top: 1px dashed #000; margin: 2mm 0; }
   .solid { border-top: 1px solid #000; margin: 2mm 0; }
-  .os-header { text-align: center; margin: 2mm 0; }
-  .os-numero { font-size: 16pt; font-weight: bold; letter-spacing: -1px; }
-  .os-label { font-size: 7pt; text-transform: uppercase; letter-spacing: 2px; color: #555; }
-  .section-title { font-size: 7pt; text-transform: uppercase; letter-spacing: 1.5px; font-weight: bold; color: #333; margin-bottom: 1mm; }
+  .os-numero { font-size: 16pt; font-weight: bold; text-align: center; }
+  .section-title { font-size: 7pt; text-transform: uppercase; font-weight: bold; color: #333; margin-bottom: 1mm; }
   .row { display: flex; justify-content: space-between; margin-bottom: 0.5mm; }
   .row span:first-child { color: #555; font-size: 8pt; }
   .row span:last-child { font-weight: bold; font-size: 8pt; text-align: right; max-width: 32mm; }
-  .defeito-box { font-size: 8pt; line-height: 1.5; margin-bottom: 1mm; }
   .item-row { display: flex; justify-content: space-between; padding: 1mm 0; border-bottom: 1px dotted #ccc; font-size: 8pt; }
   .total-row { display: flex; justify-content: space-between; padding: 1mm 0; font-size: 10pt; font-weight: bold; }
   .aviso { font-size: 7pt; line-height: 1.6; color: #333; }
-  .ass-label { font-size: 7pt; text-align: center; color: #555; }
   .ass-line { border-top: 1px solid #000; margin-top: 8mm; margin-bottom: 1mm; }
+  .ass-label { font-size: 7pt; text-align: center; color: #555; }
   .footer { font-size: 6.5pt; text-align: center; color: #777; margin-top: 2mm; }
 </style></head><body>
-
 <div class="nome-loja">${nomeLoja}</div>
 ${endLoja ? `<div class="sub-loja">${endLoja}</div>` : ''}
 ${telLoja ? `<div class="sub-loja">${telLoja}</div>` : ''}
 ${cnpjLoja ? `<div class="sub-loja">CNPJ: ${cnpjLoja}</div>` : ''}
-
 <div class="solid"></div>
-
-<div class="os-header">
-  <div class="os-label">Ordem de Serviço</div>
-  <div class="os-numero">#${os.numero}</div>
-  <div class="sub-loja">${dataOS} às ${horaOS}</div>
-</div>
-
+<div style="text-align:center;margin:2mm 0"><div style="font-size:7pt;text-transform:uppercase;color:#555">Ordem de Serviço</div>
+<div class="os-numero">#${os.numero}</div>
+<div class="sub-loja">${dataOS} às ${horaOS}</div></div>
 <div class="dashed"></div>
-
 <div class="section-title">▸ Cliente</div>
 <div class="row"><span>Nome</span><span>${os.clientes?.nome ?? '—'}</span></div>
 ${os.clientes?.telefone ? `<div class="row"><span>Tel.</span><span>${formatPhone(os.clientes.telefone)}</span></div>` : ''}
-${os.clientes?.cpf ? `<div class="row"><span>CPF</span><span>${os.clientes.cpf}</span></div>` : ''}
-
 <div class="dashed"></div>
-
 <div class="section-title">▸ Aparelho</div>
 <div class="row"><span>Modelo</span><span>${os.modelo ?? '—'}</span></div>
 ${os.imei ? `<div class="row"><span>IMEI</span><span>${os.imei}</span></div>` : ''}
 ${os.cor ? `<div class="row"><span>Cor</span><span>${os.cor}</span></div>` : ''}
 <div class="row"><span>Senha</span><span>${senhaTexto}</span></div>
-
 <div class="dashed"></div>
-
-<div class="section-title">▸ Defeito relatado</div>
-<div class="defeito-box">${os.defeito_relatado}</div>
-
+<div class="section-title">▸ Defeito</div>
+<div style="font-size:8pt;line-height:1.5;margin-bottom:1mm">${os.defeito_relatado}</div>
 <div class="dashed"></div>
-
 <div class="section-title">▸ Financeiro</div>
-${itensOrc.length > 0 ? itensOrc.map(i =>
-  `<div class="item-row"><span>${i.descricao} x${i.quantidade}</span><span>R$ ${i.subtotal.toFixed(2).replace('.',',')}</span></div>`
-).join('') : ''}
+${itensOrc.map(i => `<div class="item-row"><span>${i.descricao} x${i.quantidade}</span><span>R$ ${i.subtotal.toFixed(2).replace('.', ',')}</span></div>`).join('')}
 <div class="total-row"><span>TOTAL</span><span>R$ ${vTotal}</span></div>
 <div class="row"><span>Pagamento</span><span>${formaPagamento || '—'}</span></div>
 <div class="row"><span>Status</span><span>${pago ? '✓ PAGO' : 'PENDENTE'}</span></div>
-
 <div class="dashed"></div>
-
-<div class="section-title">▸ Condições</div>
-<div class="aviso">
-  Prazo p/ retirada: <b>${prazoRetirada} dias</b> (${dataLimite})<br>
-  Após prazo: R$ ${taxaMensal},00/mês armazen.<br>
-  Garantia do serviço: <b>${garantiaDias} dias</b><br>
-  Não cobre queda, umidade ou mau uso.
-</div>
-
+<div class="aviso">Prazo retirada: <b>${prazoRetirada}d</b> (${dataLimite})<br>Após prazo: R$ ${taxaMensal},00/mês<br>Garantia: <b>${garantiaDias} dias</b></div>
 <div class="dashed"></div>
-
-<div class="ass-label">Assinatura do cliente</div>
-<div class="ass-line"></div>
-<div class="ass-label">_________________________</div>
-
-<div class="footer">
-  Em conformidade com o CDC (Lei 8.078/90)<br>
-  ${nomeLoja}${cnpjLoja ? ` · CNPJ ${cnpjLoja}` : ''}
-</div>
-
+<div class="ass-line"></div><div class="ass-label">Assinatura do cliente</div>
+<div class="footer">CDC (Lei 8.078/90) · ${nomeLoja}</div>
 <script>window.onload = () => { window.print(); }<\/script>
 </body></html>`
+    }
 
-    /* ─────────────────────────────────────────
-       80mm — Bobina térmica padrão
-       Largura real: 80mm → área útil ~76mm
-       Layout mais generoso, tabela de itens
-    ───────────────────────────────────────── */
-    } else if (formato === '80mm') {
-      html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+    if (formato === '80mm') {
+      return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
   @page { size: 80mm auto; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: 'Courier New', monospace;
-    font-size: 9.5pt;
-    width: 76mm;
-    padding: 3mm 3mm;
-    color: #000;
-    background: #fff;
-  }
-  .center { text-align: center; }
-  .right { text-align: right; }
-  .bold { font-weight: bold; }
-  .nome-loja { font-size: 14pt; font-weight: bold; text-align: center; letter-spacing: 1px; margin-bottom: 1mm; }
+  body { font-family: 'Courier New', monospace; font-size: 9.5pt; width: 76mm; padding: 3mm 3mm; color: #000; background: #fff; }
+  .nome-loja { font-size: 14pt; font-weight: bold; text-align: center; margin-bottom: 1mm; }
   .sub-loja { font-size: 8pt; text-align: center; color: #444; line-height: 1.6; }
   .dashed { border-top: 1px dashed #000; margin: 2.5mm 0; }
   .solid { border-top: 2px solid #000; margin: 2mm 0; }
-  .double { border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 1.5mm 0; margin: 2mm 0; }
-  .os-badge {
-    text-align: center; padding: 2mm 0;
-    border: 1px solid #000; border-radius: 2mm;
-    margin: 2mm 0;
-  }
-  .os-numero { font-size: 20pt; font-weight: bold; letter-spacing: -1px; }
-  .os-label { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 2px; color: #555; }
-  .section { margin-bottom: 2mm; }
-  .section-title {
-    font-size: 7.5pt; font-weight: bold;
-    text-transform: uppercase; letter-spacing: 1.5px;
-    border-bottom: 1px solid #000;
-    padding-bottom: 0.5mm; margin-bottom: 1.5mm;
-  }
+  .os-badge { text-align: center; padding: 2mm 0; border: 1px solid #000; border-radius: 2mm; margin: 2mm 0; }
+  .os-numero { font-size: 20pt; font-weight: bold; }
+  .section-title { font-size: 7.5pt; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #000; padding-bottom: 0.5mm; margin-bottom: 1.5mm; }
   .row { display: flex; justify-content: space-between; margin-bottom: 0.7mm; font-size: 8.5pt; }
-  .row .label { color: #555; min-width: 18mm; }
-  .row .value { font-weight: bold; text-align: right; }
-  .defeito-box {
-    font-size: 8.5pt; line-height: 1.6;
-    background: #f5f5f5; padding: 1.5mm 2mm;
-    border-left: 2px solid #000; margin-bottom: 1mm;
-  }
+  .row .label { color: #555; } .row .value { font-weight: bold; text-align: right; }
   table { width: 100%; border-collapse: collapse; font-size: 8pt; }
-  table th { border-bottom: 1px solid #000; padding: 1mm 0.5mm; text-align: left; font-size: 7.5pt; }
+  table th { border-bottom: 1px solid #000; padding: 1mm 0.5mm; text-align: left; }
   table th:last-child, table td:last-child { text-align: right; }
   table td { padding: 1mm 0.5mm; border-bottom: 1px dotted #ccc; }
-  .total-row { display: flex; justify-content: space-between; padding: 1.5mm 0; font-size: 12pt; font-weight: bold; border-top: 2px solid #000; margin-top: 1mm; }
-  .status-pago { display: inline-block; padding: 0.5mm 3mm; border: 1.5px solid #000; font-size: 8pt; font-weight: bold; }
+  .total-row { display: flex; justify-content: space-between; padding: 1.5mm 0; font-size: 12pt; font-weight: bold; border-top: 2px solid #000; }
   .aviso-box { border: 1px solid #555; padding: 1.5mm 2mm; margin: 1mm 0; }
-  .aviso-title { font-size: 7pt; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 1mm; }
-  .aviso-text { font-size: 7.5pt; line-height: 1.6; }
-  .ass-area { margin-top: 5mm; }
   .ass-line { display: flex; gap: 5mm; margin-top: 3mm; }
-  .ass-box { flex: 1; }
-  .ass-l { border-top: 1px solid #000; margin-bottom: 1mm; }
+  .ass-box { flex: 1; } .ass-l { border-top: 1px solid #000; margin-bottom: 1mm; }
   .ass-label { font-size: 7pt; text-align: center; color: #555; }
   .footer { font-size: 6.5pt; text-align: center; color: #777; margin-top: 3mm; border-top: 1px dashed #ccc; padding-top: 1.5mm; }
 </style></head><body>
-
 <div class="nome-loja">${nomeLoja}</div>
-<div class="sub-loja">
-  ${endLoja ? endLoja + '<br>' : ''}
-  ${telLoja ? telLoja : ''}${emailLoja ? ' · ' + emailLoja : ''}
-  ${cnpjLoja ? '<br>CNPJ: ' + cnpjLoja : ''}
-</div>
-
+<div class="sub-loja">${endLoja ? endLoja + '<br>' : ''}${telLoja}${emailLoja ? ' · ' + emailLoja : ''}${cnpjLoja ? '<br>CNPJ: ' + cnpjLoja : ''}</div>
 <div class="solid"></div>
-
-<div class="os-badge">
-  <div class="os-label">Ordem de Serviço</div>
-  <div class="os-numero">#${os.numero}</div>
-  <div class="sub-loja">${dataOS} · ${horaOS}</div>
+<div class="os-badge"><div style="font-size:7.5pt;text-transform:uppercase;color:#555">Ordem de Serviço</div><div class="os-numero">#${os.numero}</div><div class="sub-loja">${dataOS} · ${horaOS}</div></div>
+<div class="section-title">Cliente</div>
+<div class="row"><span class="label">Nome</span><span class="value">${os.clientes?.nome ?? '—'}</span></div>
+${os.clientes?.telefone ? `<div class="row"><span class="label">Telefone</span><span class="value">${formatPhone(os.clientes.telefone)}</span></div>` : ''}
+<div class="dashed"></div>
+<div class="section-title">Aparelho</div>
+<div class="row"><span class="label">Modelo</span><span class="value">${os.modelo ?? '—'}</span></div>
+${os.imei ? `<div class="row"><span class="label">IMEI</span><span class="value">${os.imei}</span></div>` : ''}
+${os.cor ? `<div class="row"><span class="label">Cor</span><span class="value">${os.cor}</span></div>` : ''}
+<div class="row"><span class="label">Senha</span><span class="value">${senhaTexto}</span></div>
+<div class="dashed"></div>
+<div class="section-title">Defeito</div>
+<div style="font-size:8.5pt;line-height:1.6;background:#f5f5f5;padding:1.5mm 2mm;border-left:2px solid #000;margin-bottom:1mm">${os.defeito_relatado}</div>
+<div class="dashed"></div>
+<div class="section-title">Orçamento</div>
+${itensOrc.length > 0 ? `<table><thead><tr><th>Item</th><th>Qtd</th><th>Unit.</th><th>Total</th></tr></thead><tbody>${itensRows}</tbody></table>` : ''}
+<div class="total-row"><span>TOTAL</span><span>R$ ${vTotal}</span></div>
+<div class="row" style="margin-top:1mm"><span class="label">Pagamento</span><span class="value">${formaPagamento || '—'} — ${pago ? '✓ PAGO' : 'PENDENTE'}</span></div>
+<div class="aviso-box"><b>Retirada:</b> ${prazoRetirada}d · Até ${dataLimite}<br><b>Armazenamento:</b> R$ ${taxaMensal},00/mês<br><b>Garantia:</b> ${garantiaDias} dias</div>
+<div class="ass-line">
+  <div class="ass-box"><div style="height:20mm"></div><div class="ass-l"></div><div class="ass-label">Assinatura do cliente</div></div>
+  <div class="ass-box">${assinaturaLoja ? `<img src="${assinaturaLoja}" style="max-height:20mm;max-width:80pt;display:block;margin-bottom:1pt" />` : '<div style="height:20mm"></div>'}<div class="ass-l"></div><div class="ass-label">Técnico responsável</div></div>
 </div>
-
-<div class="section">
-  <div class="section-title">Cliente</div>
-  <div class="row"><span class="label">Nome</span><span class="value">${os.clientes?.nome ?? '—'}</span></div>
-  ${os.clientes?.telefone ? `<div class="row"><span class="label">Telefone</span><span class="value">${formatPhone(os.clientes.telefone)}</span></div>` : ''}
-  ${os.clientes?.cpf ? `<div class="row"><span class="label">CPF</span><span class="value">${os.clientes.cpf}</span></div>` : ''}
-</div>
-
-<div class="section">
-  <div class="section-title">Aparelho</div>
-  <div class="row"><span class="label">Modelo</span><span class="value">${os.modelo ?? '—'}</span></div>
-  ${os.imei ? `<div class="row"><span class="label">IMEI</span><span class="value">${os.imei}</span></div>` : ''}
-  ${os.cor ? `<div class="row"><span class="label">Cor</span><span class="value">${os.cor}</span></div>` : ''}
-  <div class="row"><span class="label">Senha</span><span class="value">${senhaTexto}</span></div>
-</div>
-
-<div class="section">
-  <div class="section-title">Defeito relatado</div>
-  <div class="defeito-box">${os.defeito_relatado}</div>
-</div>
-
-<div class="section">
-  <div class="section-title">Orçamento</div>
-  ${itensOrc.length > 0 ? `
-  <table>
-    <thead><tr><th>Item</th><th>Qtd</th><th>Unit.</th><th>Total</th></tr></thead>
-    <tbody>${itensRows}</tbody>
-  </table>` : ''}
-  <div class="total-row">
-    <span>TOTAL</span>
-    <span>R$ ${vTotal}</span>
-  </div>
-  <div class="row" style="margin-top:1mm">
-    <span class="label">Pagamento</span>
-    <span class="value">${formaPagamento || '—'} &nbsp; <span class="status-pago">${pago ? '✓ PAGO' : 'PENDENTE'}</span></span>
-  </div>
-</div>
-
-<div class="aviso-box">
-  <div class="aviso-title">⚠ Prazo e condições</div>
-  <div class="aviso-text">
-    <b>Retirada:</b> ${prazoRetirada} dias · Até ${dataLimite}<br>
-    <b>Armazenamento:</b> R$ ${taxaMensal},00/mês após prazo<br>
-    <b>Garantia:</b> ${garantiaDias} dias sobre o serviço realizado<br>
-    Não cobre queda, umidade ou mau uso.
-  </div>
-</div>
-
-<div class="ass-area">
-  <div style="font-size:7.5pt;margin-bottom:2mm">Declaro estar ciente das condições acima:</div>
-  <div class="ass-line">
-    <div class="ass-box"><div class="ass-l"></div><div class="ass-label">Assinatura do cliente</div></div>
-    <div class="ass-box">${assinaturaLoja ? `<img src="${assinaturaLoja}" style="max-height:28pt;max-width:90pt;display:block;margin-bottom:1pt" />` : ''}<div class="ass-l"></div><div class="ass-label">Técnico responsável</div></div>
-  </div>
-</div>
-
-<div class="footer">
-  Em conformidade com o CDC (Lei 8.078/90)<br>
-  ${nomeLoja}${cnpjLoja ? ' · CNPJ ' + cnpjLoja : ''}
-</div>
-
+<div class="footer">CDC (Lei 8.078/90) · ${nomeLoja}${cnpjLoja ? ' · CNPJ ' + cnpjLoja : ''}</div>
 <script>window.onload = () => { window.print(); }<\/script>
 </body></html>`
+    }
 
-    /* ─────────────────────────────────────────
-       A4 — Impressora comum, duas vias
-       Layout completo, tipografia moderna,
-       duas colunas lado a lado para cortar
-    ───────────────────────────────────────── */
-    } else {
-      const via = (titulo: string, accentColor: string) => `
+    // ── A4 REDESENHADO — ocupa toda a folha, sem espaço sobrando ──
+    const via = (titulo: string, accentColor: string) => `
 <div class="via">
-  <header class="header">
-    <div class="header-brand">
-      <div class="brand-icon">📱</div>
-      <div>
-        <div class="brand-name">${nomeLoja}</div>
-        <div class="brand-sub">Assistência Técnica</div>
-      </div>
+  <div class="via-header" style="border-left: 4px solid ${accentColor}">
+    <div class="header-left">
+      <div class="loja-nome">${nomeLoja}</div>
+      <div class="loja-sub">${[endLoja, telLoja, emailLoja, cnpjLoja ? 'CNPJ: ' + cnpjLoja : ''].filter(Boolean).join(' · ')}</div>
     </div>
-    <div class="header-contact">
-      ${endLoja ? `<span>📍 ${endLoja}</span>` : ''}
-      ${telLoja ? `<span>📞 ${telLoja}</span>` : ''}
-      ${emailLoja ? `<span>✉ ${emailLoja}</span>` : ''}
-      ${cnpjLoja ? `<span>CNPJ: ${cnpjLoja}</span>` : ''}
-    </div>
-    <div class="header-os">
-      <div class="via-label" style="color:${accentColor}">${titulo}</div>
+    <div class="header-right">
+      <div class="via-tag" style="color:${accentColor}">${titulo}</div>
       <div class="os-num" style="color:${accentColor}">#${os.numero}</div>
-      <div class="os-date">${dataOS} · ${horaOS}</div>
+      <div class="os-meta">${dataOS} · ${horaOS}</div>
     </div>
-  </header>
+  </div>
 
-  <div class="body">
-    <div class="col">
-      <section>
-        <h3 class="section-title" style="border-color:${accentColor};color:${accentColor}">Cliente</h3>
-        <div class="field"><span class="field-label">Nome</span><span class="field-value">${os.clientes?.nome ?? '—'}</span></div>
-        <div class="field"><span class="field-label">Telefone</span><span class="field-value">${os.clientes?.telefone ? formatPhone(os.clientes.telefone) : '—'}</span></div>
-        <div class="field"><span class="field-label">CPF</span><span class="field-value">${os.clientes?.cpf ?? '—'}</span></div>
-      </section>
-      <section style="margin-top:8px">
-        <h3 class="section-title" style="border-color:${accentColor};color:${accentColor}">Aparelho</h3>
-        <div class="field"><span class="field-label">Modelo</span><span class="field-value bold">${os.modelo ?? '—'}</span></div>
-        <div class="field"><span class="field-label">IMEI</span><span class="field-value mono">${os.imei ?? '—'}</span></div>
-        ${os.cor ? `<div class="field"><span class="field-label">Cor</span><span class="field-value">${os.cor}</span></div>` : ''}
-        <div class="field"><span class="field-label">Senha</span><span class="field-value">${senhaTexto}</span></div>
-      </section>
+  <div class="grid-3">
+    <div class="bloco">
+      <div class="bloco-title" style="color:${accentColor}">CLIENTE</div>
+      <div class="field"><span>Nome</span><strong>${os.clientes?.nome ?? '—'}</strong></div>
+      <div class="field"><span>Telefone</span><strong>${os.clientes?.telefone ? formatPhone(os.clientes.telefone) : '—'}</strong></div>
+      <div class="field"><span>CPF</span><strong>${os.clientes?.cpf ?? '—'}</strong></div>
     </div>
-
-    <div class="col">
-      <section>
-        <h3 class="section-title" style="border-color:${accentColor};color:${accentColor}">Defeito relatado</h3>
-        <div class="text-block">${os.defeito_relatado}</div>
-      </section>
-      <section style="margin-top:8px">
-        <h3 class="section-title" style="border-color:${accentColor};color:${accentColor}">Orçamento</h3>
-        ${itensOrc.length > 0 ? `
-        <table class="items-table">
-          <thead><tr><th>Descrição</th><th>Qtd</th><th>Unitário</th><th>Total</th></tr></thead>
-          <tbody>${itensRows}</tbody>
-        </table>` : ''}
-        <div class="total-block">
-          <span>Total</span>
-          <span class="total-value" style="color:${accentColor}">R$ ${vTotal}</span>
-        </div>
-        <div class="field" style="margin-top:4px">
-          <span class="field-label">Pagamento</span>
-          <span class="field-value">${formaPagamento || '—'}
-            <span class="status-badge ${pago ? 'pago' : 'pendente'}">${pago ? '✓ PAGO' : 'PENDENTE'}</span>
-          </span>
-        </div>
-      </section>
+    <div class="bloco">
+      <div class="bloco-title" style="color:${accentColor}">APARELHO</div>
+      <div class="field"><span>Modelo</span><strong>${os.modelo ?? '—'}</strong></div>
+      <div class="field"><span>IMEI</span><strong style="font-family:monospace;font-size:9pt">${os.imei ?? '—'}</strong></div>
+      <div class="field"><span>Cor</span><strong>${os.cor ?? '—'}</strong></div>
+      <div class="field"><span>Senha</span><strong>${senhaTexto}</strong></div>
+      ${os.acessorios?.length ? `<div class="field"><span>Acessórios</span><strong>${os.acessorios.join(', ')}</strong></div>` : ''}
     </div>
-
-    <div class="col">
-      <section class="policy-box" style="border-color:#dc2626">
-        <h3 class="section-title" style="border-color:#dc2626;color:#dc2626">Prazo de retirada</h3>
-        <p><b>${prazoRetirada} dias</b> a partir da data de entrada.</p>
-        <p>Data limite: <b>${dataLimite}</b></p>
-        <p>Após o prazo: <b>R$ ${taxaMensal},00/mês</b> de armazenamento.</p>
-      </section>
-      <section class="policy-box" style="border-color:#d97706;margin-top:6px">
-        <h3 class="section-title" style="border-color:#d97706;color:#d97706">Garantia</h3>
-        <p>Garantia de <b>${garantiaDias} dias</b> sobre o serviço realizado.</p>
-        <p>Não cobre danos por queda, umidade ou mau uso.</p>
-        <p>Cada serviço possui garantia independente.</p>
-      </section>
-      <div class="signature-area">
-        <p class="signature-note">Ao assinar, o cliente declara estar ciente e de acordo com todas as condições acima.</p>
-        <div class="sig-row">
-          <div class="sig-box">
-            <div class="sig-line"></div>
-            <div class="sig-label">Assinatura do cliente</div>
-          </div>
-          <div class="sig-box">
-            ${assinaturaLoja ? `<img src="${assinaturaLoja}" style="max-height:36pt;max-width:110pt;display:block;margin-bottom:2pt" />` : ''}
-            <div class="sig-line"></div>
-            <div class="sig-label">Técnico responsável</div>
-          </div>
-        </div>
+    <div class="bloco">
+      <div class="bloco-title" style="color:${accentColor}">FINANCEIRO</div>
+      ${itensOrc.length > 0 ? `
+      <table class="items-table">
+        <thead><tr><th>Item</th><th>Qtd</th><th>Unit.</th><th>Total</th></tr></thead>
+        <tbody>${itensRows}</tbody>
+      </table>` : ''}
+      <div class="total-block" style="border-color:${accentColor}">
+        <span>Total</span>
+        <span class="total-val" style="color:${accentColor}">R$ ${vTotal}</span>
+      </div>
+      <div class="field" style="margin-top:4pt">
+        <span>Pagamento</span>
+        <strong>${formaPagamento || '—'} <span class="badge ${pago ? 'badge-pago' : 'badge-pend'}">${pago ? '✓ PAGO' : 'PENDENTE'}</span></strong>
       </div>
     </div>
   </div>
 
-  <footer class="footer">
-    Em conformidade com o Código de Defesa do Consumidor (Lei 8.078/90) · ${nomeLoja}${cnpjLoja ? ' · CNPJ ' + cnpjLoja : ''}
-  </footer>
+  <div class="defeito-row">
+    <div class="bloco-title" style="color:${accentColor}">DEFEITO RELATADO</div>
+    <div class="defeito-text">${os.defeito_relatado}</div>
+    ${solucao ? `<div class="bloco-title" style="color:${accentColor};margin-top:6pt">SOLUÇÃO APLICADA</div><div class="defeito-text">${solucao}</div>` : ''}
+  </div>
+
+  <div class="grid-2">
+    <div class="policy-box" style="border-color:#dc2626">
+      <div class="bloco-title" style="color:#dc2626">PRAZO DE RETIRADA</div>
+      <p>Prazo: <strong>${prazoRetirada} dias</strong> · Limite: <strong>${dataLimite}</strong></p>
+      <p>Após o prazo: <strong>R$ ${taxaMensal},00/mês</strong> de armazenamento.</p>
+    </div>
+    <div class="policy-box" style="border-color:#d97706">
+      <div class="bloco-title" style="color:#d97706">GARANTIA</div>
+      <p>Garantia de <strong>${garantiaDias} dias</strong> sobre o serviço realizado.</p>
+      <p>Não cobre: queda, umidade, mau uso ou danos externos.</p>
+    </div>
+  </div>
+
+  <div class="sig-area">
+    <p class="sig-note">Declaro estar ciente e de acordo com todas as condições acima.</p>
+    <div class="sig-row">
+      <div class="sig-box">
+        <div class="sig-space"></div>
+        <div class="sig-line"></div>
+        <div class="sig-label">Assinatura do cliente<br>${os.clientes?.nome ?? ''}</div>
+      </div>
+      <div class="sig-box">
+        ${assinaturaLoja ? `<img src="${assinaturaLoja}" class="sig-img" />` : '<div class="sig-space"></div>'}
+        <div class="sig-line"></div>
+        <div class="sig-label">Técnico responsável<br>${nomeLoja}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="via-footer">Em conformidade com o CDC (Lei 8.078/90) · ${nomeLoja}${cnpjLoja ? ' · CNPJ ' + cnpjLoja : ''}</div>
 </div>`
 
-      html = `<!DOCTYPE html><html lang="pt-BR"><head>
+    return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="utf-8">
 <title>OS #${os.numero} — ${nomeLoja}</title>
 <style>
-  @page { size: A4 landscape; margin: 8mm; }
+  @page { size: A4 landscape; margin: 6mm; }
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: 'Inter', Arial, sans-serif;
-    font-size: 8.5pt;
-    color: #1e293b;
-    background: #fff;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-  .page {
-    width: 277mm;
-    display: flex;
-    gap: 5mm;
-    align-items: stretch;
-  }
-  .via {
-    flex: 1;
-    border: 1px solid #e2e8f0;
-    border-radius: 4pt;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-  }
-  .separator {
-    width: 5mm;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 2mm;
-  }
+  body { font-family: 'Inter', Arial, sans-serif; font-size: 8pt; color: #1e293b; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; height: 100%; }
+  .page { width: 100%; height: 100%; display: flex; gap: 4mm; align-items: stretch; }
+
+  /* Separador */
+  .sep { width: 4mm; display: flex; flex-direction: column; align-items: center; justify-content: center; }
   .sep-line { flex: 1; border-left: 1.5px dashed #cbd5e1; }
-  .sep-text {
-    writing-mode: vertical-rl;
-    font-size: 6pt;
-    color: #94a3b8;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    white-space: nowrap;
-    font-family: Arial;
-  }
+  .sep-text { writing-mode: vertical-rl; font-size: 5.5pt; color: #94a3b8; letter-spacing: 3px; text-transform: uppercase; white-space: nowrap; margin: 3mm 0; }
+
+  /* Via */
+  .via { flex: 1; display: flex; flex-direction: column; gap: 6pt; border: 1px solid #e2e8f0; border-radius: 4pt; overflow: hidden; }
 
   /* Header */
-  .header {
-    background: #0f172a;
-    color: #f8fafc;
-    padding: 7pt 10pt;
-    display: flex;
-    align-items: center;
-    gap: 8pt;
-  }
-  .header-brand { display: flex; align-items: center; gap: 7pt; flex: 1.2; }
-  .brand-icon { font-size: 22pt; line-height: 1; }
-  .brand-name { font-size: 13pt; font-weight: 700; letter-spacing: -0.5px; }
-  .brand-sub { font-size: 6.5pt; color: #64748b; margin-top: 1pt; }
-  .header-contact { flex: 1.5; display: flex; flex-direction: column; gap: 1.5pt; }
-  .header-contact span { font-size: 7pt; color: #94a3b8; line-height: 1.4; }
-  .header-os { text-align: right; }
-  .via-label { font-size: 6.5pt; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600; opacity: 0.85; }
-  .os-num { font-size: 22pt; font-weight: 700; letter-spacing: -1.5px; line-height: 1; }
-  .os-date { font-size: 7pt; color: #64748b; margin-top: 2pt; }
+  .via-header { background: #0f172a; padding: 8pt 10pt; display: flex; justify-content: space-between; align-items: center; }
+  .loja-nome { font-size: 13pt; font-weight: 700; color: #f8fafc; letter-spacing: -0.5px; }
+  .loja-sub { font-size: 6.5pt; color: #64748b; margin-top: 2pt; line-height: 1.5; }
+  .via-tag { font-size: 6pt; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600; }
+  .os-num { font-size: 20pt; font-weight: 700; letter-spacing: -1px; line-height: 1.1; }
+  .os-meta { font-size: 6.5pt; color: #64748b; margin-top: 2pt; }
+  .header-right { text-align: right; }
 
-  /* Body */
-  .body { display: flex; flex: 1; }
-  .col { flex: 1; padding: 8pt 9pt; border-right: 1px solid #f1f5f9; display: flex; flex-direction: column; }
-  .col:last-child { border-right: none; }
-
-  /* Sections */
-  .section-title {
-    font-size: 6.5pt; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 1px; padding-bottom: 3pt;
-    border-bottom: 1.5px solid; margin-bottom: 5pt;
-  }
+  /* Conteúdo */
+  .grid-3 { display: flex; gap: 6pt; padding: 8pt 8pt 0; }
+  .grid-2 { display: flex; gap: 6pt; padding: 0 8pt; }
+  .bloco { flex: 1; }
+  .bloco-title { font-size: 6pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4pt; padding-bottom: 2pt; border-bottom: 1px solid currentColor; opacity: 0.8; }
   .field { display: flex; justify-content: space-between; align-items: baseline; padding: 1.5pt 0; border-bottom: 1px solid #f8fafc; gap: 4pt; }
-  .field-label { font-size: 7.5pt; color: #64748b; flex-shrink: 0; }
-  .field-value { font-size: 8pt; font-weight: 500; text-align: right; }
-  .field-value.bold { font-weight: 700; }
-  .field-value.mono { font-family: 'Courier New', monospace; font-size: 7.5pt; }
-  .text-block { font-size: 8pt; color: #374151; line-height: 1.6; background: #f8fafc; padding: 5pt 6pt; border-radius: 3pt; border-left: 2pt solid #e2e8f0; }
+  .field span { font-size: 7.5pt; color: #64748b; flex-shrink: 0; }
+  .field strong { font-size: 7.5pt; font-weight: 600; text-align: right; }
 
-  /* Items table */
-  .items-table { width: 100%; border-collapse: collapse; font-size: 7.5pt; margin-bottom: 3pt; }
-  .items-table th { background: #f8fafc; padding: 2.5pt 3pt; text-align: left; font-size: 7pt; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0; }
-  .items-table th:nth-child(2), .items-table th:nth-child(3), .items-table th:nth-child(4) { text-align: right; }
+  /* Tabela itens */
+  .items-table { width: 100%; border-collapse: collapse; font-size: 7pt; margin-bottom: 3pt; }
+  .items-table th { background: #f8fafc; padding: 2pt 3pt; text-align: left; font-size: 6.5pt; color: #64748b; text-transform: uppercase; border-bottom: 1px solid #e2e8f0; }
+  .items-table th:nth-child(n+2), .items-table td:nth-child(n+2) { text-align: right; }
   .items-table td { padding: 2pt 3pt; border-bottom: 1px dotted #e2e8f0; }
-  .items-table td:nth-child(2), .items-table td:nth-child(3), .items-table td:nth-child(4) { text-align: right; }
-  .total-block { display: flex; justify-content: space-between; align-items: center; padding: 4pt 3pt; background: #f0fdf4; border-radius: 3pt; margin-top: 2pt; }
-  .total-block span:first-child { font-size: 8pt; color: #374151; font-weight: 500; }
-  .total-value { font-size: 13pt; font-weight: 700; }
-  .status-badge { display: inline-block; padding: 1pt 5pt; border-radius: 20pt; font-size: 7pt; font-weight: 700; margin-left: 4pt; }
-  .status-badge.pago { background: #dcfce7; color: #166534; }
-  .status-badge.pendente { background: #fef9c3; color: #854d0e; }
+  .total-block { display: flex; justify-content: space-between; align-items: center; padding: 4pt 3pt; background: #f8fafc; border-radius: 3pt; border-left: 3pt solid; margin-top: 2pt; }
+  .total-val { font-size: 12pt; font-weight: 700; }
+  .badge { font-size: 6.5pt; font-weight: 700; padding: 1pt 5pt; border-radius: 20pt; }
+  .badge-pago { background: #dcfce7; color: #166534; }
+  .badge-pend { background: #fef9c3; color: #854d0e; }
 
-  /* Policy */
-  .policy-box { border-left: 2pt solid; padding-left: 6pt; }
-  .policy-box p { font-size: 7.5pt; color: #374151; line-height: 1.7; margin-top: 1.5pt; }
+  /* Defeito */
+  .defeito-row { padding: 0 8pt; }
+  .defeito-text { font-size: 7.5pt; color: #374151; line-height: 1.6; background: #f8fafc; padding: 5pt 6pt; border-radius: 3pt; border-left: 2pt solid #e2e8f0; margin-top: 3pt; }
 
-  /* Signature */
-  .signature-area { margin-top: auto; padding-top: 6pt; border-top: 1px solid #e2e8f0; }
-  .signature-note { font-size: 6.5pt; color: #64748b; font-style: italic; margin-bottom: 10pt; line-height: 1.5; }
+  /* Políticas */
+  .policy-box { flex: 1; padding: 5pt 7pt; border-left: 3pt solid; }
+  .policy-box p { font-size: 7pt; color: #374151; line-height: 1.7; margin-top: 1.5pt; }
+
+  /* Assinaturas */
+  .sig-area { padding: 4pt 8pt 6pt; border-top: 1px solid #e2e8f0; margin-top: auto; }
+  .sig-note { font-size: 6.5pt; color: #64748b; font-style: italic; margin-bottom: 8pt; }
   .sig-row { display: flex; gap: 8pt; }
   .sig-box { flex: 1; }
-  .sig-line { border-top: 1px solid #1e293b; margin-bottom: 2pt; margin-top: 22pt; }
-  .sig-label { font-size: 6.5pt; color: #64748b; text-align: center; }
+  .sig-space { height: 18pt; }
+  .sig-img { max-height: 28pt; max-width: 100pt; display: block; margin-bottom: 2pt; }
+  .sig-line { border-top: 1px solid #1e293b; margin-bottom: 2pt; }
+  .sig-label { font-size: 6.5pt; color: #64748b; text-align: center; line-height: 1.5; }
 
   /* Footer */
-  .footer { background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 4pt 9pt; font-size: 6pt; color: #94a3b8; }
+  .via-footer { background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 3pt 8pt; font-size: 6pt; color: #94a3b8; }
 </style></head><body>
 <div class="page">
   ${via('Via da Assistência', '#6366f1')}
-  <div class="separator">
+  <div class="sep">
     <div class="sep-line"></div>
     <div class="sep-text">recortar aqui</div>
     <div class="sep-line"></div>
@@ -767,12 +656,6 @@ ${itensOrc.length > 0 ? itensOrc.map(i =>
 </div>
 <script>window.onload = () => { window.print(); }<\/script>
 </body></html>`
-    }
-
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const w = window.open(url, '_blank')
-    if (w) w.onload = () => URL.revokeObjectURL(url)
   }
 
   const inp: React.CSSProperties = { width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, color: '#1e293b', background: '#fff', outline: 'none', fontFamily: 'inherit' }
@@ -810,15 +693,25 @@ ${itensOrc.length > 0 ? itensOrc.map(i =>
             <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>{new Date(os.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={imprimir} style={{ padding: '9px 16px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontWeight: 500, background: '#fff', cursor: 'pointer', color: '#374151', display: 'flex', alignItems: 'center', gap: 6 }}>🖨 Imprimir OS</button>
-          <button onClick={salvar} disabled={saving} style={{ padding: '9px 20px', background: saving ? '#a5b4fc' : '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer' }}>{saving ? 'Salvando...' : 'Salvar'}</button>
+
+        {/* Botões de impressão */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button onClick={imprimir} style={{ padding: '9px 16px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontWeight: 500, background: '#fff', cursor: 'pointer', color: '#374151', display: 'flex', alignItems: 'center', gap: 6 }}>
+            🖨 Imprimir OS
+          </button>
+          {contratos.map(c => (
+            <button key={c.id} onClick={() => imprimirContrato(c)} style={{ padding: '9px 16px', border: '1px solid #c7d2fe', borderRadius: 8, fontSize: 13, fontWeight: 500, background: '#eef2ff', cursor: 'pointer', color: '#3730a3', display: 'flex', alignItems: 'center', gap: 6 }}>
+              📄 {c.titulo}
+            </button>
+          ))}
+          <button onClick={salvar} disabled={saving} style={{ padding: '9px 20px', background: saving ? '#a5b4fc' : '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer' }}>
+            {saving ? 'Salvando...' : 'Salvar'}
+          </button>
         </div>
       </div>
 
-      {/* Aviso políticas */}
       <div style={{ background: '#fefce8', border: '1px solid #fef08a', borderRadius: 8, padding: '10px 16px', marginBottom: 16, fontSize: 12, color: '#713f12', lineHeight: 1.6 }}>
-        <strong>📋 Políticas:</strong> prazo de retirada 90 dias · taxa R$ 10,00/mês após o prazo · garantia cobre apenas o serviço realizado · mal uso anula a garantia.
+        <strong>📋 Políticas:</strong> prazo de retirada {cfgLoja.retirada_prazo_dias || 90} dias · taxa R$ {cfgLoja.retirada_taxa_mensal || 10},00/mês após o prazo · garantia cobre apenas o serviço realizado.
       </div>
 
       {/* Abas */}
@@ -835,7 +728,8 @@ ${itensOrc.length > 0 ? itensOrc.map(i =>
             <div style={cardTitle}><span>📊</span> Status da OS</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {STATUS_FLOW.map((s) => {
-                const cfg = STATUS_CONFIG[s]; const current = status === s; const past = STATUS_FLOW.indexOf(status) > STATUS_FLOW.indexOf(s); const mensagem = gerarMensagemWA(cfg.waMensagem, os, valorFinal)
+                const cfg = STATUS_CONFIG[s]; const current = status === s; const past = STATUS_FLOW.indexOf(status) > STATUS_FLOW.indexOf(s)
+                const mensagem = gerarMensagemWA(cfg.waMensagem, os, valorFinal)
                 return (
                   <div key={s} style={{ flex: 1, minWidth: 140 }}>
                     <button onClick={() => setStatus(s)} style={{ width: '100%', padding: '10px 8px', borderRadius: 8, border: '1px solid', cursor: 'pointer', fontSize: 12, fontWeight: current ? 600 : 400, background: current ? cfg.bg : past ? '#f0fdf4' : '#f8fafc', color: current ? cfg.color : past ? '#065f46' : '#94a3b8', borderColor: current ? cfg.color : past ? '#86efac' : '#e2e8f0', textAlign: 'center', marginBottom: 6 }}>
@@ -862,6 +756,7 @@ ${itensOrc.length > 0 ? itensOrc.map(i =>
                 </div>
               ) : <p style={{ fontSize: 13, color: '#94a3b8' }}>Cliente não identificado</p>}
             </div>
+
             <div style={card}>
               <div style={cardTitle}><span>📱</span> Aparelho</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -877,12 +772,14 @@ ${itensOrc.length > 0 ? itensOrc.map(i =>
                 </div>
               </div>
             </div>
+
             <div style={card}>
               <div style={cardTitle}><span>🔬</span> Defeito e diagnóstico</div>
               <div style={{ marginBottom: 12 }}><label style={lbl}>Defeito relatado pelo cliente</label><div style={{ fontSize: 13, color: '#1e293b', background: '#f8fafc', padding: '9px 12px', borderRadius: 7 }}>{os.defeito_relatado}</div></div>
               <div style={{ marginBottom: 12 }}><label style={lbl}>Defeito técnico</label><textarea style={{ ...inp, minHeight: 70, resize: 'vertical' }} value={defeitoTecnico} onChange={e => setDefeitoTecnico(e.target.value)} placeholder="Diagnóstico técnico..." /></div>
               <div><label style={lbl}>Solução aplicada</label><textarea style={{ ...inp, minHeight: 70, resize: 'vertical' }} value={solucao} onChange={e => setSolucao(e.target.value)} placeholder="O que foi feito..." /></div>
             </div>
+
             <div style={card}>
               <div style={cardTitle}><span>💰</span> Financeiro</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -891,8 +788,8 @@ ${itensOrc.length > 0 ? itensOrc.map(i =>
                   <div><label style={lbl}>Valor final (R$)</label><input style={inp} type="number" value={valorFinal} onChange={e => setValorFinal(e.target.value)} placeholder="0,00" /></div>
                   <div><label style={lbl}>Desconto (R$)</label><input style={inp} type="number" value={desconto} onChange={e => setDesconto(e.target.value)} placeholder="0,00" /></div>
                 </div>
-                {valorTotal !== null && (<div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={{ fontSize: 13, color: '#065f46' }}>Total a cobrar</span><span style={{ fontSize: 18, fontWeight: 700, color: '#065f46' }}>R$ {valorTotal.toFixed(2).replace('.', ',')}</span></div>)}
-                <div><label style={lbl}>Forma de pagamento</label><div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{PAGAMENTOS.map(p => (<button key={p} onClick={() => setFormaPagamento(p)} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 20, cursor: 'pointer', border: '1px solid', background: formaPagamento === p ? '#e0e7ff' : '#f8fafc', color: formaPagamento === p ? '#3730a3' : '#64748b', borderColor: formaPagamento === p ? '#818cf8' : '#e2e8f0' }}>{p}</button>))}</div></div>
+                {valorTotal !== null && <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={{ fontSize: 13, color: '#065f46' }}>Total a cobrar</span><span style={{ fontSize: 18, fontWeight: 700, color: '#065f46' }}>R$ {valorTotal.toFixed(2).replace('.', ',')}</span></div>}
+                <div><label style={lbl}>Forma de pagamento</label><div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{PAGAMENTOS.map(p => <button key={p} onClick={() => setFormaPagamento(p)} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 20, cursor: 'pointer', border: '1px solid', background: formaPagamento === p ? '#e0e7ff' : '#f8fafc', color: formaPagamento === p ? '#3730a3' : '#64748b', borderColor: formaPagamento === p ? '#818cf8' : '#e2e8f0' }}>{p}</button>)}</div></div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div onClick={() => setPago(!pago)} style={{ width: 44, height: 24, borderRadius: 12, cursor: 'pointer', background: pago ? '#6366f1' : '#e2e8f0', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}><div style={{ position: 'absolute', top: 3, left: pago ? 23 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} /></div>
                   <span style={{ fontSize: 13, fontWeight: 500, color: pago ? '#065f46' : '#64748b' }}>{pago ? '✅ Pagamento confirmado' : 'Aguardando pagamento'}</span>
@@ -900,6 +797,7 @@ ${itensOrc.length > 0 ? itensOrc.map(i =>
               </div>
             </div>
           </div>
+
           <div style={card}><div style={cardTitle}><span>📝</span> Observações internas</div><textarea style={{ ...inp, minHeight: 80, resize: 'vertical' }} value={observacoes} onChange={e => setObservacoes(e.target.value)} placeholder="Anotações internas..." /></div>
         </>
       )}
@@ -907,44 +805,25 @@ ${itensOrc.length > 0 ? itensOrc.map(i =>
       {/* ═══ ABA ORÇAMENTO ═══ */}
       {aba === 'orcamento' && (
         <div>
-          {/* Resumo financeiro */}
           {itensOrc.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
-              <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 10, padding: '14px 16px' }}>
-                <p style={{ fontSize: 11, color: '#4338ca', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Total orçamento</p>
-                <p style={{ fontSize: 22, fontWeight: 700, color: '#3730a3' }}>R$ {totalOrc.toFixed(2).replace('.', ',')}</p>
-              </div>
-              <div style={{ background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: 10, padding: '14px 16px' }}>
-                <p style={{ fontSize: 11, color: '#065f46', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Lucro bruto estimado</p>
-                <p style={{ fontSize: 22, fontWeight: 700, color: '#065f46' }}>R$ {lucroOrc.toFixed(2).replace('.', ',')}</p>
-              </div>
-              <div style={{ background: lucroOrc / totalOrc >= 0.3 ? '#ecfdf5' : '#fef3c7', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px 16px' }}>
-                <p style={{ fontSize: 11, color: '#64748b', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Margem</p>
-                <p style={{ fontSize: 22, fontWeight: 700, color: lucroOrc / totalOrc >= 0.3 ? '#065f46' : '#92400e' }}>{totalOrc > 0 ? Math.round(lucroOrc / totalOrc * 100) : 0}%</p>
-              </div>
+              <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 10, padding: '14px 16px' }}><p style={{ fontSize: 11, color: '#4338ca', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Total orçamento</p><p style={{ fontSize: 22, fontWeight: 700, color: '#3730a3' }}>R$ {totalOrc.toFixed(2).replace('.', ',')}</p></div>
+              <div style={{ background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: 10, padding: '14px 16px' }}><p style={{ fontSize: 11, color: '#065f46', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Lucro bruto estimado</p><p style={{ fontSize: 22, fontWeight: 700, color: '#065f46' }}>R$ {lucroOrc.toFixed(2).replace('.', ',')}</p></div>
+              <div style={{ background: lucroOrc / totalOrc >= 0.3 ? '#ecfdf5' : '#fef3c7', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px 16px' }}><p style={{ fontSize: 11, color: '#64748b', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Margem</p><p style={{ fontSize: 22, fontWeight: 700, color: lucroOrc / totalOrc >= 0.3 ? '#065f46' : '#92400e' }}>{totalOrc > 0 ? Math.round(lucroOrc / totalOrc * 100) : 0}%</p></div>
             </div>
           )}
 
           <div style={card}>
             <div style={cardTitle}><span>🔍</span> Adicionar peça ou serviço</div>
-
-            {/* Peças compatíveis com o modelo */}
             {produtosCompat.length > 0 && (
               <div style={{ marginBottom: 16 }}>
-                <p style={{ fontSize: 12, fontWeight: 500, color: '#64748b', marginBottom: 8 }}>
-                  Peças compatíveis com <strong style={{ color: '#0f172a' }}>{os.modelo}</strong>
-                </p>
+                <p style={{ fontSize: 12, fontWeight: 500, color: '#64748b', marginBottom: 8 }}>Peças compatíveis com <strong style={{ color: '#0f172a' }}>{os.modelo}</strong></p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                   {produtosCompat.map(p => {
                     const qc = QUALIDADE_CONFIG[p.qualidade] ?? QUALIDADE_CONFIG.compativel
                     const jaAdicionado = itensOrc.some(i => i.produto_id === p.id)
                     return (
-                      <button key={p.id} onClick={() => adicionarProdOrc(p)} disabled={p.estoque_atual === 0} style={{
-                        padding: '8px 12px', borderRadius: 8, border: '1px solid', cursor: p.estoque_atual === 0 ? 'not-allowed' : 'pointer',
-                        background: jaAdicionado ? '#e0e7ff' : p.estoque_atual === 0 ? '#f8fafc' : '#fff',
-                        borderColor: jaAdicionado ? '#818cf8' : p.estoque_atual === 0 ? '#e2e8f0' : '#e2e8f0',
-                        opacity: p.estoque_atual === 0 ? 0.5 : 1, fontSize: 12, textAlign: 'left' as const,
-                      }}>
+                      <button key={p.id} onClick={() => adicionarProdOrc(p)} disabled={p.estoque_atual === 0} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid', cursor: p.estoque_atual === 0 ? 'not-allowed' : 'pointer', background: jaAdicionado ? '#e0e7ff' : p.estoque_atual === 0 ? '#f8fafc' : '#fff', borderColor: jaAdicionado ? '#818cf8' : '#e2e8f0', opacity: p.estoque_atual === 0 ? 0.5 : 1, fontSize: 12, textAlign: 'left' as const }}>
                         <div style={{ fontWeight: 500, color: jaAdicionado ? '#3730a3' : '#0f172a' }}>{p.nome}</div>
                         <div style={{ display: 'flex', gap: 6, marginTop: 3, alignItems: 'center' }}>
                           <span style={{ fontSize: 10, fontWeight: 500, padding: '1px 6px', borderRadius: 20, background: qc.bg, color: qc.color }}>{qc.label}</span>
@@ -957,16 +836,12 @@ ${itensOrc.length > 0 ? itensOrc.map(i =>
                 </div>
               </div>
             )}
-
-            {/* Busca livre */}
             <div style={{ position: 'relative', marginBottom: 12 }}>
               <input style={inp} value={searchOrc} onChange={e => buscarProdOrc(e.target.value)} placeholder="Buscar qualquer produto pelo nome..." autoComplete="off" />
               {prodResultsOrc.length > 0 && (
                 <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', marginTop: 4, overflow: 'hidden' }}>
                   {prodResultsOrc.map(p => (
-                    <div key={p.id} onClick={() => adicionarProdOrc(p)} style={{ padding: '10px 14px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}
-                      onMouseEnter={e => { e.currentTarget.style.background = '#f5f3ff' }}
-                      onMouseLeave={e => { e.currentTarget.style.background = '#fff' }}>
+                    <div key={p.id} onClick={() => adicionarProdOrc(p)} style={{ padding: '10px 14px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', fontSize: 13 }} onMouseEnter={e => { e.currentTarget.style.background = '#f5f3ff' }} onMouseLeave={e => { e.currentTarget.style.background = '#fff' }}>
                       <div><p style={{ fontWeight: 500, color: '#0f172a' }}>{p.nome}</p><p style={{ fontSize: 11, color: '#94a3b8' }}>Estoque: {p.estoque_atual}</p></div>
                       <p style={{ fontWeight: 600, color: '#6366f1' }}>R$ {p.preco_venda.toFixed(2).replace('.', ',')}</p>
                     </div>
@@ -977,64 +852,34 @@ ${itensOrc.length > 0 ? itensOrc.map(i =>
             <button onClick={adicionarAvulsoOrc} style={{ fontSize: 12, color: '#6366f1', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>+ Adicionar item avulso (serviço ou peça sem estoque)</button>
           </div>
 
-          {/* Lista de itens */}
           {itensOrc.length > 0 && (
             <div style={card}>
               <div style={cardTitle}><span>📋</span> Itens do orçamento</div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                    {['Descrição', 'Qualidade', 'Fornecedor', 'Qtd', 'Custo unit', 'Preço unit', 'Subtotal', ''].map(h => (
-                      <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
-                    ))}
+                    {['Descrição', 'Qualidade', 'Fornecedor', 'Qtd', 'Custo unit', 'Preço unit', 'Subtotal', ''].map(h => <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>)}
                   </tr>
                 </thead>
                 <tbody>
                   {itensOrc.map((item, i) => (
                     <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '8px 10px' }}>
-                        {item.produto_id ? <span style={{ fontSize: 13, color: '#0f172a' }}>{item.descricao}</span> : <input style={{ ...inp, fontSize: 12 }} value={item.descricao} onChange={e => atualizarItemOrc(i, 'descricao', e.target.value)} placeholder="Descrição..." />}
-                      </td>
-                      <td style={{ padding: '8px 10px' }}>
-                        <select style={{ ...inp, fontSize: 11, padding: '4px 8px' }} value={item.qualidade} onChange={e => atualizarItemOrc(i, 'qualidade', e.target.value)}>
-                          {Object.entries(QUALIDADE_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                        </select>
-                      </td>
-                      <td style={{ padding: '8px 10px' }}>
-                        <select style={{ ...inp, fontSize: 11, padding: '4px 8px' }} value={item.fornecedor_id ?? ''} onChange={e => atualizarItemOrc(i, 'fornecedor_id', e.target.value || null)}>
-                          <option value="">—</option>
-                          {fornecedoresOrc.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
-                        </select>
-                      </td>
-                      <td style={{ padding: '8px 10px' }}>
-                        <input style={{ ...inp, width: 60, padding: '4px 8px', fontSize: 12, textAlign: 'center' }} type="number" min="1" value={item.quantidade} onChange={e => atualizarItemOrc(i, 'quantidade', parseInt(e.target.value) || 1)} />
-                      </td>
-                      <td style={{ padding: '8px 10px' }}>
-                        <input style={{ ...inp, width: 80, padding: '4px 8px', fontSize: 12 }} type="number" step="0.01" value={item.custo_unit} onChange={e => atualizarItemOrc(i, 'custo_unit', parseFloat(e.target.value) || 0)} />
-                      </td>
-                      <td style={{ padding: '8px 10px' }}>
-                        <input style={{ ...inp, width: 80, padding: '4px 8px', fontSize: 12 }} type="number" step="0.01" value={item.preco_unit} onChange={e => atualizarItemOrc(i, 'preco_unit', parseFloat(e.target.value) || 0)} />
-                      </td>
+                      <td style={{ padding: '8px 10px' }}>{item.produto_id ? <span style={{ fontSize: 13, color: '#0f172a' }}>{item.descricao}</span> : <input style={{ ...inp, fontSize: 12 }} value={item.descricao} onChange={e => atualizarItemOrc(i, 'descricao', e.target.value)} placeholder="Descrição..." />}</td>
+                      <td style={{ padding: '8px 10px' }}><select style={{ ...inp, fontSize: 11, padding: '4px 8px' }} value={item.qualidade} onChange={e => atualizarItemOrc(i, 'qualidade', e.target.value)}>{Object.entries(QUALIDADE_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></td>
+                      <td style={{ padding: '8px 10px' }}><select style={{ ...inp, fontSize: 11, padding: '4px 8px' }} value={item.fornecedor_id ?? ''} onChange={e => atualizarItemOrc(i, 'fornecedor_id', e.target.value || null)}><option value="">—</option>{fornecedoresOrc.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}</select></td>
+                      <td style={{ padding: '8px 10px' }}><input style={{ ...inp, width: 60, padding: '4px 8px', fontSize: 12, textAlign: 'center' }} type="number" min="1" value={item.quantidade} onChange={e => atualizarItemOrc(i, 'quantidade', parseInt(e.target.value) || 1)} /></td>
+                      <td style={{ padding: '8px 10px' }}><input style={{ ...inp, width: 80, padding: '4px 8px', fontSize: 12 }} type="number" step="0.01" value={item.custo_unit} onChange={e => atualizarItemOrc(i, 'custo_unit', parseFloat(e.target.value) || 0)} /></td>
+                      <td style={{ padding: '8px 10px' }}><input style={{ ...inp, width: 80, padding: '4px 8px', fontSize: 12 }} type="number" step="0.01" value={item.preco_unit} onChange={e => atualizarItemOrc(i, 'preco_unit', parseFloat(e.target.value) || 0)} /></td>
                       <td style={{ padding: '8px 10px', fontWeight: 600, color: '#6366f1', whiteSpace: 'nowrap' }}>R$ {item.subtotal.toFixed(2).replace('.', ',')}</td>
-                      <td style={{ padding: '8px 10px' }}>
-                        <button onClick={() => removerItemOrc(i)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 18 }}>×</button>
-                      </td>
+                      <td style={{ padding: '8px 10px' }}><button onClick={() => removerItemOrc(i)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 18 }}>×</button></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 14, paddingTop: 14, borderTop: '1px solid #f1f5f9' }}>
-                <button onClick={salvarOrcamento} disabled={salvandoOrc} style={{ padding: '10px 24px', background: salvandoOrc ? '#a5b4fc' : '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: salvandoOrc ? 'not-allowed' : 'pointer' }}>
-                  {salvandoOrc ? 'Salvando...' : '💾 Salvar orçamento'}
-                </button>
+                <button onClick={salvarOrcamento} disabled={salvandoOrc} style={{ padding: '10px 24px', background: salvandoOrc ? '#a5b4fc' : '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: salvandoOrc ? 'not-allowed' : 'pointer' }}>{salvandoOrc ? 'Salvando...' : '💾 Salvar orçamento'}</button>
               </div>
-
-              {status !== 'entregue' && (
-                <div style={{ marginTop: 10, background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#92400e' }}>
-                  ⚠ O estoque será baixado automaticamente quando o status da OS for alterado para <strong>Entregue</strong>.
-                </div>
-              )}
+              {status !== 'entregue' && <div style={{ marginTop: 10, background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#92400e' }}>⚠ O estoque será baixado automaticamente quando o status for alterado para <strong>Entregue</strong>.</div>}
             </div>
           )}
         </div>
@@ -1062,7 +907,7 @@ ${itensOrc.length > 0 ? itensOrc.map(i =>
           <div style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             {[{ label: 'OK', val: 'ok', color: '#065f46', bg: '#ecfdf5', emoji: '✅' }, { label: 'Com falha', val: 'falha', color: '#991b1b', bg: '#fef2f2', emoji: '❌' }, { label: 'Não testado', val: 'nao_testado', color: '#64748b', bg: '#f8fafc', emoji: '—' }].map(s => {
               const count = CHECKLIST_ITEMS.filter(i => (checklist[i.key] ?? 'nao_testado') === s.val).length
-              return (<div key={s.val} style={{ background: s.bg, borderRadius: 8, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8 }}><span>{s.emoji}</span><span style={{ fontSize: 13, color: s.color, fontWeight: 500 }}>{s.label}: {count}</span></div>)
+              return <div key={s.val} style={{ background: s.bg, borderRadius: 8, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8 }}><span>{s.emoji}</span><span style={{ fontSize: 13, color: s.color, fontWeight: 500 }}>{s.label}: {count}</span></div>
             })}
           </div>
         </div>
