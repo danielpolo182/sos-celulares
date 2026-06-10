@@ -1,4 +1,5 @@
 'use client'
+export const dynamic = 'force-dynamic'
 
 import { useState, useEffect, use, useRef, useCallback, Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -258,7 +259,7 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
       ...(fechandoOS ? { entregue_em: new Date().toISOString() } : {}),
     }).eq('id', id)
     if (fechandoOS && itensOrc.length > 0) await baixarEstoque()
-    await supabase.from('events').insert({ type: 'OS_ATUALIZADA', entity: 'os', entity_id: id, payload: { status, pago } }).catch(() => {})
+    try { await supabase.from('events').insert({ type: 'OS_ATUALIZADA', entity: 'os', entity_id: id, payload: { status, pago } }) } catch { /* non-critical */ }
     const { data } = await supabase.from('ordens_servico').select('*,clientes(id,nome,telefone,cpf)').eq('id', id).single()
     if (data) setOs(data as unknown as OS)
     setSaving(false)

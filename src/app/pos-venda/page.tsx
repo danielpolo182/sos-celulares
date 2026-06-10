@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic'
 export default function Page() {
   return (
     <div style={{ padding: '32px 36px', fontFamily: 'var(--font-sans)' }}>

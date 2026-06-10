@@ -1,4 +1,5 @@
 'use client'
+export const dynamic = 'force-dynamic'
 import { ReportLayout, periodoToDates } from '../ReportLayout'
 import { useState } from 'react'
 export default function RelFiscal() {

@@ -1,4 +1,5 @@
 'use client'
+export const dynamic = 'force-dynamic'
 
 import { useState, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -306,7 +307,7 @@ export default function NovaOSPage() {
 
     if (err) { setError(`Erro: ${err.message}`); setSaving(false); return }
 
-    await supabase.from('events').insert({ type: 'OS_CRIADA', entity: 'os', payload: { clienteId, defeito, modelo: modeloSelecionado?.modelo } }).catch(() => {})
+    try { await supabase.from('events').insert({ type: 'OS_CRIADA', entity: 'os', payload: { clienteId, defeito, modelo: modeloSelecionado?.modelo } }) } catch { /* non-critical */ }
 
     setSaving(false)
 
