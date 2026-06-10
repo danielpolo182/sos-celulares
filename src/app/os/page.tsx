@@ -25,9 +25,19 @@ type Pendencia = {
   defeito_relatado: string
   valor_orcamento: number | null
   snooze_ate: string | null
+  snooze_motivo: string | null
   wa_enviado: Record<string, boolean>
   clientes: { nome: string; telefone: string | null } | null
   created_at: string
+}
+
+type SubGrupo = 'atrasada' | 'pendente' | 'no_prazo' | 'adiada'
+
+const SUBGRUPO_CONFIG: Record<SubGrupo, { label: string; cor: string; corFundo: string; corTexto: string; icone: string }> = {
+  atrasada: { label: 'Atrasadas',  cor: '#dc2626', corFundo: '#fef2f2', corTexto: '#b91c1c', icone: '🔴' },
+  pendente: { label: 'Pendentes',  cor: '#d97706', corFundo: '#fffbeb', corTexto: '#b45309', icone: '🟡' },
+  no_prazo: { label: 'No Prazo',   cor: '#16a34a', corFundo: '#f0fdf4', corTexto: '#15803d', icone: '🟢' },
+  adiada:   { label: 'Adiadas',    cor: '#6366f1', corFundo: '#eef2ff', corTexto: '#4338ca', icone: '⏸️' },
 }
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string; icon: string }> = {
@@ -60,6 +70,206 @@ function abrirWA(telefone: string | null, msg: string) {
   window.open(`https://wa.me/55${num}?text=${encodeURIComponent(msg)}`, '_blank')
 }
 
+function diasAberto(created_at: string) {
+  const diff = Date.now() - new Date(created_at).getTime()
+  return Math.floor(diff / (1000 * 60 * 60 * 24))
+}
+
+function horasAberto(created_at: string) {
+  return (Date.now() - new Date(created_at).getTime()) / 3600000
+}
+
+function classificarOS(os: Pendencia, prazoHoras: number, prazoAlertaDias: number): SubGrupo {
+  const hoje = new Date().toISOString().split('T')[0]
+  // Adiada: snooze ainda ativo
+  if (os.snooze_ate && os.snooze_ate >= hoje) return 'adiada'
+  // Pronta aguardando retirada
+  if (os.status === 'pronta') {
+    return diasAberto(os.created_at) > prazoAlertaDias ? 'atrasada' : 'pendente'
+  }
+  // Aberta / em andamento: atrasada se passou do prazo de produção
+  return horasAberto(os.created_at) > prazoHoras ? 'atrasada' : 'no_prazo'
+}
+
+// ─── Seção de subgrupo colapsável ─────────────────────────────────────────────
+function SubGrupoSection({
+  subgrupo, lista, onAdiar, onWA, onAbrir, colapsavel
+}: {
+  subgrupo: SubGrupo
+  lista: Pendencia[]
+  onAdiar: (os: Pendencia) => void
+  onWA: (os: Pendencia) => void
+  onAbrir: (id: string) => void
+  colapsavel?: boolean
+}) {
+  const [aberto, setAberto] = useState(!colapsavel)
+  const cfg = SUBGRUPO_CONFIG[subgrupo]
+  if (lista.length === 0) return null
+
+  return (
+    <div style={{ marginBottom: 28 }}>
+      {/* Header */}
+      <div
+        onClick={() => colapsavel && setAberto(v => !v)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          marginBottom: aberto ? 14 : 0,
+          cursor: colapsavel ? 'pointer' : 'default',
+          userSelect: 'none',
+        }}
+      >
+        <div style={{
+          width: 28, height: 28, borderRadius: 8,
+          background: cfg.corFundo, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 14
+        }}>
+          {cfg.icone}
+        </div>
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{cfg.label}</span>
+        <span style={{
+          fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20,
+          background: cfg.corFundo, color: cfg.corTexto,
+        }}>{lista.length}</span>
+        {colapsavel && (
+          <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 'auto' }}>
+            {aberto ? '▲' : '▼'}
+          </span>
+        )}
+      </div>
+
+      {aberto && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
+          {lista.map(os => {
+            const st = STATUS_CONFIG[os.status] ?? STATUS_CONFIG.aberta
+            const dias = diasAberto(os.created_at)
+            const waAtual = os.wa_enviado ?? {}
+            const waStatusEnviado = waAtual[os.status] === true
+
+            return (
+              <div key={os.id} style={{
+                background: '#fff',
+                border: '1px solid #e2e8f0',
+                borderRadius: 16,
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+              }}>
+                {/* Barra colorida de status no topo */}
+                <div style={{ height: 4, background: cfg.cor }} />
+
+                {/* Topo estilo smartphone */}
+                <div style={{
+                  background: '#0f172a',
+                  padding: '14px 14px 10px',
+                }}>
+                  <div style={{ width: 40, height: 5, background: '#1e293b', borderRadius: 3, margin: '0 auto 10px' }} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <div style={{ fontSize: 11, color: '#475569', fontWeight: 500 }}>OS #{os.numero}</div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: '#f8fafc', marginTop: 2, lineHeight: 1.2 }}>
+                        {os.modelo ?? 'Aparelho'}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 20, background: st.bg, color: st.color, flexShrink: 0 }}>
+                      {st.icon} {st.label}
+                    </span>
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 11, color: '#64748b', lineHeight: 1.4 }}>
+                    {os.defeito_relatado.slice(0, 60)}{os.defeito_relatado.length > 60 ? '…' : ''}
+                  </div>
+                  {dias > 0 && (
+                    <div style={{ marginTop: 6, fontSize: 10, color: subgrupo === 'atrasada' ? '#ef4444' : subgrupo === 'pendente' ? '#f59e0b' : '#94a3b8', fontWeight: 500 }}>
+                      ⏱ {dias} dia{dias > 1 ? 's' : ''} em aberto
+                    </div>
+                  )}
+                </div>
+
+                {/* Corpo */}
+                <div style={{ padding: '12px 14px', flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+
+                  <div style={{ fontSize: 12, color: '#374151', fontWeight: 500 }}>
+                    👤 {os.clientes?.nome ?? 'Cliente não identificado'}
+                  </div>
+
+                  {os.valor_orcamento && (
+                    <div style={{ fontSize: 12, color: '#6366f1', fontWeight: 600 }}>
+                      💰 R$ {os.valor_orcamento.toFixed(2).replace('.', ',')}
+                    </div>
+                  )}
+
+                  {/* Justificativa de adiamento */}
+                  {subgrupo === 'adiada' && os.snooze_motivo && (
+                    <div style={{
+                      fontSize: 11, color: '#4338ca', background: '#eef2ff',
+                      borderRadius: 7, padding: '6px 9px',
+                      borderLeft: '3px solid #6366f1',
+                    }}>
+                      <span style={{ fontWeight: 600 }}>Motivo:</span> {os.snooze_motivo}
+                    </div>
+                  )}
+
+                  {/* Adiada até */}
+                  {subgrupo === 'adiada' && os.snooze_ate && (
+                    <div style={{ fontSize: 11, color: '#92400e', background: '#fef3c7', borderRadius: 6, padding: '4px 8px' }}>
+                      ⏸️ Adiada até {new Date(os.snooze_ate + 'T12:00:00').toLocaleDateString('pt-BR')}
+                    </div>
+                  )}
+
+                  {/* WhatsApp */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <button
+                      onClick={() => onWA(os)}
+                      style={{
+                        flex: 1, padding: '6px 8px', borderRadius: 7, border: '1px solid',
+                        cursor: 'pointer', fontSize: 11, fontWeight: 500,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                        background: waStatusEnviado ? '#f0fdf4' : '#fff',
+                        color: waStatusEnviado ? '#065f46' : '#374151',
+                        borderColor: waStatusEnviado ? '#86efac' : '#e2e8f0',
+                      }}
+                    >
+                      💬 WhatsApp
+                    </button>
+                    {waStatusEnviado && (
+                      <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#ecfdf5', border: '1px solid #86efac', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0 }}>
+                        ✓
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Botão adiar */}
+                  <button
+                    onClick={() => onAdiar(os)}
+                    style={{
+                      width: '100%', padding: '6px 8px', borderRadius: 7,
+                      border: subgrupo === 'adiada' ? '1px solid #c7d2fe' : '1px dashed #e2e8f0',
+                      cursor: 'pointer', fontSize: 11,
+                      color: subgrupo === 'adiada' ? '#4338ca' : '#94a3b8',
+                      background: subgrupo === 'adiada' ? '#eef2ff' : '#fafafa',
+                    }}
+                  >
+                    {subgrupo === 'adiada' ? '✏️ Alterar adiamento' : '😴 Adiar até...'}
+                  </button>
+
+                  {/* Abrir OS */}
+                  <button
+                    onClick={() => onAbrir(os.id)}
+                    style={{ width: '100%', padding: '7px', borderRadius: 7, border: '1px solid #e0e7ff', cursor: 'pointer', fontSize: 11, fontWeight: 500, color: '#4338ca', background: '#eef2ff' }}
+                  >
+                    Abrir OS →
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Componente principal ─────────────────────────────────────────────────────
 export default function OSPage() {
   const supabase = createClient()
   const router = useRouter()
@@ -69,8 +279,29 @@ export default function OSPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filtroStatus, setFiltroStatus] = useState('todos')
-  const [snoozeModal, setSnoozeModal] = useState<{ id: string; data: string } | null>(null)
+  const [prazoHoras, setPrazoHoras] = useState(4)
+  const [prazoAlertaDias, setPrazoAlertaDias] = useState(3)
+
+  // Modal snooze agora tem motivo
+  const [snoozeModal, setSnoozeModal] = useState<{ os: Pendencia; data: string; motivo: string } | null>(null)
   const [waModal, setWaModal] = useState<{ os: Pendencia; status: string } | null>(null)
+
+  // ─── Carregar configs ─────────────────────────────────────────────────────
+  useEffect(() => {
+    async function carregarConfigs() {
+      const { data } = await supabase
+        .from('sistema_config')
+        .select('chave, valor')
+        .in('chave', ['os_prazo_producao_horas', 'alerta_os_pronta_1'])
+      if (data) {
+        data.forEach(c => {
+          if (c.chave === 'os_prazo_producao_horas') setPrazoHoras(Number(c.valor) || 4)
+          if (c.chave === 'alerta_os_pronta_1') setPrazoAlertaDias(Number(c.valor) || 3)
+        })
+      }
+    }
+    carregarConfigs()
+  }, [supabase])
 
   const fetchOS = useCallback(async () => {
     setLoading(true)
@@ -91,11 +322,10 @@ export default function OSPage() {
     const hoje = new Date().toISOString().split('T')[0]
     const { data } = await supabase
       .from('ordens_servico')
-      .select('id,numero,status,modelo,defeito_relatado,valor_orcamento,snooze_ate,wa_enviado,created_at,clientes(nome,telefone)')
+      .select('id,numero,status,modelo,defeito_relatado,valor_orcamento,snooze_ate,snooze_motivo,wa_enviado,created_at,clientes(nome,telefone)')
       .is('deleted_at', null)
       .neq('status', 'entregue')
       .neq('status', 'cancelada')
-      .or(`snooze_ate.is.null,snooze_ate.lte.${hoje}`)
       .order('created_at', { ascending: false })
     setPendencias((data as unknown as Pendencia[]) ?? [])
   }, [supabase])
@@ -105,9 +335,19 @@ export default function OSPage() {
     fetchPendencias()
   }, [fetchOS, fetchPendencias])
 
-  async function salvarSnooze(id: string, data: string) {
-    await supabase.from('ordens_servico').update({ snooze_ate: data || null }).eq('id', id)
+  // ─── Salvar snooze com motivo ─────────────────────────────────────────────
+  async function salvarSnooze() {
+    if (!snoozeModal) return
+    await supabase.from('ordens_servico').update({
+      snooze_ate: snoozeModal.data || null,
+      snooze_motivo: snoozeModal.data ? snoozeModal.motivo.trim() : null,
+    }).eq('id', snoozeModal.os.id)
     setSnoozeModal(null)
+    fetchPendencias()
+  }
+
+  async function removerSnooze(os: Pendencia) {
+    await supabase.from('ordens_servico').update({ snooze_ate: null, snooze_motivo: null }).eq('id', os.id)
     fetchPendencias()
   }
 
@@ -119,16 +359,33 @@ export default function OSPage() {
     setWaModal(null)
   }
 
+  function abrirModalAdiar(os: Pendencia) {
+    const amanha = new Date(Date.now() + 86400000).toISOString().split('T')[0]
+    setSnoozeModal({
+      os,
+      data: os.snooze_ate && os.snooze_ate > amanha ? os.snooze_ate : amanha,
+      motivo: os.snooze_motivo || '',
+    })
+  }
+
+  // ─── Agrupar pendências ───────────────────────────────────────────────────
+  const hoje = new Date().toISOString().split('T')[0]
+  const grupos: Record<SubGrupo, Pendencia[]> = { atrasada: [], pendente: [], no_prazo: [], adiada: [] }
+  pendencias.forEach(os => {
+    grupos[classificarOS(os, prazoHoras, prazoAlertaDias)].push(os)
+  })
+
+  const qtdAtrasadas = grupos.atrasada.length
+  const totalPendencias = pendencias.length
+
   const inp: React.CSSProperties = {
     padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 7,
     fontSize: 13, color: '#1e293b', background: '#f8fafc', outline: 'none', fontFamily: 'inherit',
   }
 
-  // ── Dias em aberto
-  function diasAberto(created_at: string) {
-    const diff = Date.now() - new Date(created_at).getTime()
-    return Math.floor(diff / (1000 * 60 * 60 * 24))
-  }
+  const snoozeValido = !!snoozeModal?.data &&
+    snoozeModal.data > hoje &&
+    snoozeModal.motivo.trim().length > 3
 
   return (
     <div style={{ padding: '28px 36px', fontFamily: 'var(--font-sans)' }}>
@@ -137,7 +394,14 @@ export default function OSPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 600, color: '#0f172a', letterSpacing: '-0.02em' }}>Ordens de Serviço</h1>
-          <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>{items.length} registros · {pendencias.length} pendências ativas</p>
+          <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>
+            {items.length} registros · {totalPendencias} pendências ativas
+            {qtdAtrasadas > 0 && (
+              <span style={{ color: '#dc2626', fontWeight: 600, marginLeft: 8 }}>
+                · {qtdAtrasadas} atrasada{qtdAtrasadas !== 1 ? 's' : ''}
+              </span>
+            )}
+          </p>
         </div>
         <Link href="/os/nova" style={{ padding: '9px 18px', background: '#6366f1', color: '#fff', borderRadius: 8, textDecoration: 'none', fontSize: 13, fontWeight: 500 }}>
           + Nova OS
@@ -146,11 +410,14 @@ export default function OSPage() {
 
       {/* Abas */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid #e2e8f0' }}>
-        {([['lista', '📋 Visão geral'], ['pendencias', `⏳ Pendências (${pendencias.length})`]] as const).map(([key, label]) => (
+        {([
+          ['lista', `📋 Visão geral`],
+          ['pendencias', `⏳ Pendências (${totalPendencias})${qtdAtrasadas > 0 ? ` 🔴 ${qtdAtrasadas}` : ''}`],
+        ] as const).map(([key, label]) => (
           <button key={key} onClick={() => setAba(key)} style={{
             padding: '10px 18px', fontSize: 13, fontWeight: aba === key ? 600 : 400,
             border: 'none', background: 'none', cursor: 'pointer',
-            color: aba === key ? '#6366f1' : '#64748b',
+            color: aba === key ? '#6366f1' : key === 'pendencias' && qtdAtrasadas > 0 ? '#dc2626' : '#64748b',
             borderBottom: aba === key ? '2px solid #6366f1' : '2px solid transparent',
             marginBottom: -1,
           }}>{label}</button>
@@ -221,156 +488,115 @@ export default function OSPage() {
         </>
       )}
 
-      {/* ═══ ABA PENDÊNCIAS ═══ */}
+      {/* ═══ ABA PENDÊNCIAS com subdivisões ═══ */}
       {aba === 'pendencias' && (
         <>
-          {pendencias.length === 0 ? (
+          {totalPendencias === 0 ? (
             <div style={{ textAlign: 'center', padding: 80 }}>
               <div style={{ fontSize: 48, marginBottom: 16 }}>🎉</div>
               <p style={{ fontSize: 16, fontWeight: 600, color: '#0f172a' }}>Nenhuma pendência!</p>
               <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 6 }}>Todas as OS estão entregues ou em snooze.</p>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
-              {pendencias.map(os => {
-                const st = STATUS_CONFIG[os.status] ?? STATUS_CONFIG.aberta
-                const dias = diasAberto(os.created_at)
-                const waAtual = os.wa_enviado ?? {}
-                const waStatusEnviado = waAtual[os.status] === true
+            <div>
+              {/* Atrasadas primeiro */}
+              <SubGrupoSection subgrupo="atrasada" lista={grupos.atrasada}
+                onAdiar={abrirModalAdiar} onWA={os => setWaModal({ os, status: os.status })}
+                onAbrir={id => router.push(`/os/${id}`)} />
 
-                return (
-                  <div key={os.id} style={{
-                    background: '#fff',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: 16,
-                    overflow: 'hidden',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-                  }}>
-                    {/* Topo estilo smartphone */}
-                    <div style={{
-                      background: '#0f172a',
-                      padding: '14px 14px 10px',
-                      position: 'relative',
-                    }}>
-                      {/* Notch simulado */}
-                      <div style={{ width: 40, height: 5, background: '#1e293b', borderRadius: 3, margin: '0 auto 10px' }} />
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <div>
-                          <div style={{ fontSize: 11, color: '#475569', fontWeight: 500 }}>OS #{os.numero}</div>
-                          <div style={{ fontSize: 15, fontWeight: 700, color: '#f8fafc', marginTop: 2, lineHeight: 1.2 }}>
-                            {os.modelo ?? 'Aparelho'}
-                          </div>
-                        </div>
-                        <span style={{ fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 20, background: st.bg, color: st.color, flexShrink: 0 }}>
-                          {st.icon} {st.label}
-                        </span>
-                      </div>
-                      <div style={{ marginTop: 8, fontSize: 11, color: '#64748b', lineHeight: 1.4 }}>
-                        {os.defeito_relatado.slice(0, 60)}{os.defeito_relatado.length > 60 ? '…' : ''}
-                      </div>
-                      {dias > 0 && (
-                        <div style={{ marginTop: 6, fontSize: 10, color: dias > 7 ? '#ef4444' : '#f59e0b', fontWeight: 500 }}>
-                          ⏱ {dias} dia{dias > 1 ? 's' : ''} em aberto
-                        </div>
-                      )}
-                    </div>
+              {/* Pendentes (prontas aguardando retirada) */}
+              <SubGrupoSection subgrupo="pendente" lista={grupos.pendente}
+                onAdiar={abrirModalAdiar} onWA={os => setWaModal({ os, status: os.status })}
+                onAbrir={id => router.push(`/os/${id}`)} />
 
-                    {/* Corpo do card */}
-                    <div style={{ padding: '12px 14px', flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {/* No prazo */}
+              <SubGrupoSection subgrupo="no_prazo" lista={grupos.no_prazo}
+                onAdiar={abrirModalAdiar} onWA={os => setWaModal({ os, status: os.status })}
+                onAbrir={id => router.push(`/os/${id}`)} />
 
-                      {/* Cliente */}
-                      <div style={{ fontSize: 12, color: '#374151', fontWeight: 500 }}>
-                        👤 {os.clientes?.nome ?? 'Cliente não identificado'}
-                      </div>
-
-                      {/* Valor */}
-                      {os.valor_orcamento && (
-                        <div style={{ fontSize: 12, color: '#6366f1', fontWeight: 600 }}>
-                          💰 R$ {os.valor_orcamento.toFixed(2).replace('.', ',')}
-                        </div>
-                      )}
-
-                      {/* WhatsApp com confirmação */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <button
-                          onClick={() => setWaModal({ os, status: os.status })}
-                          style={{
-                            flex: 1, padding: '6px 8px', borderRadius: 7, border: '1px solid',
-                            cursor: 'pointer', fontSize: 11, fontWeight: 500,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-                            background: waStatusEnviado ? '#f0fdf4' : '#fff',
-                            color: waStatusEnviado ? '#065f46' : '#374151',
-                            borderColor: waStatusEnviado ? '#86efac' : '#e2e8f0',
-                          }}
-                        >
-                          💬 WhatsApp
-                        </button>
-                        {waStatusEnviado && (
-                          <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#ecfdf5', border: '1px solid #86efac', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0 }} title="Mensagem enviada">
-                            ✓
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Snooze */}
-                      <div>
-                        {os.snooze_ate ? (
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fef3c7', borderRadius: 6, padding: '5px 8px' }}>
-                            <span style={{ fontSize: 11, color: '#92400e' }}>
-                              😴 Snooze até {new Date(os.snooze_ate + 'T12:00:00').toLocaleDateString('pt-BR')}
-                            </span>
-                            <button onClick={() => salvarSnooze(os.id, '')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#92400e' }}>×</button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setSnoozeModal({ id: os.id, data: '' })}
-                            style={{ width: '100%', padding: '6px 8px', borderRadius: 7, border: '1px dashed #e2e8f0', cursor: 'pointer', fontSize: 11, color: '#94a3b8', background: '#fafafa' }}
-                          >
-                            😴 Adiar até...
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Abrir OS */}
-                      <button
-                        onClick={() => router.push(`/os/${os.id}`)}
-                        style={{ width: '100%', padding: '7px', borderRadius: 7, border: '1px solid #e0e7ff', cursor: 'pointer', fontSize: 11, fontWeight: 500, color: '#4338ca', background: '#eef2ff' }}
-                      >
-                        Abrir OS →
-                      </button>
-                    </div>
-                  </div>
-                )
-              })}
+              {/* Adiadas — colapsável */}
+              <SubGrupoSection subgrupo="adiada" lista={grupos.adiada}
+                onAdiar={abrirModalAdiar} onWA={os => setWaModal({ os, status: os.status })}
+                onAbrir={id => router.push(`/os/${id}`)} colapsavel />
             </div>
           )}
         </>
       )}
 
-      {/* ═══ MODAL SNOOZE ═══ */}
+      {/* ═══ MODAL SNOOZE com justificativa ═══ */}
       {snoozeModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ background: '#fff', borderRadius: 14, padding: 28, width: 320 }}>
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>😴 Adiar pendência</h3>
-            <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>A OS não aparecerá nas pendências até a data escolhida.</p>
-            <input
-              type="date"
-              value={snoozeModal.data}
-              min={new Date().toISOString().split('T')[0]}
-              onChange={e => setSnoozeModal({ ...snoozeModal, data: e.target.value })}
-              style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, outline: 'none', marginBottom: 14 }}
-            />
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setSnoozeModal(null)} style={{ padding: '8px 16px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer', color: '#374151' }}>Cancelar</button>
-              <button onClick={() => salvarSnooze(snoozeModal.id, snoozeModal.data)} style={{ padding: '8px 16px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>Confirmar</button>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }}>
+          <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.18)' }}>
+            {/* Header */}
+            <div style={{ padding: '18px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', margin: 0 }}>😴 Adiar OS #{snoozeModal.os.numero}</h3>
+                <p style={{ fontSize: 12, color: '#64748b', margin: '2px 0 0' }}>{snoozeModal.os.clientes?.nome} · {snoozeModal.os.modelo ?? 'Aparelho'}</p>
+              </div>
+              <button onClick={() => setSnoozeModal(null)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#94a3b8' }}>×</button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Retornar na lista em *
+                </label>
+                <input
+                  type="date"
+                  value={snoozeModal.data}
+                  min={new Date(Date.now() + 86400000).toISOString().split('T')[0]}
+                  onChange={e => setSnoozeModal({ ...snoozeModal, data: e.target.value })}
+                  style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                />
+                <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>A OS ficará oculta das demais seções até esta data.</p>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Justificativa *
+                </label>
+                <textarea
+                  value={snoozeModal.motivo}
+                  onChange={e => setSnoozeModal({ ...snoozeModal, motivo: e.target.value })}
+                  placeholder="Ex: Aguardando peça do fornecedor, cliente viaja, orçamento pendente de aprovação..."
+                  rows={3}
+                  style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                />
+                <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>O motivo ficará visível no card enquanto a OS estiver adiada.</p>
+              </div>
+
+              {/* Opção de remover snooze se já estava adiada */}
+              {snoozeModal.os.snooze_ate && (
+                <button onClick={() => { removerSnooze(snoozeModal.os); setSnoozeModal(null) }}
+                  style={{ fontSize: 12, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0 }}>
+                  ✕ Remover adiamento (voltar para lista agora)
+                </button>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: '14px 22px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button onClick={() => setSnoozeModal(null)} style={{ padding: '8px 18px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer', color: '#374151' }}>
+                Cancelar
+              </button>
+              <button
+                onClick={salvarSnooze}
+                disabled={!snoozeValido}
+                style={{
+                  padding: '8px 18px', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: snoozeValido ? 'pointer' : 'not-allowed',
+                  background: snoozeValido ? '#6366f1' : '#e2e8f0',
+                  color: snoozeValido ? '#fff' : '#94a3b8',
+                }}
+              >
+                Confirmar adiamento
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ═══ MODAL WHATSAPP ═══ */}
+      {/* ═══ MODAL WHATSAPP (original preservado) ═══ */}
       {waModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }}>
           <div style={{ background: '#fff', borderRadius: 14, padding: 28, width: '100%', maxWidth: 440 }}>
