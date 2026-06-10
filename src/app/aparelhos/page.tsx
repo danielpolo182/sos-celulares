@@ -252,35 +252,33 @@ export default function AparelhoPage() {
     reader.readAsDataURL(file)
   }
 
-// ── Canvas de assinatura ──────────────────────────────────
-function makeCanvasHandlers(ref: React.RefObject<HTMLCanvasElement | null>, setter: (v: string) => void) {
-  let drawing = false
-  return {
-    onMouseDown: (e: React.MouseEvent<HTMLCanvasElement>) => {
-      drawing = true; const c = ref.current; if (!c) return
-      const r = c.getBoundingClientRect(); const ctx = c.getContext('2d')!
-      ctx.beginPath(); ctx.moveTo(e.clientX - r.left, e.clientY - r.top)
-    },
-    onMouseMove: (e: React.MouseEvent<HTMLCanvasElement>) => {
-      if (!drawing) return; const c = ref.current; if (!c) return
-      const r = c.getBoundingClientRect(); const ctx = c.getContext('2d')!
-      ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 2; ctx.lineCap = 'round'
-      ctx.lineTo(e.clientX - r.left, e.clientY - r.top); ctx.stroke()
-    },
-    onMouseUp: () => { drawing = false; setter(ref.current?.toDataURL() ?? '') },
-    onMouseLeave: () => { if (drawing) { drawing = false; setter(ref.current?.toDataURL() ?? '') } },
+  // ── Canvas de assinatura ──────────────────────────────────
+  function makeCanvasHandlers(ref: React.RefObject<HTMLCanvasElement>, setter: (v: string) => void) {
+    let drawing = false
+    return {
+      onMouseDown: (e: React.MouseEvent<HTMLCanvasElement>) => {
+        drawing = true; const c = ref.current; if (!c) return
+        const r = c.getBoundingClientRect(); const ctx = c.getContext('2d')!
+        ctx.beginPath(); ctx.moveTo(e.clientX - r.left, e.clientY - r.top)
+      },
+      onMouseMove: (e: React.MouseEvent<HTMLCanvasElement>) => {
+        if (!drawing) return; const c = ref.current; if (!c) return
+        const r = c.getBoundingClientRect(); const ctx = c.getContext('2d')!
+        ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 2; ctx.lineCap = 'round'
+        ctx.lineTo(e.clientX - r.left, e.clientY - r.top); ctx.stroke()
+      },
+      onMouseUp: () => { drawing = false; setter(ref.current?.toDataURL() ?? '') },
+      onMouseLeave: () => { if (drawing) { drawing = false; setter(ref.current?.toDataURL() ?? '') } },
+    }
   }
-}
-// ── Limpar canvas de assinatura ───────────────────────────
-function limparCanvas(ref: React.RefObject<HTMLCanvasElement | null>, setter: (v: string) => void) {
-  const c = ref.current
-  if (!c) return
-  const ctx = c.getContext('2d')
-  if (!ctx) return
-  ctx.clearRect(0, 0, c.width, c.height)
-  setter('')
-}
-limparCanvas(vendCanvasRef, setAssinaturaVendedor)
+
+  function limparCanvas(ref: React.RefObject<HTMLCanvasElement>, setter: (v: string) => void) {
+    const c = ref.current; if (!c) return
+    c.getContext('2d')?.clearRect(0, 0, c.width, c.height); setter('')
+  }
+
+  function setChecklistItem(key: string, val: string) { setCChecklist(prev => ({ ...prev, [key]: val })) }
+
   // ── Salvar compra ─────────────────────────────────────────
   async function salvarCompra() {
     if (!modeloSelecionado || !vNome.trim() || !vCPF.trim() || !cValor) return
