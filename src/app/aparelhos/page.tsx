@@ -852,22 +852,3 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
   )
 }
 
-// Função auxiliar — deve estar fora do componente
-function makeCanvasHandlers(ref: React.RefObject<HTMLCanvasElement>, setter: (v: string) => void) {
-  let drawing = false
-  return {
-    onMouseDown: (e: React.MouseEvent<HTMLCanvasElement>) => {
-      drawing = true; const c = ref.current; if (!c) return
-      const r = c.getBoundingClientRect(); const ctx = c.getContext('2d')!
-      ctx.beginPath(); ctx.moveTo(e.clientX - r.left, e.clientY - r.top)
-    },
-    onMouseMove: (e: React.MouseEvent<HTMLCanvasElement>) => {
-      if (!drawing) return; const c = ref.current; if (!c) return
-      const r = c.getBoundingClientRect(); const ctx = c.getContext('2d')!
-      ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 2; ctx.lineCap = 'round'
-      ctx.lineTo(e.clientX - r.left, e.clientY - r.top); ctx.stroke()
-    },
-    onMouseUp: () => { drawing = false; setter(ref.current?.toDataURL() ?? '') },
-    onMouseLeave: () => { if (drawing) { drawing = false; setter(ref.current?.toDataURL() ?? '') } },
-  }
-}
