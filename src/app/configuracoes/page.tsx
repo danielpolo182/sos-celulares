@@ -25,6 +25,7 @@ const MENU: MenuSection[] = [
   { key: 'pdv_cfg',   icon: '💳', label: 'PDV',               subsections: [] },
   { key: 'rotinas_cfg',icon: '✅', label: 'Rotinas',          subsections: [] },
   { key: 'integ',     icon: '🔌', label: 'Integrações',       subsections: [{ key: 'pix', label: 'PIX' }, { key: 'certificado', label: 'Certificado digital' }] },
+  { key: 'assinatura',  icon: '✍️', label: 'Assinatura digital',  subsections: [] },
   { key: 'alertas',    icon: '🔔', label: 'Alertas',           subsections: [] },
   { key: 'historico',  icon: '📜', label: 'Histórico',         subsections: [] },
 ]
@@ -550,6 +551,11 @@ export default function ConfiguracoesPage() {
           </div>
         )}
 
+        {/* ── ASSINATURA DIGITAL */}
+        {activeMenu === 'assinatura' && (
+          <AssinaturaSection supabase={supabase} />
+        )}
+
         {/* ── ALERTAS */}
         {activeMenu === 'alertas' && (
           <div>
@@ -628,6 +634,73 @@ export default function ConfiguracoesPage() {
             )}
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+import { useRef as _useRef2 } from 'react'
+
+function AssinaturaSection({ supabase }: { supabase: any }) {
+  const canvasRef = _useRef2<HTMLCanvasElement>(null)
+  const [drawing, setDrawing] = useState(false)
+  const [assinatura, setAssinatura] = useState('')
+  const [assinaturaAtual, setAssinaturaAtual] = useState('')
+  const [salvando, setSalvando] = useState(false)
+  const [salvo, setSalvo] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }: any) => {
+      if (!user) return
+      supabase.from('usuario_assinaturas').select('assinatura').eq('usuario_id', user.id).maybeSingle()
+        .then(({ data }: any) => { if (data) setAssinaturaAtual(data.assinatura) })
+    })
+  }, [supabase])
+
+  function draw(e: React.MouseEvent<HTMLCanvasElement>, type: 'start'|'move'|'end') {
+    const c = canvasRef.current; if (!c) return
+    const r = c.getBoundingClientRect(); const ctx = c.getContext('2d')!
+    if (type === 'start') { setDrawing(true); ctx.beginPath(); ctx.moveTo(e.clientX-r.left, e.clientY-r.top) }
+    else if (type === 'move' && drawing) { ctx.strokeStyle='#0f172a'; ctx.lineWidth=2.5; ctx.lineCap='round'; ctx.lineTo(e.clientX-r.left, e.clientY-r.top); ctx.stroke() }
+    else if (type === 'end') { setDrawing(false); setAssinatura(c.toDataURL()) }
+  }
+  function limpar() { const c = canvasRef.current; c?.getContext('2d')?.clearRect(0,0,c.width,c.height); setAssinatura('') }
+
+  async function salvar() {
+    if (!assinatura) return; setSalvando(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    await supabase.from('usuario_assinaturas').upsert({ usuario_id: user.id, assinatura }, { onConflict: 'usuario_id' })
+    setAssinaturaAtual(assinatura); setSalvando(false); setSalvo(true); setTimeout(() => setSalvo(false), 2500)
+  }
+
+  return (
+    <div>
+      <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>✍️ Assinatura digital</h2>
+      <p style={{ fontSize: 13, color: '#64748b', marginBottom: 24 }}>Sua assinatura aparece automaticamente nos termos de compra, venda, OS e contratos gerados pelo sistema.</p>
+      {assinaturaAtual && (
+        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '18px 22px', marginBottom: 14 }}>
+          <p style={{ fontSize: 12, fontWeight: 500, color: '#64748b', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Assinatura atual</p>
+          <img src={assinaturaAtual} style={{ maxHeight: 80, border: '1px solid #f1f5f9', borderRadius: 8, background: '#fafafa', padding: 8 }} alt="Assinatura" />
+        </div>
+      )}
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '18px 22px', marginBottom: 14 }}>
+        <p style={{ fontSize: 12, fontWeight: 500, color: '#64748b', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{assinaturaAtual ? 'Nova assinatura' : 'Desenhe sua assinatura'}</p>
+        <div style={{ position: 'relative', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fafafa', display: 'inline-block' }}>
+          <canvas ref={canvasRef} width={520} height={140} style={{ display: 'block', cursor: 'crosshair', borderRadius: 10 }}
+            onMouseDown={e => draw(e,'start')} onMouseMove={e => draw(e,'move')} onMouseUp={e => draw(e,'end')} onMouseLeave={e => draw(e,'end')} />
+          {!assinatura && <p style={{ position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',color:'#cbd5e1',fontSize:14,pointerEvents:'none',userSelect:'none' }}>Assine aqui com o mouse...</p>}
+        </div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center' }}>
+          {assinatura && <button onClick={limpar} style={{ fontSize: 12, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}>Limpar</button>}
+          {salvo && <span style={{ fontSize: 12, color: '#065f46', background: '#ecfdf5', padding: '4px 12px', borderRadius: 20 }}>✓ Salvo!</span>}
+          <button onClick={salvar} disabled={salvando || !assinatura} style={{ marginLeft: 'auto', padding: '9px 22px', background: salvando||!assinatura?'#e2e8f0':'#6366f1', color: salvando||!assinatura?'#94a3b8':'#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
+            {salvando ? 'Salvando...' : 'Salvar assinatura'}
+          </button>
+        </div>
+      </div>
+      <div style={{ background: '#f0f4ff', border: '1px solid #c7d2fe', borderRadius: 10, padding: '12px 16px', fontSize: 13, color: '#3730a3' }}>
+        💡 Esta assinatura será incluída automaticamente como responsável da loja em todos os documentos gerados.
       </div>
     </div>
   )
