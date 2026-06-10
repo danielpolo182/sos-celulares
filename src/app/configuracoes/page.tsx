@@ -302,9 +302,9 @@ export default function ConfiguracoesPage() {
             <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>🖨 Impressão</h2>
             <p style={{ fontSize: 13, color: '#64748b', marginBottom: 24 }}>Formato de recibo por tipo de documento.</p>
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '22px 26px' }}>
-              {renderField("recibo_pdv_formato", "text", {[{v:'58mm',l:'58mm (bobina pequena)'},{v:'80mm',l:'80mm (bobina padrão)'},{v:'a4',l:'A4 (folha normal)'}]})}
-              {renderField("recibo_os_formato", "text", {[{v:'a4',l:'A4 (padrão)'},{v:'a5',l:'A5'},{v:'80mm',l:'80mm'}]})}
-              {renderField("recibo_garantia_formato", "text", {[{v:'58mm',l:'58mm'},{v:'80mm',l:'80mm'},{v:'a4',l:'A4'}]})}
+              {renderField("recibo_pdv_formato", "text", [{v:'58mm',l:'58mm (bobina pequena)'},{v:'80mm',l:'80mm (bobina padrão)'},{v:'a4',l:'A4 (folha normal)'}])}
+              {renderField("recibo_os_formato", "text", [{v:'a4',l:'A4 (padrão)'},{v:'a5',l:'A5'},{v:'80mm',l:'80mm'}])}
+              {renderField("recibo_garantia_formato", "text", [{v:'58mm',l:'58mm'},{v:'80mm',l:'80mm'},{v:'a4',l:'A4'}])}
             </div>
           </div>
         )}
@@ -494,10 +494,10 @@ export default function ConfiguracoesPage() {
             <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>💳 PDV</h2>
             <p style={{ fontSize: 13, color: '#64748b', marginBottom: 24 }}>Configurações do ponto de venda.</p>
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '22px 26px' }}>
-              {renderField("pdv_modo_visualizacao", "text", {[{v:'padrao',l:'Padrão'},{v:'touch',l:'Touch (tablet)'},{v:'visual',l:'Visual (grade grande)'}]})}
-              {renderField("pdv_permite_desconto", "text", {[{v:'true',l:'Sim'},{v:'false',l:'Não'}]})}
+              {renderField("pdv_modo_visualizacao", "text", [{v:'padrao',l:'Padrão'},{v:'touch',l:'Touch (tablet)'},{v:'visual',l:'Visual (grade grande)'}])}
+              {renderField("pdv_permite_desconto", "text", [{v:'true',l:'Sim'},{v:'false',l:'Não'}])}
               {renderField("pdv_desconto_maximo", "number")}
-              {renderField("pdv_exige_cliente", "text", {[{v:'true',l:'Sim'},{v:'false',l:'Não'}]})}
+              {renderField("pdv_exige_cliente", "text", [{v:'true',l:'Sim'},{v:'false',l:'Não'}])}
               {renderField("caixa_valor_abertura", "number")}
             </div>
           </div>
@@ -509,11 +509,11 @@ export default function ConfiguracoesPage() {
             <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>✅ Rotinas</h2>
             <p style={{ fontSize: 13, color: '#64748b', marginBottom: 24 }}>Configurações do módulo de rotinas e integração com WhatsApp.</p>
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '22px 26px' }}>
-              {renderField("rotinas_wa_ativo", "text", {[{v:'true',l:'Ativo — mostra sublista WhatsApp nas rotinas'},{v:'false',l:'Inativo'}]})}
-              {renderField("rotinas_wa_aniversario", "text", {[{v:'true',l:'Sim'},{v:'false',l:'Não'}]})}
-              {renderField("rotinas_wa_os_pronta", "text", {[{v:'true',l:'Sim'},{v:'false',l:'Não'}]})}
-              {renderField("rotinas_wa_90dias", "text", {[{v:'true',l:'Sim'},{v:'false',l:'Não'}]})}
-              {renderField("rotinas_wa_inativos", "text", {[{v:'true',l:'Sim'},{v:'false',l:'Não'}]})}
+              {renderField("rotinas_wa_ativo", "text", [{v:'true',l:'Ativo — mostra sublista WhatsApp nas rotinas'},{v:'false',l:'Inativo'}])}
+              {renderField("rotinas_wa_aniversario", "text", [{v:'true',l:'Sim'},{v:'false',l:'Não'}])}
+              {renderField("rotinas_wa_os_pronta", "text", [{v:'true',l:'Sim'},{v:'false',l:'Não'}])}
+              {renderField("rotinas_wa_90dias", "text", [{v:'true',l:'Sim'},{v:'false',l:'Não'}])}
+              {renderField("rotinas_wa_inativos", "text", [{v:'true',l:'Sim'},{v:'false',l:'Não'}])}
             </div>
           </div>
         )}
