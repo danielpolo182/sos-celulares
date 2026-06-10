@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, use, useRef, useCallback } from 'react'
+import { useState, useEffect, use, useRef, useCallback, Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, useSearchParams } from 'next/navigation'
 
@@ -86,7 +86,16 @@ function PatternDisplay({ sequencia }: { sequencia: number[] }) {
   )
 }
 
+// Wrapper com Suspense — obrigatório no Next.js 15 para useSearchParams
 export default function OSDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  return (
+    <Suspense fallback={<div style={{ padding: 60, textAlign: 'center', color: '#94a3b8', fontFamily: 'var(--font-sans)' }}>Carregando...</div>}>
+      <OSDetailInner params={params} />
+    </Suspense>
+  )
+}
+
+function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const supabase = createClient()
   const router = useRouter()

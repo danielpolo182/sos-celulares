@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -242,10 +242,10 @@ export default function OSPage() {
   }, [supabase])
 
   // Carregar na montagem
-  useState(() => {
+  useEffect(() => {
     fetchOS()
     fetchPendencias()
-  })
+  }, [fetchOS, fetchPendencias])
 
   async function salvarSnooze() {
     if (!snoozeModal) return
