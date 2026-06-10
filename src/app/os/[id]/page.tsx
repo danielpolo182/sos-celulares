@@ -109,6 +109,7 @@ export default function OSDetailPage({ params }: { params: Promise<{ id: string 
     loja_endereco: '', loja_cnpj: '', recibo_os_formato: 'a4',
     garantia_dias: '90', retirada_prazo_dias: '90', retirada_taxa_mensal: '10',
   })
+  const [assinaturaLoja, setAssinaturaLoja] = useState('')
 
   // Orçamento
   const [itensOrc, setItensOrc] = useState<ItemOrc[]>([])
@@ -160,6 +161,12 @@ export default function OSDetailPage({ params }: { params: Promise<{ id: string 
           setCfgLoja(prev => ({ ...prev, ...m }))
         }
       })
+    // Carregar assinatura do usuário logado
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return
+      supabase.from('usuario_assinaturas').select('assinatura').eq('usuario_id', user.id).maybeSingle()
+        .then(({ data }) => { if (data?.assinatura) setAssinaturaLoja(data.assinatura) })
+    })
   }, [loadOS, supabase])
 
   useEffect(() => {
@@ -516,7 +523,7 @@ ${itensOrc.length > 0 ? itensOrc.map(i =>
   <div style="font-size:7.5pt;margin-bottom:2mm">Declaro estar ciente das condições acima:</div>
   <div class="ass-line">
     <div class="ass-box"><div class="ass-l"></div><div class="ass-label">Assinatura do cliente</div></div>
-    <div class="ass-box"><div class="ass-l"></div><div class="ass-label">Técnico responsável</div></div>
+    <div class="ass-box">${assinaturaLoja ? `<img src="${assinaturaLoja}" style="max-height:28pt;max-width:90pt;display:block;margin-bottom:1pt" />` : ''}<div class="ass-l"></div><div class="ass-label">Técnico responsável</div></div>
   </div>
 </div>
 
@@ -616,7 +623,7 @@ ${itensOrc.length > 0 ? itensOrc.map(i =>
         <p class="signature-note">Ao assinar, o cliente declara estar ciente e de acordo com todas as condições acima.</p>
         <div class="sig-row">
           <div class="sig-box"><div class="sig-line"></div><div class="sig-label">Assinatura do cliente</div></div>
-          <div class="sig-box"><div class="sig-line"></div><div class="sig-label">Técnico responsável</div></div>
+          <div class="sig-box">${assinaturaLoja ? `<img src="${assinaturaLoja}" style="max-height:40pt;max-width:130pt;display:block;margin-bottom:2pt" />` : ''}<div class="sig-line"></div><div class="sig-label">Técnico responsável</div></div>
         </div>
       </div>
     </div>
