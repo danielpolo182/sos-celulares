@@ -10,10 +10,11 @@ type Perfil = {
   papel: string; ativo: boolean; avatar_cor: string
 }
 
-// ADM > gerente > outros — quem pode atribuir o quê
-// Valores correspondem exatamente ao CHECK constraint da tabela perfis
+// Cargo 'admin' é imutável — definido no banco, nunca alterável pelo app
+// Apenas gerente e abaixo podem ser atribuídos/alterados pela UI
 const HIERARQUIA = ['admin', 'gerente', 'tecnico', 'atendente', 'caixa'] as const
 type Cargo = typeof HIERARQUIA[number]
+const CARGOS_UI = ['gerente', 'tecnico', 'atendente', 'caixa'] as const // admin excluído da UI
 
 const CARGO_LABEL: Record<string, string> = {
   admin:     'Administrador',
@@ -82,11 +83,11 @@ export default function UsuariosPage() {
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
-  // Cargos que o usuário atual pode atribuir
-  function cargosAtribuiveis(): Cargo[] {
-    if (meuCargo === 'admin') return [...HIERARQUIA]
-    if (meuCargo === 'gerente') return HIERARQUIA.filter(c => c !== 'admin' && c !== 'gerente')
-    return [] // outros não podem criar/editar
+  // Cargos que o usuário atual pode atribuir — 'admin' NUNCA aparece na UI
+  function cargosAtribuiveis(): typeof CARGOS_UI[number][] {
+    if (meuCargo === 'admin') return [...CARGOS_UI]
+    if (meuCargo === 'gerente') return CARGOS_UI.filter(c => c !== 'gerente')
+    return []
   }
 
   function podeCriar() {
@@ -94,6 +95,8 @@ export default function UsuariosPage() {
   }
 
   function podeEditar(perfil: Perfil) {
+    // Admin nunca pode ser editado — cargo imutável pelo app
+    if (perfil.papel === 'admin') return false
     if (meuCargo === 'admin') return true
     if (meuCargo === 'gerente') return !['admin', 'gerente'].includes(perfil.papel)
     return false
@@ -108,7 +111,8 @@ export default function UsuariosPage() {
 
   function abrirEdit(p: Perfil) {
     setFNome(p.nome); setFEmail(p.email ?? ''); setFSenha('')
-    setFPapel(p.papel as Cargo); setFCor(p.avatar_cor ?? '#6366f1'); setFAtivo(p.ativo)
+    setFPapel((p.papel === 'admin' ? 'gerente' : p.papel) as Cargo)
+    setFCor(p.avatar_cor ?? '#6366f1'); setFAtivo(p.ativo)
     setEditId(p.id); setErro(''); setSucesso(''); setShowModal(true)
   }
 
@@ -116,16 +120,7 @@ export default function UsuariosPage() {
     if (!fNome.trim()) { setErro('Nome é obrigatório.'); return }
     if (!editId && !fEmail.trim()) { setErro('E-mail é obrigatório.'); return }
     if (!editId && fSenha.length < 6) { setErro('Senha deve ter pelo menos 6 caracteres.'); return }
-
-    // Regra: deve existir ao menos 1 admin após a alteração
-    if (editId && fPapel !== 'admin') {
-      const admins = perfis.filter(p => p.papel === 'admin' && p.ativo)
-      const esteEhAdmin = perfis.find(p => p.id === editId)?.papel === 'admin'
-      if (esteEhAdmin && admins.length <= 1) {
-        setErro('Deve existir pelo menos 1 Administrador no sistema. Promova outro usuário antes de alterar este cargo.')
-        return
-      }
-    }
+    // 'admin' nunca pode ser atribuído pelo app — imutável
 
     setSaving(true); setErro(''); setSucesso('')
 
@@ -156,13 +151,10 @@ export default function UsuariosPage() {
   }
 
   async function toggleAtivo(p: Perfil) {
-    // Não pode desativar o último admin
-    if (p.papel === 'admin' && p.ativo) {
-      const admins = perfis.filter(u => u.papel === 'admin' && u.ativo)
-      if (admins.length <= 1) {
-        alert('Deve existir pelo menos 1 Administrador ativo no sistema.')
-        return
-      }
+    // Admin nunca pode ser desativado pelo app
+    if (p.papel === 'admin') {
+      alert('O Administrador fundador não pode ser desativado pelo app.')
+      return
     }
     await supabase.from('perfis').update({ ativo: !p.ativo }).eq('id', p.id)
     fetchAll()
@@ -194,8 +186,8 @@ export default function UsuariosPage() {
 
       {/* Info hierarquia */}
       <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, padding: '10px 16px', marginBottom: 20, fontSize: 13, color: '#0369a1' }}>
-        💡 Hierarquia: <strong>Administrador</strong> → <strong>Gerente</strong> → Técnico / Atendente / Caixa.
-        Administradores gerenciam todos; gerentes gerenciam técnicos e atendentes.
+        🔐 O <strong>Administrador Fundador</strong> é imutável e não pode ser alterado pelo app.
+        Gerentes podem criar e editar técnicos, atendentes e caixas.
         Para alterar permissões por cargo, acesse <Link href="/configuracoes?menu=permissoes" style={{ color: '#6366f1', fontWeight: 600 }}>Configurações → Permissões</Link>.
       </div>
 
@@ -243,9 +235,16 @@ export default function UsuariosPage() {
                       </div>
                     </td>
                     <td style={{ padding: '12px 16px' }}>
-                      <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 20, fontWeight: 600, background: cor.bg, color: cor.color }}>
-                        {CARGO_LABEL[p.papel] ?? p.papel}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 20, fontWeight: 600, background: cor.bg, color: cor.color }}>
+                          {CARGO_LABEL[p.papel] ?? p.papel}
+                        </span>
+                        {p.papel === 'admin' && (
+                          <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, background: '#1e1b4b', color: '#a5b4fc', fontWeight: 600 }}>
+                            🔐 Fundador
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td style={{ padding: '12px 16px' }}>
                       <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, fontWeight: 600, background: p.ativo ? '#ecfdf5' : '#f1f5f9', color: p.ativo ? '#065f46' : '#94a3b8' }}>
@@ -253,14 +252,16 @@ export default function UsuariosPage() {
                       </span>
                     </td>
                     <td style={{ padding: '12px 16px' }}>
-                      {podeEditar(p) && (
+                      {p.papel === 'admin' ? (
+                        <span style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>protegido</span>
+                      ) : podeEditar(p) ? (
                         <div style={{ display: 'flex', gap: 6 }}>
                           <button onClick={() => abrirEdit(p)} style={{ fontSize: 12, padding: '5px 12px', border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', cursor: 'pointer', color: '#374151' }}>Editar</button>
                           <button onClick={() => toggleAtivo(p)} style={{ fontSize: 12, padding: '5px 12px', border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', cursor: 'pointer', color: p.ativo ? '#ef4444' : '#10b981' }}>
                             {p.ativo ? 'Desativar' : 'Ativar'}
                           </button>
                         </div>
-                      )}
+                      ) : null}
                     </td>
                   </tr>
                 )
