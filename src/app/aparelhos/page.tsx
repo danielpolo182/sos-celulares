@@ -15,6 +15,11 @@ type Aparelho = {
   observacoes: string | null; created_at: string
 }
 
+type AparelhoPC = {
+  id: string; aparelho_id: string; item_key: string | null
+  peca_nome: string; preco: number; chegou: boolean; trocada: boolean; created_at: string
+}
+
 type Dispositivo = {
   id: string; marca: string; modelo: string
   ram: string | null; armazenamento: string | null; tela: string | null
@@ -51,6 +56,29 @@ const CHECKLIST_FUNCIONAL = [
 ]
 const CHECKLIST_ITENS = [...CHECKLIST_ESTETICO, ...CHECKLIST_FUNCIONAL]
 
+const PART_MAP: Record<string,{peca:string; preco:number}> = {
+  est_tela:      { peca:'Tela / Display',             preco:0 },
+  est_carcaca:   { peca:'Carcaça / Chassi',           preco:0 },
+  est_aro:       { peca:'Aro / Frame lateral',        preco:0 },
+  est_tampa:     { peca:'Tampa traseira',             preco:0 },
+  est_lente_cam: { peca:'Lente da câmera',            preco:0 },
+  est_botoes:    { peca:'Flex de botões',             preco:0 },
+  est_conector:  { peca:'Conector de carga',          preco:0 },
+  fn_liga:       { peca:'Diagnóstico placa / serviço',preco:0 },
+  fn_touch:      { peca:'Touch / Digitalizador',      preco:0 },
+  fn_cam_front:  { peca:'Câmera frontal',             preco:0 },
+  fn_cam_tras:   { peca:'Câmera traseira',            preco:0 },
+  fn_bateria:    { peca:'Bateria',                    preco:0 },
+  fn_wifi_bt:    { peca:'Antena Wi-Fi/BT',            preco:0 },
+  fn_biometria:  { peca:'Sensor biométrico',          preco:0 },
+  fn_falante:    { peca:'Alto-falante',               preco:0 },
+  fn_microfone:  { peca:'Microfone',                  preco:0 },
+  fn_conector:   { peca:'Flex conector de carga',     preco:0 },
+  fn_imei:       { peca:'Serviço (verificação)',      preco:0 },
+  fn_conta:      { peca:'Serviço (remoção conta)',    preco:0 },
+  fn_reset:      { peca:'Serviço (reset)',            preco:0 },
+}
+
 const ESTADOS = [
   { v: 'Bom',     bg: '#ecfdf5', color: '#065f46', border: '#86efac' },
   { v: 'Regular', bg: '#fef3c7', color: '#92400e', border: '#fde68a' },
@@ -60,12 +88,12 @@ const ESTADOS = [
 
 const FORMAS_PGTO = ['Dinheiro','PIX','Transferência','Cartão débito','Cartão crédito à vista','Cartão crédito parcelado']
 const STATUS_CFG: Record<string, {label:string;bg:string;color:string}> = {
-  em_revisao:   { label: 'Em revisão',       bg: '#fef3c7', color: '#92400e' },
-  aguard_pecas: { label: 'Aguard. peças',    bg: '#fef2f2', color: '#991b1b' },
-  checklist:    { label: 'Checklist',        bg: '#eff6ff', color: '#1d4ed8' },
-  a_venda:      { label: 'À venda',          bg: '#ecfdf5', color: '#065f46' },
-  disponivel:   { label: 'Disponível',       bg: '#ecfdf5', color: '#065f46' },
-  vendido:      { label: 'Vendido',          bg: '#f1f5f9', color: '#64748b' },
+  sem_revisao:     { label: 'Sem revisão',      bg: '#fef3c7', color: '#92400e' },
+  aguardando_pecas:{ label: 'Aguard. peças',    bg: '#fef2f2', color: '#991b1b' },
+  em_reparo:       { label: 'Em reparo',        bg: '#fff7ed', color: '#c2410c' },
+  checklist:       { label: 'Checklist',        bg: '#eff6ff', color: '#1d4ed8' },
+  disponivel:      { label: 'Disponível',       bg: '#ecfdf5', color: '#065f46' },
+  vendido:         { label: 'Vendido',          bg: '#f1f5f9', color: '#64748b' },
 }
 
 const CHECKLIST_APROVACAO = [
@@ -192,6 +220,15 @@ export default function AparelhoPage() {
   const [aprovacao, setAprovacao] = useState<Record<string, boolean>>({})
   const [salvandoStatus, setSalvandoStatus] = useState(false)
 
+  // ── Máquina de estados — modal peças ─────────────────────
+  const [modalPecas, setModalPecas] = useState<AparelhoPC[]>([])
+  const [novasPecas, setNovasPecas] = useState<{key:string;nome:string;preco:string;marcado:boolean}[]>([])
+  const [semTodasPecas, setSemTodasPecas] = useState(false)
+  const [liberarSemChecklist, setLiberarSemChecklist] = useState(false)
+  const [checklistFinal, setChecklistFinal] = useState<Record<string,string>>({})
+  const [pecaExtraNome, setPecaExtraNome] = useState('')
+  const [loadingPecas, setLoadingPecas] = useState(false)
+
   async function atualizarStatus(id: string, novoStatus: string) {
     setSalvandoStatus(true)
     const { error } = await supabase.from('aparelhos').update({ status: novoStatus }).eq('id', id)
@@ -212,6 +249,73 @@ export default function AparelhoPage() {
     setDetalhes(updated as Aparelho)
     setAparelhos(prev => prev.map(a => a.id === detalhes.id ? updated as Aparelho : a))
     setDetalheEditando(false)
+    setSalvandoStatus(false)
+  }
+
+  // ── Máquina de estados — funções ─────────────────────────
+  async function carregarPecas(aparelhoId: string) {
+    setLoadingPecas(true)
+    const { data } = await supabase.from('aparelho_pecas')
+      .select('id,aparelho_id,item_key,peca_nome,preco,chegou,trocada,created_at')
+      .eq('aparelho_id', aparelhoId).order('created_at')
+    setModalPecas((data ?? []) as AparelhoPC[])
+    setLoadingPecas(false)
+  }
+
+  async function salvarRevisaoPecas() {
+    if (!detalhes) return
+    const marcadas = novasPecas.filter(p => p.marcado)
+    if (marcadas.length === 0) {
+      // sem peças: avança direto para disponivel
+      await atualizarStatus(detalhes.id, 'disponivel'); return
+    }
+    setSalvandoStatus(true)
+    await supabase.from('aparelho_pecas').insert(
+      marcadas.map(p => ({ aparelho_id: detalhes.id, item_key: p.key, peca_nome: p.nome, preco: parseFloat(p.preco)||0 }))
+    )
+    await atualizarStatus(detalhes.id, 'aguardando_pecas')
+    setSalvandoStatus(false)
+  }
+
+  async function marcarPecaChegou(pecaId: string, chegou: boolean) {
+    await supabase.from('aparelho_pecas').update({ chegou }).eq('id', pecaId)
+    setModalPecas(prev => prev.map(p => p.id === pecaId ? { ...p, chegou } : p))
+  }
+
+  async function iniciarReparo() {
+    if (!detalhes) return
+    const todasChegaram = modalPecas.every(p => p.chegou)
+    if (!todasChegaram && !semTodasPecas) return
+    await atualizarStatus(detalhes.id, 'em_reparo')
+  }
+
+  async function marcarPecaTrocada(pecaId: string, trocada: boolean) {
+    await supabase.from('aparelho_pecas').update({ trocada }).eq('id', pecaId)
+    setModalPecas(prev => prev.map(p => p.id === pecaId ? { ...p, trocada } : p))
+  }
+
+  async function adicionarPecaExtra() {
+    if (!detalhes || !pecaExtraNome.trim()) return
+    const { data } = await supabase.from('aparelho_pecas')
+      .insert({ aparelho_id: detalhes.id, item_key: null, peca_nome: pecaExtraNome.trim(), preco: 0, trocada: true })
+      .select('id,aparelho_id,item_key,peca_nome,preco,chegou,trocada,created_at').single()
+    if (data) setModalPecas(prev => [...prev, data as AparelhoPC])
+    setPecaExtraNome('')
+  }
+
+  async function confirmarReparo() {
+    if (!detalhes) return
+    await atualizarStatus(detalhes.id, 'checklist')
+  }
+
+  async function liberarParaVenda() {
+    if (!detalhes) return
+    const tudoOk = Object.values(checklistFinal).every(v => v === 'Bom' || v === 'N/A')
+    if (!tudoOk && !liberarSemChecklist) return
+    setSalvandoStatus(true)
+    const nota = notaGeral(checklistFinal)
+    await supabase.from('aparelhos').update({ checklist_json: checklistFinal, checklist_nota: nota }).eq('id', detalhes.id)
+    await atualizarStatus(detalhes.id, 'disponivel')
     setSalvandoStatus(false)
   }
 
@@ -329,6 +433,23 @@ export default function AparelhoPage() {
   }, [supabase])
 
   useEffect(() => { fetchAll() }, [fetchAll])
+
+  useEffect(() => {
+    if (!detalhes) { setModalPecas([]); setNovasPecas([]); setSemTodasPecas(false); setLiberarSemChecklist(false); return }
+    const s = detalhes.status
+    if (s === 'sem_revisao') {
+      setNovasPecas(CHECKLIST_ITENS.map(i => ({
+        key: i.key, nome: PART_MAP[i.key]?.peca ?? i.label, preco: '0', marcado: false,
+      })))
+    }
+    if (s === 'aguardando_pecas' || s === 'em_reparo' || s === 'checklist') {
+      carregarPecas(detalhes.id)
+    }
+    if (s === 'checklist') {
+      setChecklistFinal(detalhes.checklist_json ?? {})
+    }
+    setLiberarSemChecklist(false); setSemTodasPecas(false); setPecaExtraNome('')
+  }, [detalhes?.id, detalhes?.status])
 
   // ── Busca de modelo no banco ──────────────────────────────
   function onModeloChange(val: string) {
@@ -453,7 +574,7 @@ export default function AparelhoPage() {
     const endCompleto = [vEnd, vBairro, vCidade, vEstado].filter(Boolean).join(', ')
 
     const { data: ap } = await supabase.from('aparelhos').insert({
-      tipo: cTipo, status: 'disponivel',
+      tipo: cTipo, status: 'sem_revisao',
       marca: modeloSelecionado.marca, modelo: modeloSelecionado.modelo,
       capacidade: cCapacidade || null, cor: cCor || null,
       imei: cIMEI || null, imei2: cIMEI2 || null,
@@ -719,7 +840,13 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
           <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar modelo ou IMEI..." style={{ ...inp, flex: 1, minWidth: 180 }} />
             <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} style={{ ...inp, width: 'auto' }}>
-              <option value="todos">Todos</option><option value="disponivel">Disponíveis</option><option value="vendido">Vendidos</option>
+              <option value="todos">Todos</option>
+              <option value="sem_revisao">Sem revisão</option>
+              <option value="aguardando_pecas">Aguard. peças</option>
+              <option value="em_reparo">Em reparo</option>
+              <option value="checklist">Checklist</option>
+              <option value="disponivel">Disponíveis</option>
+              <option value="vendido">Vendidos</option>
             </select>
           </div>
           {loading ? <div style={{ textAlign:'center',padding:60,color:'#94a3b8' }}>Carregando...</div> :
@@ -777,21 +904,21 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
       {aba === ('checklist' as any) && (
         <div>
           <p style={{ fontSize:13,color:'#64748b',marginBottom:16 }}>Aparelhos que precisam passar pelo checklist de aprovação antes de ir à venda.</p>
-          {aparelhos.filter(a => a.status === 'checklist' || a.status === 'em_revisao').length === 0 ? (
+          {aparelhos.filter(a => ['sem_revisao','aguardando_pecas','em_reparo','checklist'].includes(a.status)).length === 0 ? (
             <div style={{ textAlign:'center',padding:60,color:'#94a3b8' }}>
               <div style={{ fontSize:40,marginBottom:12 }}>✅</div>
-              <p>Nenhum aparelho aguardando checklist.</p>
+              <p>Nenhum aparelho aguardando revisão.</p>
             </div>
           ) : (
             <div style={{ display:'flex',flexDirection:'column',gap:10 }}>
-              {aparelhos.filter(a => a.status === 'checklist' || a.status === 'em_revisao').map(a => (
+              {aparelhos.filter(a => ['sem_revisao','aguardando_pecas','em_reparo','checklist'].includes(a.status)).map(a => (
                 <div key={a.id} style={{ background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,padding:'16px 20px',display:'flex',alignItems:'center',gap:16 }}>
                   <div style={{ flex:1 }}>
                     <p style={{ fontWeight:600,color:'#0f172a' }}>{a.marca} {a.modelo} {a.capacidade?`· ${a.capacidade}`:''}</p>
                     <p style={{ fontSize:12,color:'#94a3b8' }}>IMEI: {a.imei ?? '—'} · Compra: {fm(a.preco_compra??0)}</p>
                   </div>
-                  <span style={{ fontSize:11,fontWeight:500,padding:'2px 8px',borderRadius:20,background:STATUS_CFG[a.status].bg,color:STATUS_CFG[a.status].color }}>{STATUS_CFG[a.status].label}</span>
-                  <button onClick={() => { setDetalhes(a); setAprovacao((a.checklist_json?.aprovacao ?? {}) as unknown as Record<string, boolean>) }} style={{ fontSize:13,padding:'7px 16px',border:'1px solid #c7d2fe',borderRadius:8,background:'#eef2ff',cursor:'pointer',color:'#4338ca',fontWeight:500 }}>Fazer checklist</button>
+                  <span style={{ fontSize:11,fontWeight:500,padding:'2px 8px',borderRadius:20,background:STATUS_CFG[a.status]?.bg??'#f1f5f9',color:STATUS_CFG[a.status]?.color??'#64748b' }}>{STATUS_CFG[a.status]?.label??a.status}</span>
+                  <button onClick={() => { setDetalhes(a); setDetalheEditando(false); setDetalhePrecoVenda(String(a.preco_venda??'')); setDetalheObs(a.observacoes??'') }} style={{ fontSize:13,padding:'7px 16px',border:'1px solid #c7d2fe',borderRadius:8,background:'#eef2ff',cursor:'pointer',color:'#4338ca',fontWeight:500 }}>Abrir</button>
                 </div>
               ))}
             </div>
@@ -887,47 +1014,155 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
               )}
             </div>
 
-            {/* Mudar status */}
-            <div style={{ marginBottom:16 }}>
-              <p style={{ fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:8 }}>Alterar status</p>
-              <div style={{ display:'flex',gap:6,flexWrap:'wrap' }}>
-                {Object.entries(STATUS_CFG).filter(([k]) => k !== 'vendido').map(([k,v]) => (
-                  <button key={k} onClick={() => atualizarStatus(detalhes.id, k)} disabled={salvandoStatus||detalhes.status===k} style={{ fontSize:12,padding:'5px 12px',border:`1px solid ${v.color}30`,borderRadius:20,background:detalhes.status===k?v.bg:'#fff',color:v.color,cursor:detalhes.status===k?'default':'pointer',fontWeight:detalhes.status===k?600:400 }}>
-                    {v.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {/* ─── Conteúdo por status ─── */}
 
-            {/* Checklist de aprovação */}
-            {(detalhes.status === 'checklist' || detalhes.status === 'em_revisao') && (
+            {/* sem_revisao → revisão e peças */}
+            {detalhes.status === 'sem_revisao' && (
               <div style={{ marginBottom:16 }}>
-                <p style={{ fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:10 }}>Checklist de aprovação</p>
-                <div style={{ display:'flex',flexDirection:'column',gap:4 }}>
-                  {CHECKLIST_APROVACAO.map(item => (
-                    <label key={item.key} style={{ display:'flex',alignItems:'center',gap:10,padding:'7px 10px',borderRadius:7,background:aprovacao[item.key]?'#ecfdf5':'#f8fafc',cursor:'pointer',fontSize:13 }}>
-                      <input type="checkbox" checked={!!aprovacao[item.key]} onChange={e => setAprovacao(p => ({ ...p, [item.key]: e.target.checked }))} />
-                      <span style={{ color:aprovacao[item.key]?'#065f46':'#374151' }}>{item.label}</span>
-                    </label>
-                  ))}
-                </div>
-                <div style={{ marginTop:12 }}>
-                  <p style={{ fontSize:12,color:'#64748b',marginBottom:8 }}>
-                    {Object.values(aprovacao).filter(Boolean).length}/{CHECKLIST_APROVACAO.length} itens aprovados
-                    {Object.values(aprovacao).filter(Boolean).length === CHECKLIST_APROVACAO.length && ' ✅'}
-                  </p>
-                  <button onClick={() => salvarAprovacao(detalhes)} disabled={salvandoStatus} style={{ width:'100%',padding:'10px',background:'#6366f1',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer' }}>
-                    {salvandoStatus ? 'Salvando...' : '✓ Aprovar e colocar à venda'}
-                  </button>
-                </div>
+                <p style={{ fontSize:13,fontWeight:600,color:'#92400e',background:'#fef3c7',borderRadius:8,padding:'8px 12px',marginBottom:12 }}>
+                  🔍 Marque as peças necessárias para reparo
+                </p>
+                {novasPecas.map((p, i) => {
+                  const cl = detalhes.checklist_json?.[p.key]
+                  const destaque = cl === 'Regular' || cl === 'Ruim'
+                  return (
+                    <div key={p.key} style={{ borderRadius:8,border:`1px solid ${destaque?'#fde68a':'#e2e8f0'}`,background:destaque?'#fffbeb':'#f8fafc',padding:'8px 10px',marginBottom:6 }}>
+                      <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:p.marcado?6:0 }}>
+                        <input type="checkbox" checked={p.marcado} onChange={e => setNovasPecas(prev => prev.map((x,j) => j===i ? {...x, marcado:e.target.checked} : x))} style={{ width:16,height:16,flexShrink:0,cursor:'pointer' }} />
+                        <span style={{ fontSize:13,color:'#374151',flex:1 }}>{CHECKLIST_ITENS.find(c=>c.key===p.key)?.label ?? p.key}</span>
+                        {cl && <span style={{ fontSize:11,padding:'1px 7px',borderRadius:10,background:cl==='Bom'?'#ecfdf5':cl==='Regular'?'#fef3c7':'#fef2f2',color:cl==='Bom'?'#065f46':cl==='Regular'?'#92400e':'#991b1b',fontWeight:600 }}>{cl}</span>}
+                      </div>
+                      {p.marcado && (
+                        <div style={{ display:'grid',gridTemplateColumns:'1fr auto',gap:6,paddingLeft:24 }}>
+                          <input value={p.nome} onChange={e => setNovasPecas(prev => prev.map((x,j) => j===i ? {...x, nome:e.target.value} : x))} style={{ ...inp,fontSize:12,padding:'5px 8px' }} placeholder="Nome da peça" />
+                          <div style={{ display:'flex',alignItems:'center',gap:4 }}>
+                            <span style={{ fontSize:12,color:'#64748b' }}>R$</span>
+                            <input type="number" step="0.01" value={p.preco} onChange={e => setNovasPecas(prev => prev.map((x,j) => j===i ? {...x, preco:e.target.value} : x))} style={{ ...inp,width:90,fontSize:12,padding:'5px 8px',textAlign:'right' }} />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+                {novasPecas.some(p=>p.marcado) && (
+                  <div style={{ background:'#f0f9ff',borderRadius:8,padding:'8px 12px',marginTop:8,marginBottom:8,fontSize:13,color:'#0369a1' }}>
+                    Total estimado: <strong>R$ {novasPecas.filter(p=>p.marcado).reduce((acc,p)=>acc+(parseFloat(p.preco)||0),0).toFixed(2).replace('.',',')}</strong>
+                  </div>
+                )}
+                <button onClick={salvarRevisaoPecas} disabled={salvandoStatus} style={{ width:'100%',padding:'10px',background:'#0f172a',color:'#fbbf24',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',marginTop:4 }}>
+                  {salvandoStatus ? 'Salvando...' : novasPecas.some(p=>p.marcado) ? '✓ Confirmar peças e aguardar' : '✓ Sem peças necessárias — disponibilizar'}
+                </button>
               </div>
             )}
 
-            {/* Print card */}
-            {(detalhes.status === 'a_venda' || detalhes.status === 'disponivel') && (
-              <button onClick={() => imprimirCard(detalhes)} style={{ width:'100%',padding:'10px',background:'#0f172a',color:'#fbbf24',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',marginTop:8 }}>
-                🏷 Imprimir card de venda
-              </button>
+            {/* aguardando_pecas → chegada de peças */}
+            {detalhes.status === 'aguardando_pecas' && (
+              <div style={{ marginBottom:16 }}>
+                <p style={{ fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:10 }}>Peças aguardadas</p>
+                {loadingPecas ? <p style={{ color:'#94a3b8',fontSize:13 }}>Carregando...</p> : modalPecas.length === 0 ? <p style={{ color:'#94a3b8',fontSize:13 }}>Nenhuma peça cadastrada.</p> : (
+                  <div style={{ display:'flex',flexDirection:'column',gap:4 }}>
+                    {modalPecas.map(p => (
+                      <label key={p.id} style={{ display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:8,background:p.chegou?'#ecfdf5':'#f8fafc',cursor:'pointer',fontSize:13,border:'1px solid #e2e8f0' }}>
+                        <input type="checkbox" checked={p.chegou} onChange={e => marcarPecaChegou(p.id, e.target.checked)} style={{ width:16,height:16,cursor:'pointer' }} />
+                        <span style={{ flex:1,color:p.chegou?'#065f46':'#374151',fontWeight:p.chegou?500:400 }}>{p.peca_nome}</span>
+                        {p.preco > 0 && <span style={{ fontSize:12,color:'#64748b',fontFamily:'monospace' }}>R$ {p.preco.toFixed(2).replace('.',',')}</span>}
+                        {p.chegou && <span style={{ fontSize:11,color:'#065f46' }}>✓</span>}
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <div style={{ marginTop:12,display:'flex',alignItems:'center',gap:8 }}>
+                  <label style={{ display:'flex',alignItems:'center',gap:6,fontSize:12,color:'#64748b',cursor:'pointer' }}>
+                    <input type="checkbox" checked={semTodasPecas} onChange={e => setSemTodasPecas(e.target.checked)} />
+                    Iniciar reparo sem todas as peças
+                  </label>
+                </div>
+                <button onClick={iniciarReparo} disabled={salvandoStatus||(!modalPecas.every(p=>p.chegou)&&!semTodasPecas)}
+                  style={{ width:'100%',padding:'10px',marginTop:8,background:(!modalPecas.every(p=>p.chegou)&&!semTodasPecas)?'#e2e8f0':'#c2410c',color:(!modalPecas.every(p=>p.chegou)&&!semTodasPecas)?'#94a3b8':'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:(!modalPecas.every(p=>p.chegou)&&!semTodasPecas)?'default':'pointer' }}>
+                  {salvandoStatus ? 'Salvando...' : '🔧 Iniciar reparo'}
+                </button>
+              </div>
+            )}
+
+            {/* em_reparo → o que foi trocado */}
+            {detalhes.status === 'em_reparo' && (
+              <div style={{ marginBottom:16 }}>
+                <p style={{ fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:10 }}>Peças trocadas</p>
+                {loadingPecas ? <p style={{ color:'#94a3b8',fontSize:13 }}>Carregando...</p> : (
+                  <div style={{ display:'flex',flexDirection:'column',gap:4 }}>
+                    {modalPecas.map(p => (
+                      <label key={p.id} style={{ display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:8,background:p.trocada?'#ecfdf5':'#f8fafc',cursor:'pointer',fontSize:13,border:'1px solid #e2e8f0' }}>
+                        <input type="checkbox" checked={p.trocada} onChange={e => marcarPecaTrocada(p.id, e.target.checked)} style={{ width:16,height:16,cursor:'pointer' }} />
+                        <span style={{ flex:1,color:p.trocada?'#065f46':'#374151' }}>{p.peca_nome}</span>
+                        {!p.chegou && <span style={{ fontSize:10,color:'#ef4444',background:'#fef2f2',padding:'1px 6px',borderRadius:4 }}>não chegou</span>}
+                        {p.trocada && <span style={{ fontSize:11,color:'#065f46' }}>✓</span>}
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display:'flex',gap:8,marginTop:10 }}>
+                  <input value={pecaExtraNome} onChange={e => setPecaExtraNome(e.target.value)} style={{ ...inp,flex:1,fontSize:12,padding:'6px 10px' }} placeholder="Peça extra trocada (opcional)..." onKeyDown={e => { if(e.key==='Enter') adicionarPecaExtra() }} />
+                  <button onClick={adicionarPecaExtra} disabled={!pecaExtraNome.trim()} style={{ padding:'6px 12px',background:'#6366f1',color:'#fff',border:'none',borderRadius:8,fontSize:12,cursor:'pointer',flexShrink:0 }}>+ Add</button>
+                </div>
+                <button onClick={confirmarReparo} disabled={salvandoStatus} style={{ width:'100%',padding:'10px',marginTop:10,background:'#1d4ed8',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer' }}>
+                  {salvandoStatus ? 'Salvando...' : '✓ Confirmar reparo — fazer checklist'}
+                </button>
+              </div>
+            )}
+
+            {/* checklist → avaliação final */}
+            {detalhes.status === 'checklist' && (
+              <div style={{ marginBottom:16 }}>
+                <p style={{ fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:10 }}>Checklist final</p>
+                <p style={{ fontSize:11,fontWeight:700,color:'#6366f1',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:6 }}>🎨 Estético</p>
+                <div style={{ display:'flex',flexDirection:'column',gap:4,marginBottom:10 }}>
+                  {CHECKLIST_ESTETICO.map(item => (
+                    <div key={item.key} style={{ display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:7,background:'#f8fafc' }}>
+                      <span style={{ flex:1,fontSize:12,color:'#374151' }}>{item.label}</span>
+                      <div style={{ display:'flex',gap:3 }}>
+                        {ESTADOS.map(e => (
+                          <button key={e.v} onClick={() => setChecklistFinal(p => ({...p,[item.key]:e.v}))} style={{ padding:'3px 7px',borderRadius:5,border:`1px solid ${checklistFinal[item.key]===e.v?e.border:'#e2e8f0'}`,background:checklistFinal[item.key]===e.v?e.bg:'#fff',color:checklistFinal[item.key]===e.v?e.color:'#94a3b8',fontSize:10,fontWeight:checklistFinal[item.key]===e.v?600:400,cursor:'pointer' }}>{e.v}</button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p style={{ fontSize:11,fontWeight:700,color:'#059669',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:6 }}>⚙️ Funcional</p>
+                <div style={{ display:'flex',flexDirection:'column',gap:4,marginBottom:10 }}>
+                  {CHECKLIST_FUNCIONAL.map(item => (
+                    <div key={item.key} style={{ display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:7,background:'#f8fafc' }}>
+                      <span style={{ flex:1,fontSize:12,color:'#374151' }}>{item.label}</span>
+                      <div style={{ display:'flex',gap:3 }}>
+                        {ESTADOS.map(e => (
+                          <button key={e.v} onClick={() => setChecklistFinal(p => ({...p,[item.key]:e.v}))} style={{ padding:'3px 7px',borderRadius:5,border:`1px solid ${checklistFinal[item.key]===e.v?e.border:'#e2e8f0'}`,background:checklistFinal[item.key]===e.v?e.bg:'#fff',color:checklistFinal[item.key]===e.v?e.color:'#94a3b8',fontSize:10,fontWeight:checklistFinal[item.key]===e.v?600:400,cursor:'pointer' }}>{e.v}</button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {!Object.values(checklistFinal).every(v=>v==='Bom'||v==='N/A') && (
+                  <label style={{ display:'flex',alignItems:'center',gap:6,fontSize:12,color:'#64748b',cursor:'pointer',marginBottom:8 }}>
+                    <input type="checkbox" checked={liberarSemChecklist} onChange={e => setLiberarSemChecklist(e.target.checked)} />
+                    Liberar para venda sem todo checklist OK
+                  </label>
+                )}
+                <button onClick={liberarParaVenda} disabled={salvandoStatus||(!Object.values(checklistFinal).every(v=>v==='Bom'||v==='N/A')&&!liberarSemChecklist)}
+                  style={{ width:'100%',padding:'10px',background:(!Object.values(checklistFinal).every(v=>v==='Bom'||v==='N/A')&&!liberarSemChecklist)?'#e2e8f0':'#16a34a',color:(!Object.values(checklistFinal).every(v=>v==='Bom'||v==='N/A')&&!liberarSemChecklist)?'#94a3b8':'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:(!Object.values(checklistFinal).every(v=>v==='Bom'||v==='N/A')&&!liberarSemChecklist)?'default':'pointer' }}>
+                  {salvandoStatus ? 'Salvando...' : '✓ Liberar para venda'}
+                </button>
+              </div>
+            )}
+
+            {/* disponivel → card + vender */}
+            {detalhes.status === 'disponivel' && (
+              <div style={{ display:'flex',flexDirection:'column',gap:8,marginBottom:16 }}>
+                <button onClick={() => imprimirCard(detalhes)} style={{ width:'100%',padding:'10px',background:'#0f172a',color:'#fbbf24',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer' }}>
+                  🏷 Imprimir card de venda
+                </button>
+                <button onClick={() => { setAparelhoVenda(detalhes); setDetalhes(null); setAba('vender' as any) }} style={{ width:'100%',padding:'10px',background:'#16a34a',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer' }}>
+                  ⬆ Vender este aparelho →
+                </button>
+              </div>
             )}
 
             {detalhes.observacoes && (

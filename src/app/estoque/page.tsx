@@ -27,6 +27,12 @@ type Produto = {
   campos_extras: { fotos?: string[] } | null
 }
 
+type PedidoPeca = {
+  id: string; aparelho_id: string; item_key: string | null
+  peca_nome: string; preco: number; chegou: boolean; created_at: string
+  aparelhos?: { marca: string; modelo: string } | null
+}
+
 type Entrada = {
   id: string; produto_id: string; quantidade: number
   custo_unit: number; custo_total: number; data_compra: string; created_at: string
@@ -52,7 +58,9 @@ export default function EstoquePage() {
   const supabase = createClient()
   const router = useRouter()
 
-  const [aba, setAba] = useState<'produtos' | 'entradas' | 'fornecedores'>('produtos')
+  const [aba, setAba] = useState<'produtos' | 'entradas' | 'fornecedores' | 'pedidos'>('produtos')
+  const [pedidosPecas, setPedidosPecas] = useState<PedidoPeca[]>([])
+  const [loadingPedidos, setLoadingPedidos] = useState(false)
   const [entradasHistorico, setEntradasHistorico] = useState<EntradaHistorico[]>([])
   const [fornecedoresList, setFornecedoresList] = useState<Fornecedor[]>([])
   const [loadingEntradas, setLoadingEntradas] = useState(false)
@@ -273,10 +281,25 @@ export default function EstoquePage() {
     setLoadingFornecedores(false)
   }, [supabase])
 
+  const fetchPedidosPecas = useCallback(async () => {
+    setLoadingPedidos(true)
+    const { data } = await supabase.from('aparelho_pecas')
+      .select('id,aparelho_id,item_key,peca_nome,preco,chegou,created_at,aparelhos(marca,modelo)')
+      .eq('chegou', false).order('created_at', { ascending: false })
+    setPedidosPecas((data ?? []) as unknown as PedidoPeca[])
+    setLoadingPedidos(false)
+  }, [supabase])
+
   useEffect(() => {
     if (aba === 'entradas') fetchEntradasHistorico()
     if (aba === 'fornecedores') fetchFornecedoresList()
-  }, [aba, fetchEntradasHistorico, fetchFornecedoresList])
+    if (aba === 'pedidos') fetchPedidosPecas()
+  }, [aba, fetchEntradasHistorico, fetchFornecedoresList, fetchPedidosPecas])
+
+  async function marcarPecaChegou(id: string) {
+    await supabase.from('aparelho_pecas').update({ chegou: true }).eq('id', id)
+    setPedidosPecas(prev => prev.filter(p => p.id !== id))
+  }
 
   // Separar incompletos e completos
   const incompletos = produtos.filter(p => !COMPLETO(p))
@@ -349,7 +372,7 @@ export default function EstoquePage() {
           )}
         </div>
         <div style={{ display: 'flex', gap: 2 }}>
-          {([['produtos','📦 Produtos & Estoque'],['entradas','📥 Entradas'],['fornecedores','🏭 Fornecedores']] as const).map(([k,l]) => (
+          {([['produtos','📦 Produtos & Estoque'],['entradas','📥 Entradas'],['fornecedores','🏭 Fornecedores'],['pedidos','🔧 Pedidos de peças']] as const).map(([k,l]) => (
             <button key={k} onClick={() => setAba(k)} style={{ padding: '9px 16px', fontSize: 13, fontWeight: aba === k ? 600 : 400, border: 'none', background: 'none', cursor: 'pointer', color: aba === k ? '#6366f1' : '#64748b', borderBottom: aba === k ? '2px solid #6366f1' : '2px solid transparent', whiteSpace: 'nowrap', marginBottom: -1 }}>{l}</button>
           ))}
         </div>
@@ -477,6 +500,57 @@ export default function EstoquePage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── ABA PEDIDOS DE PEÇAS */}
+      {aba === 'pedidos' && (
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+          {loadingPedidos ? (
+            <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Carregando...</div>
+          ) : pedidosPecas.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 60 }}>
+              <div style={{ fontSize: 36, marginBottom: 12 }}>🔧</div>
+              <p style={{ color: '#94a3b8', fontSize: 14 }}>Nenhuma peça pendente de chegada.</p>
+            </div>
+          ) : (
+            <div>
+              <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 10, padding: '10px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 13, color: '#92400e', fontWeight: 600 }}>⏳ {pedidosPecas.length} peça(s) aguardando chegada</span>
+                <span style={{ fontSize: 13, color: '#92400e', fontWeight: 700 }}>
+                  Total: R$ {pedidosPecas.reduce((acc,p)=>acc+(p.preco??0),0).toFixed(2).replace('.',',')}
+                </span>
+              </div>
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead><tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                    {['Aparelho','Peça','Valor estimado','Data pedido',''].map(h => <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {pedidosPecas.map(p => (
+                      <tr key={p.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '10px 14px', fontWeight: 500, color: '#0f172a' }}>
+                          {p.aparelhos ? `${p.aparelhos.marca} ${p.aparelhos.modelo}` : '—'}
+                        </td>
+                        <td style={{ padding: '10px 14px', color: '#374151' }}>{p.peca_nome}</td>
+                        <td style={{ padding: '10px 14px', fontFamily: 'monospace', color: '#374151' }}>
+                          {p.preco > 0 ? `R$ ${p.preco.toFixed(2).replace('.',',')}` : '—'}
+                        </td>
+                        <td style={{ padding: '10px 14px', fontSize: 12, color: '#94a3b8' }}>
+                          {new Date(p.created_at).toLocaleDateString('pt-BR')}
+                        </td>
+                        <td style={{ padding: '10px 14px' }}>
+                          <button onClick={() => marcarPecaChegou(p.id)} style={{ fontSize: 12, padding: '5px 12px', border: '1px solid #bbf7d0', borderRadius: 8, background: '#ecfdf5', color: '#065f46', cursor: 'pointer', fontWeight: 500 }}>
+                            ✓ Chegou
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
