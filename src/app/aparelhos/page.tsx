@@ -273,13 +273,20 @@ export default function AparelhoPage() {
     if (!detalhes) return
     const marcadas = novasPecas.filter(p => p.marcado)
     if (marcadas.length === 0) {
-      // sem peças: avança direto para disponivel
       await atualizarStatus(detalhes.id, 'disponivel'); return
     }
     setSalvandoStatus(true)
     await supabase.from('aparelho_pecas').insert(
       marcadas.map(p => ({ aparelho_id: detalhes.id, item_key: p.key, peca_nome: p.nome, preco: parseFloat(p.preco)||0 }))
     )
+    // Somar custo das peças ao preco_compra do aparelho
+    const custoPecas = marcadas.reduce((acc,p) => acc + (parseFloat(p.preco)||0), 0)
+    if (custoPecas > 0) {
+      const novoTotal = (detalhes.preco_compra ?? 0) + custoPecas
+      await supabase.from('aparelhos').update({ preco_compra: novoTotal }).eq('id', detalhes.id)
+      setDetalhes(d => d ? { ...d, preco_compra: novoTotal } : d)
+      setAparelhos(prev => prev.map(a => a.id === detalhes.id ? { ...a, preco_compra: novoTotal } : a))
+    }
     await atualizarStatus(detalhes.id, 'aguardando_pecas')
     setSalvandoStatus(false)
   }
@@ -1010,8 +1017,8 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
 
       {/* ═══ MODAL DETALHES ═══ */}
       {detalhes && (
-        <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'flex-end' }} onClick={() => setDetalhes(null)}>
-          <div style={{ width:460,height:'100vh',background:'#fff',overflow:'auto',padding:28,boxShadow:'-4px 0 24px rgba(0,0,0,0.15)' }} onClick={e => e.stopPropagation()}>
+        <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:'20px' }} onClick={() => setDetalhes(null)}>
+          <div style={{ width:'100%',maxWidth:560,maxHeight:'90vh',background:'#fff',overflow:'auto',padding:28,borderRadius:16,boxShadow:'0 20px 60px rgba(0,0,0,0.25)' }} onClick={e => e.stopPropagation()}>
             <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20 }}>
               <div>
                 <h2 style={{ fontSize:18,fontWeight:700,color:'#0f172a',marginBottom:4 }}>{detalhes.marca} {detalhes.modelo}</h2>
@@ -1090,13 +1097,31 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
                     </div>
                   )
                 })}
-                {novasPecas.some(p=>p.marcado) && (
-                  <div style={{ background:'#f0f9ff',borderRadius:8,padding:'8px 12px',marginTop:8,marginBottom:8,fontSize:13,color:'#0369a1' }}>
-                    Total estimado: <strong>R$ {novasPecas.filter(p=>p.marcado).reduce((acc,p)=>acc+(parseFloat(p.preco)||0),0).toFixed(2).replace('.',',')}</strong>
-                  </div>
-                )}
+                {(() => {
+                  const custoCompra = detalhes.preco_compra ?? 0
+                  const custoPecas = novasPecas.filter(p=>p.marcado).reduce((acc,p)=>acc+(parseFloat(p.preco)||0),0)
+                  const custoTotal = custoCompra + custoPecas
+                  return (
+                    <div style={{ background:'#f8fafc',borderRadius:10,padding:'12px 14px',marginTop:8,marginBottom:8,border:'1px solid #e2e8f0' }}>
+                      <div style={{ display:'flex',justifyContent:'space-between',fontSize:13,color:'#64748b',marginBottom:4 }}>
+                        <span>Custo de compra</span>
+                        <span style={{ fontFamily:'monospace' }}>R$ {custoCompra.toFixed(2).replace('.',',')}</span>
+                      </div>
+                      {novasPecas.some(p=>p.marcado) && (
+                        <div style={{ display:'flex',justifyContent:'space-between',fontSize:13,color:'#64748b',marginBottom:4 }}>
+                          <span>Peças estimadas</span>
+                          <span style={{ fontFamily:'monospace' }}>R$ {custoPecas.toFixed(2).replace('.',',')}</span>
+                        </div>
+                      )}
+                      <div style={{ display:'flex',justifyContent:'space-between',fontSize:14,fontWeight:700,color:'#0f172a',borderTop:'1px solid #e2e8f0',paddingTop:6,marginTop:2 }}>
+                        <span>Custo total</span>
+                        <span style={{ fontFamily:'monospace',color:'#991b1b' }}>R$ {custoTotal.toFixed(2).replace('.',',')}</span>
+                      </div>
+                    </div>
+                  )
+                })()}
                 <button onClick={salvarRevisaoPecas} disabled={salvandoStatus} style={{ width:'100%',padding:'10px',background:'#0f172a',color:'#fbbf24',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',marginTop:4 }}>
-                  {salvandoStatus ? 'Salvando...' : novasPecas.some(p=>p.marcado) ? '✓ Confirmar peças e aguardar' : '✓ Sem peças necessárias — disponibilizar'}
+                  {salvandoStatus ? 'Salvando...' : novasPecas.some(p=>p.marcado) ? '✓ Confirmar peças e aguardar chegada' : '✓ Sem peças necessárias — disponibilizar'}
                 </button>
               </div>
             )}
