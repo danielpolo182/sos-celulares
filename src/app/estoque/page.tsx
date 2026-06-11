@@ -13,17 +13,12 @@ type EntradaHistorico = {
 type Fornecedor = { id: string; nome: string; telefone: string | null; email: string | null; ativo: boolean }
 
 type Produto = {
-  id: string
-  nome: string
-  categoria: string | null
-  qualidade: string
-  custo_medio: number
-  preco_venda: number
-  estoque_atual: number
-  estoque_minimo: number
-  modelos_compat: string[] | null
-  ativo: boolean
-  ultima_entrada?: { custo_unit: number; data_compra: string } | null
+  id: string; nome: string; categoria: string | null; qualidade: string
+  custo_medio: number; preco_venda: number; estoque_atual: number; estoque_minimo: number
+  modelos_compat: string[] | null; ativo: boolean; cadastro_rapido: boolean
+  codigo_interno: string | null; codigo_barras: string | null; descricao: string | null
+  custo_unit: number; margem_pct: number; unidade: string; movimenta_estoque: boolean
+  peso_g: number | null; altura_cm: number | null; largura_cm: number | null; comprimento_cm: number | null
 }
 
 type Entrada = {
@@ -68,13 +63,22 @@ export default function EstoquePage() {
   const [showModalProd, setShowModalProd] = useState(false)
   const [showModalEntrada, setShowModalEntrada] = useState(false)
 
-  // Form produto
+  // Form produto — campos completos
   const [fNome, setFNome] = useState('')
+  const [fCodInterno, setFCodInterno] = useState('')
+  const [fCodBarras, setFCodBarras] = useState('')
   const [fCategoria, setFCategoria] = useState('Display / Tela')
   const [fQualidade, setFQualidade] = useState('compativel')
-  const [fPrecoVenda, setFPrecoVenda] = useState('')
-  const [fEstoqueMin, setFEstoqueMin] = useState('1')
+  const [fUnidade, setFUnidade] = useState('un')
+  const [fCusto, setFCusto] = useState('0')
+  const [fMargem, setFMargem] = useState('0')
+  const [fPrecoVenda, setFPrecoVenda] = useState('0')
+  const [fEstoqueMin, setFEstoqueMin] = useState('0')
+  const [fEstoqueMax, setFEstoqueMax] = useState('')
   const [fModelos, setFModelos] = useState('')
+  const [fDescricao, setFDescricao] = useState('')
+  const [fAtivo, setFAtivo] = useState(true)
+  const [fMovEstoque, setFMovEstoque] = useState(true)
   const [fEditId, setFEditId] = useState<string | null>(null)
   const [fSaving, setFSaving] = useState(false)
 
@@ -114,32 +118,65 @@ export default function EstoquePage() {
     if (produtoSel) fetchEntradas(produtoSel.id)
   }, [produtoSel, fetchEntradas])
 
-  function abrirNovoProduto() {
-    setFNome(''); setFCategoria('Display / Tela'); setFQualidade('compativel')
-    setFPrecoVenda(''); setFEstoqueMin('1'); setFModelos(''); setFEditId(null)
-    setShowModalProd(true)
+  function calcPreco(custo: number, margem: number) {
+    if (margem >= 100 || custo <= 0) return 0
+    return Math.round(custo / (1 - margem / 100) * 100) / 100
   }
 
+  function inpReq(value: string | number | null | undefined): React.CSSProperties {
+    const vazio = !value || String(value).trim() === '' || Number(value) === 0
+    return { ...inp, background: vazio ? '#fef2f2' : '#f0fdf4', border: `1px solid ${vazio ? '#fecaca' : '#bbf7d0'}`, transition: 'background 0.2s, border 0.2s' }
+  }
+
+  function resetForm() {
+    setFNome(''); setFCodInterno(''); setFCodBarras('')
+    setFCategoria('Display / Tela'); setFQualidade('compativel'); setFUnidade('un')
+    setFCusto('0'); setFMargem('0'); setFPrecoVenda('0')
+    setFEstoqueMin('0'); setFEstoqueMax(''); setFModelos(''); setFDescricao('')
+    setFAtivo(true); setFMovEstoque(true); setFEditId(null)
+  }
+
+  function abrirNovoProduto() { resetForm(); setShowModalProd(true) }
+
   function abrirEditProduto(p: Produto) {
-    setFNome(p.nome); setFCategoria(p.categoria ?? 'Display / Tela')
-    setFQualidade(p.qualidade); setFPrecoVenda(String(p.preco_venda))
-    setFEstoqueMin(String(p.estoque_minimo)); setFModelos(p.modelos_compat?.join(', ') ?? '')
+    setFNome(p.nome); setFCodInterno(p.codigo_interno ?? '')
+    setFCodBarras(p.codigo_barras ?? ''); setFCategoria(p.categoria ?? 'Display / Tela')
+    setFQualidade(p.qualidade); setFUnidade(p.unidade ?? 'un')
+    setFCusto(String(p.custo_unit ?? p.custo_medio ?? 0))
+    setFMargem(String(p.margem_pct ?? 0)); setFPrecoVenda(String(p.preco_venda))
+    setFEstoqueMin(String(p.estoque_minimo)); setFEstoqueMax('')
+    setFModelos(p.modelos_compat?.join(', ') ?? ''); setFDescricao(p.descricao ?? '')
+    setFAtivo(p.ativo); setFMovEstoque(p.movimenta_estoque ?? true)
     setFEditId(p.id); setShowModalProd(true)
   }
 
   async function salvarProduto() {
     if (!fNome.trim()) return
     setFSaving(true)
+    const custo = parseFloat(fCusto) || 0
+    const preco = parseFloat(fPrecoVenda) || 0
+    const margem = parseFloat(fMargem) || 0
     const payload = {
-      nome: fNome.trim(), categoria: fCategoria, qualidade: fQualidade,
-      preco_venda: parseFloat(fPrecoVenda) || 0,
-      estoque_minimo: parseInt(fEstoqueMin) || 1,
+      nome: fNome.trim(),
+      codigo_interno: fCodInterno || null,
+      codigo_barras: fCodBarras || null,
+      categoria: fCategoria || null,
+      qualidade: fQualidade,
+      unidade: fUnidade,
+      custo_unit: custo,
+      margem_pct: margem,
+      preco_venda: preco,
+      estoque_minimo: parseFloat(fEstoqueMin) || 0,
       modelos_compat: fModelos ? fModelos.split(',').map(s => s.trim()).filter(Boolean) : null,
+      descricao: fDescricao || null,
+      ativo: fAtivo,
+      movimenta_estoque: fMovEstoque,
+      ...(fEditId ? { cadastro_rapido: false } : {}),
     }
     if (fEditId) {
       await supabase.from('produtos').update(payload).eq('id', fEditId)
     } else {
-      await supabase.from('produtos').insert({ ...payload, estoque_atual: 0, custo_medio: 0 })
+      await supabase.from('produtos').insert({ ...payload, estoque_atual: 0, custo_medio: custo })
     }
     setFSaving(false); setShowModalProd(false); fetchProdutos()
   }
@@ -251,8 +288,8 @@ export default function EstoquePage() {
                     const baixoEstoque = p.estoque_atual <= p.estoque_minimo
                     const qc = QUALIDADE_CONFIG[p.qualidade] ?? QUALIDADE_CONFIG.compativel
                     return (
-                      <tr key={p.id} style={{ borderBottom: '1px solid #f1f5f9' }}
-                        onMouseEnter={e => { e.currentTarget.style.background = '#fafafa' }}
+                      <tr key={p.id} onClick={() => abrirEditProduto(p)} style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#f5f3ff' }}
                         onMouseLeave={e => { e.currentTarget.style.background = '#fff' }}>
                         <td style={{ padding: '10px 14px', fontWeight: 500, color: '#0f172a' }}>
                           {p.nome}
@@ -448,53 +485,144 @@ export default function EstoquePage() {
         </div>
       )}
 
-      {/* MODAL PRODUTO */}
+      {/* OVERLAY PRODUTO COMPLETO */}
       {showModalProd && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }}>
-          <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ padding: '18px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>{fEditId ? 'Editar produto' : 'Novo produto'}</h2>
-              <button onClick={() => setShowModalProd(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#94a3b8' }}>×</button>
-            </div>
-            <div style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 200, padding: '20px 16px', overflowY: 'auto' }}>
+          <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 680, marginBottom: 20 }}>
+            {/* Header */}
+            <div style={{ padding: '18px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', borderRadius: '16px 16px 0 0', zIndex: 1 }}>
               <div>
-                <label style={lbl}>Nome do produto *</label>
-                <input style={inp} value={fNome} onChange={e => setFNome(e.target.value)} placeholder="Ex: Display Samsung Galaxy A32 Incell" />
+                <h2 style={{ fontSize: 16, fontWeight: 600, color: '#0f172a' }}>{fEditId ? '✏️ Editar produto' : '📦 Novo produto'}</h2>
+                {fEditId && <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>Campos em vermelho estão incompletos · verde = preenchido</p>}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={lbl}>Categoria</label>
-                  <select style={inp} value={fCategoria} onChange={e => setFCategoria(e.target.value)}>
-                    {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={lbl}>Qualidade</label>
-                  <select style={inp} value={fQualidade} onChange={e => setFQualidade(e.target.value)}>
-                    <option value="original">Original</option>
-                    <option value="premium">Premium</option>
-                    <option value="compativel">Compatível</option>
-                    <option value="recondicionado">Recondicionado</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={lbl}>Preço de venda (R$)</label>
-                  <input style={inp} type="number" value={fPrecoVenda} onChange={e => setFPrecoVenda(e.target.value)} placeholder="0,00" />
-                </div>
-                <div>
-                  <label style={lbl}>Estoque mínimo</label>
-                  <input style={inp} type="number" value={fEstoqueMin} onChange={e => setFEstoqueMin(e.target.value)} placeholder="1" />
-                </div>
-              </div>
+              <button onClick={() => setShowModalProd(false)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#94a3b8', lineHeight: 1 }}>×</button>
+            </div>
+
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+              {/* ── Identificação */}
               <div>
-                <label style={lbl}>Modelos compatíveis (separados por vírgula)</label>
-                <input style={inp} value={fModelos} onChange={e => setFModelos(e.target.value)} placeholder="Samsung Galaxy A32, Samsung Galaxy A32s..." />
+                <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Identificação</p>
+                <div style={{ marginBottom: 10 }}>
+                  <label style={lbl}>Nome do produto *</label>
+                  <input style={inpReq(fNome)} value={fNome} onChange={e => setFNome(e.target.value)} placeholder="Ex: Display Samsung Galaxy A32 Incell" autoFocus />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div><label style={lbl}>Código interno</label><input style={inp} value={fCodInterno} onChange={e => setFCodInterno(e.target.value)} placeholder="PRD-001" /></div>
+                  <div><label style={lbl}>Código de barras</label><input style={inp} value={fCodBarras} onChange={e => setFCodBarras(e.target.value)} /></div>
+                </div>
+              </div>
+
+              {/* ── Classificação */}
+              <div>
+                <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Classificação</p>
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
+                  <div><label style={lbl}>Categoria</label>
+                    <select style={inp} value={fCategoria} onChange={e => setFCategoria(e.target.value)}>
+                      {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div><label style={lbl}>Qualidade</label>
+                    <select style={inp} value={fQualidade} onChange={e => setFQualidade(e.target.value)}>
+                      <option value="original">Original</option>
+                      <option value="premium">Premium</option>
+                      <option value="compativel">Compatível</option>
+                      <option value="recondicionado">Recondicionado</option>
+                    </select>
+                  </div>
+                  <div><label style={lbl}>Unidade</label>
+                    <select style={inp} value={fUnidade} onChange={e => setFUnidade(e.target.value)}>
+                      {['un','kg','g','m','cm','l','ml','cx','pc','par'].map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Valores */}
+              <div>
+                <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Valores</p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+                  <div>
+                    <label style={lbl}>Custo unitário (R$)</label>
+                    <input style={inp} type="number" step="0.01" min="0" value={fCusto}
+                      onChange={e => {
+                        setFCusto(e.target.value)
+                        const c = parseFloat(e.target.value) || 0
+                        const m = parseFloat(fMargem) || 0
+                        if (m > 0 && c > 0) setFPrecoVenda(String(calcPreco(c, m)))
+                      }} />
+                  </div>
+                  <div>
+                    <label style={lbl}>Margem de lucro (%)</label>
+                    <input style={inp} type="number" step="0.1" min="0" max="99" value={fMargem}
+                      onChange={e => {
+                        setFMargem(e.target.value)
+                        const c = parseFloat(fCusto) || 0
+                        const m = parseFloat(e.target.value) || 0
+                        if (c > 0) setFPrecoVenda(String(calcPreco(c, m)))
+                      }} />
+                  </div>
+                  <div>
+                    <label style={lbl}>Preço de venda (R$) *</label>
+                    <input style={inpReq(parseFloat(fPrecoVenda))} type="number" step="0.01" min="0" value={fPrecoVenda}
+                      onChange={e => {
+                        setFPrecoVenda(e.target.value)
+                        const c = parseFloat(fCusto) || 0
+                        const p = parseFloat(e.target.value) || 0
+                        if (c > 0 && p > c) setFMargem(String(Math.round((1 - c / p) * 10000) / 100))
+                      }} />
+                  </div>
+                </div>
+                {parseFloat(fCusto) > 0 && parseFloat(fPrecoVenda) > 0 && (
+                  <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 8, padding: '10px 14px', display: 'flex', gap: 20, fontSize: 12 }}>
+                    <div><span style={{ color: '#64748b' }}>Lucro unitário: </span><strong style={{ color: '#3730a3' }}>R$ {(parseFloat(fPrecoVenda) - parseFloat(fCusto)).toFixed(2).replace('.', ',')}</strong></div>
+                    <div><span style={{ color: '#64748b' }}>Margem: </span><strong style={{ color: '#3730a3' }}>{fMargem}%</strong></div>
+                    <div><span style={{ color: '#64748b' }}>Markup: </span><strong style={{ color: '#3730a3' }}>{parseFloat(fCusto) > 0 ? ((parseFloat(fPrecoVenda) / parseFloat(fCusto) * 100) - 100).toFixed(1) : '—'}%</strong></div>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Estoque */}
+              <div>
+                <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Estoque</p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+                  <div><label style={lbl}>Estoque mínimo (alerta)</label><input style={inp} type="number" min="0" value={fEstoqueMin} onChange={e => setFEstoqueMin(e.target.value)} /></div>
+                  <div><label style={lbl}>Estoque máximo</label><input style={inp} type="number" min="0" value={fEstoqueMax} onChange={e => setFEstoqueMax(e.target.value)} placeholder="Opcional" /></div>
+                </div>
+                <div>
+                  <label style={lbl}>Modelos compatíveis (separados por vírgula)</label>
+                  <input style={inp} value={fModelos} onChange={e => setFModelos(e.target.value)} placeholder="Samsung Galaxy A32, Apple iPhone 13..." />
+                </div>
+              </div>
+
+              {/* ── Descrição */}
+              <div>
+                <label style={lbl}>Descrição do produto</label>
+                <textarea style={{ ...inp, minHeight: 70, resize: 'vertical' }} value={fDescricao} onChange={e => setFDescricao(e.target.value)} placeholder="Detalhes técnicos, características, observações..." />
+              </div>
+
+              {/* ── Configurações */}
+              <div style={{ display: 'flex', gap: 20 }}>
+                {[
+                  { value: fAtivo,       set: setFAtivo,       label: 'Produto ativo' },
+                  { value: fMovEstoque,  set: setFMovEstoque,  label: 'Movimenta estoque' },
+                ].map(opt => (
+                  <label key={opt.label} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#374151' }}>
+                    <div onClick={() => opt.set(!opt.value)} style={{ width: 40, height: 22, borderRadius: 11, cursor: 'pointer', background: opt.value ? '#6366f1' : '#e2e8f0', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
+                      <div style={{ position: 'absolute', top: 2, left: opt.value ? 20 : 2, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
+                    </div>
+                    {opt.label}
+                  </label>
+                ))}
               </div>
             </div>
-            <div style={{ padding: '12px 22px', borderTop: '1px solid #f1f5f9', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowModalProd(false)} style={{ padding: '8px 16px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer', color: '#374151' }}>Cancelar</button>
-              <button onClick={salvarProduto} disabled={fSaving} style={{ padding: '8px 18px', background: fSaving ? '#a5b4fc' : '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: fSaving ? 'not-allowed' : 'pointer' }}>
-                {fSaving ? 'Salvando...' : fEditId ? 'Salvar' : 'Cadastrar'}
+
+            {/* Footer */}
+            <div style={{ padding: '14px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', gap: 8, justifyContent: 'flex-end', background: '#f8fafc', borderRadius: '0 0 16px 16px' }}>
+              <button onClick={() => setShowModalProd(false)} style={{ padding: '9px 18px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer', color: '#374151' }}>Cancelar</button>
+              <button onClick={salvarProduto} disabled={fSaving || !fNome.trim()}
+                style={{ padding: '9px 22px', background: fSaving || !fNome.trim() ? '#a5b4fc' : '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: fSaving || !fNome.trim() ? 'not-allowed' : 'pointer' }}>
+                {fSaving ? 'Salvando...' : fEditId ? '✓ Salvar produto' : '✓ Cadastrar produto'}
               </button>
             </div>
           </div>
