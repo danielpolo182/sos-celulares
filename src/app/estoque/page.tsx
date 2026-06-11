@@ -12,6 +12,8 @@ type EntradaHistorico = {
 
 type Fornecedor = { id: string; nome: string; telefone: string | null; email: string | null; ativo: boolean }
 
+type FotoItem = { url: string; file?: File }
+
 type Produto = {
   id: string; nome: string; unidade: string; ativo: boolean; cadastro_rapido: boolean
   custo_unit: number; margem_pct: number; preco_venda: number
@@ -24,6 +26,7 @@ type Produto = {
   habilitar_nf: boolean
   preco_atacado: number | null; qtd_min_atacado: number | null
   despesas_extras: number | null; despesas_acess: number | null; custo_final: number | null
+  fornecedor_id: string | null; categoria: string | null; estoque_minimo: number | null
   campos_extras: { fotos?: string[] } | null
 }
 
@@ -72,6 +75,7 @@ export default function EstoquePage() {
   const [search, setSearch] = useState('')
   const [produtoSel, setProdutoSel] = useState<Produto | null>(null)
   const [entradas, setEntradas] = useState<Entrada[]>([])
+  const [showModalEscolha, setShowModalEscolha] = useState(false)
   const [showModalRapido, setShowModalRapido] = useState(false)
   const [showModalCompleto, setShowModalCompleto] = useState(false)
   const [showModalEntrada, setShowModalEntrada] = useState(false)
@@ -109,8 +113,11 @@ export default function EstoquePage() {
   const [fcAltura, setFcAltura] = useState('')
   const [fcLargura, setFcLargura] = useState('')
   const [fcComprimento, setFcComprimento] = useState('')
-  const [fcFotos, setFcFotos] = useState<string[]>([])
-  const [fcFotoInput, setFcFotoInput] = useState('')
+  const [fcFotos, setFcFotos] = useState<FotoItem[]>([])
+  const [fcFornecedorId, setFcFornecedorId] = useState('')
+  const [fcCategoria, setFcCategoria] = useState('')
+  const [fcEstoqueMinimo, setFcEstoqueMinimo] = useState('')
+  const [fcUploadando, setFcUploadando] = useState(false)
 
   // ── Form entrada
   const [eQtd, setEQtd] = useState('1')
@@ -181,7 +188,10 @@ export default function EstoquePage() {
     setFcHabNf(p.habilitar_nf ?? false)
     setFcPesoG(p.peso_g ? String(p.peso_g) : ''); setFcAltura(p.altura_cm ? String(p.altura_cm) : '')
     setFcLargura(p.largura_cm ? String(p.largura_cm) : ''); setFcComprimento(p.comprimento_cm ? String(p.comprimento_cm) : '')
-    setFcFotos(p.campos_extras?.fotos ?? []); setFcFotoInput('')
+    setFcFotos((p.campos_extras?.fotos ?? []).map(url => ({ url })))
+    setFcFornecedorId(p.fornecedor_id ?? '')
+    setFcCategoria(p.categoria ?? '')
+    setFcEstoqueMinimo(p.estoque_minimo ? String(p.estoque_minimo) : '')
   }
 
   function resetBase() {
@@ -190,11 +200,54 @@ export default function EstoquePage() {
     setFModelos(''); setFDescricao(''); setFAtivo(true); setFMovEstoque(true); setFEditId(null)
   }
 
-  function abrirNovo() { resetBase(); setShowModalRapido(true) }
+  function resetCompleto() {
+    setFcTab('ident'); setFcPrecoAtacado(''); setFcQtdMinAtacado('')
+    setFcDespExtras('0'); setFcDespAcess('0'); setFcNcm(''); setFcCest(''); setFcOrigem('0')
+    setFcCsosn(''); setFcCst(''); setFcCfop(''); setFcGtin(''); setFcHabNf(false)
+    setFcPesoG(''); setFcAltura(''); setFcLargura(''); setFcComprimento('')
+    setFcFotos([]); setFcFornecedorId(''); setFcCategoria(''); setFcEstoqueMinimo('')
+  }
+
+  function abrirNovo() { setShowModalEscolha(true) }
+  function abrirNovoRapido() { resetBase(); setShowModalEscolha(false); setShowModalRapido(true) }
+  function abrirNovoCompleto() { resetBase(); resetCompleto(); setShowModalEscolha(false); setShowModalCompleto(true) }
 
   function abrirRapido(p: Produto) { popularFormBase(p); setShowModalRapido(true) }
 
   function abrirCompleto(p: Produto) { popularFormCompleto(p); setShowModalCompleto(true) }
+
+  async function uploadFoto(file: File): Promise<string | null> {
+    const ext = file.name.split('.').pop() ?? 'jpg'
+    const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+    const { data, error } = await supabase.storage.from('produto-fotos').upload(path, file, { upsert: false })
+    if (error) { alert(`Erro no upload da foto: ${error.message}`); return null }
+    const { data: pub } = supabase.storage.from('produto-fotos').getPublicUrl(data.path)
+    return pub.publicUrl
+  }
+
+  function adicionarFotos(files: FileList | null) {
+    if (!files) return
+    const restantes = 4 - fcFotos.length
+    if (restantes <= 0) { alert('Limite de 4 fotos por produto atingido.'); return }
+    const novas = Array.from(files).slice(0, restantes).map(file => ({
+      url: URL.createObjectURL(file), file,
+    }))
+    setFcFotos(prev => [...prev, ...novas])
+  }
+
+  function substituirFoto(index: number, files: FileList | null) {
+    if (!files || !files[0]) return
+    const file = files[0]
+    const url = URL.createObjectURL(file)
+    setFcFotos(prev => prev.map((f, i) => i === index ? { url, file } : f))
+  }
+
+  function removerFoto(index: number) {
+    setFcFotos(prev => {
+      const nova = prev.filter((_, i) => i !== index)
+      return nova
+    })
+  }
 
   async function salvarRapido() {
     if (!fNome.trim()) return
@@ -219,6 +272,20 @@ export default function EstoquePage() {
   async function salvarCompleto() {
     if (!fNome.trim()) return
     setFSaving(true)
+    setFcUploadando(fcFotos.some(f => !!f.file))
+
+    // fazer upload das fotos locais
+    const fotosFinais: string[] = []
+    for (const foto of fcFotos) {
+      if (foto.file) {
+        const url = await uploadFoto(foto.file)
+        if (url) fotosFinais.push(url)
+      } else {
+        fotosFinais.push(foto.url)
+      }
+    }
+    setFcUploadando(false)
+
     const payload = {
       nome: fNome.trim(), codigo_interno: fCodInterno || null, codigo_barras: fCodBarras || null,
       unidade: fUnidade, custo_unit: parseFloat(fCusto) || 0, margem_pct: parseFloat(fMargem) || 0,
@@ -236,7 +303,10 @@ export default function EstoquePage() {
       altura_cm: parseFloat(fcAltura) || null,
       largura_cm: parseFloat(fcLargura) || null,
       comprimento_cm: parseFloat(fcComprimento) || null,
-      campos_extras: fcFotos.length > 0 ? { fotos: fcFotos } : null,
+      fornecedor_id: fcFornecedorId || null,
+      categoria: fcCategoria || null,
+      estoque_minimo: parseFloat(fcEstoqueMinimo) || null,
+      campos_extras: fotosFinais.length > 0 ? { fotos: fotosFinais } : null,
     }
     if (fEditId) {
       const { error } = await supabase.from('produtos').update(payload).eq('id', fEditId)
@@ -295,6 +365,10 @@ export default function EstoquePage() {
     if (aba === 'fornecedores') fetchFornecedoresList()
     if (aba === 'pedidos') fetchPedidosPecas()
   }, [aba, fetchEntradasHistorico, fetchFornecedoresList, fetchPedidosPecas])
+
+  useEffect(() => {
+    if (showModalCompleto && fornecedoresList.length === 0) fetchFornecedoresList()
+  }, [showModalCompleto])
 
   async function marcarPecaChegou(id: string) {
     await supabase.from('aparelho_pecas').update({ chegou: true }).eq('id', id)
@@ -556,6 +630,41 @@ export default function EstoquePage() {
         </div>
       )}
 
+      {/* ═══ MODAL ESCOLHA TIPO DE CADASTRO ═══ */}
+      {showModalEscolha && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 20 }}>
+          <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 440, padding: 28 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+              <div>
+                <h2 style={{ fontSize: 17, fontWeight: 700, color: '#0f172a' }}>Novo produto</h2>
+                <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 3 }}>Escolha o tipo de cadastro</p>
+              </div>
+              <button onClick={() => setShowModalEscolha(false)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#94a3b8', lineHeight: 1, marginTop: -4 }}>×</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <button onClick={abrirNovoRapido} style={{ display: 'flex', alignItems: 'flex-start', gap: 16, padding: '18px 20px', border: '2px solid #e2e8f0', borderRadius: 12, background: '#fff', cursor: 'pointer', textAlign: 'left', transition: 'border-color 0.15s' }}
+                onMouseEnter={e => (e.currentTarget.style.borderColor = '#a5b4fc')}
+                onMouseLeave={e => (e.currentTarget.style.borderColor = '#e2e8f0')}>
+                <span style={{ fontSize: 28, flexShrink: 0 }}>⚡</span>
+                <div>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>Cadastro rápido</p>
+                  <p style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>Nome, código, preço e unidade. Ideal para cadastrar rapidamente durante uma venda ou OS.</p>
+                </div>
+              </button>
+              <button onClick={abrirNovoCompleto} style={{ display: 'flex', alignItems: 'flex-start', gap: 16, padding: '18px 20px', border: '2px solid #e2e8f0', borderRadius: 12, background: '#fff', cursor: 'pointer', textAlign: 'left', transition: 'border-color 0.15s' }}
+                onMouseEnter={e => (e.currentTarget.style.borderColor = '#6366f1')}
+                onMouseLeave={e => (e.currentTarget.style.borderColor = '#e2e8f0')}>
+                <span style={{ fontSize: 28, flexShrink: 0 }}>📋</span>
+                <div>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>Cadastro completo</p>
+                  <p style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>Todas as informações: fotos, fornecedor, categoria, dimensões, dados fiscais (NCM, CSOSN, CFOP), preço atacado e mais.</p>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ═══ MODAL EDITAR RÁPIDO ═══ */}
       {showModalRapido && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 200, padding: '20px 16px', overflowY: 'auto' }}>
@@ -677,13 +786,34 @@ export default function EstoquePage() {
                       </select>
                     </div>
                   </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div>
+                      <label style={lbl}>Fornecedor</label>
+                      <select style={inp} value={fcFornecedorId} onChange={e => setFcFornecedorId(e.target.value)}>
+                        <option value="">— Nenhum —</option>
+                        {fornecedoresList.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={lbl}>Categoria</label>
+                      <input style={inp} value={fcCategoria} onChange={e => setFcCategoria(e.target.value)} placeholder="Ex: Display, Bateria, Carcaça..." />
+                    </div>
+                  </div>
                   <div>
                     <label style={lbl}>Modelos compatíveis (separados por vírgula)</label>
                     <input style={inp} value={fModelos} onChange={e => setFModelos(e.target.value)} placeholder="Samsung Galaxy A32, Apple iPhone 13..." />
                   </div>
                   <div>
                     <label style={lbl}>Descrição</label>
-                    <textarea style={{ ...inp, minHeight: 80, resize: 'vertical' }} value={fDescricao} onChange={e => setFDescricao(e.target.value)} placeholder="Detalhes técnicos, características..." />
+                    <textarea style={{ ...inp, minHeight: 72, resize: 'vertical' }} value={fDescricao} onChange={e => setFDescricao(e.target.value)} placeholder="Detalhes técnicos, características..." />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div>
+                      <label style={lbl}>Estoque mínimo (alerta)</label>
+                      <input style={inp} inputMode="decimal" value={fcEstoqueMinimo}
+                        onChange={e => { if (/^\d*\.?\d*$/.test(e.target.value)) setFcEstoqueMinimo(e.target.value) }}
+                        placeholder="Ex: 5" />
+                    </div>
                   </div>
                   <div style={{ display: 'flex', gap: 24 }}>
                     <Toggle value={fAtivo} onChange={setFAtivo} label="Produto ativo" />
@@ -788,18 +918,33 @@ export default function EstoquePage() {
               {/* ── TAB: DIMENSÕES */}
               {fcTab === 'dimensoes' && (
                 <>
+                  <p style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Somente números. Usado para cálculo de frete e NF-e.</p>
                   <div>
                     <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Peso</p>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                      <div><label style={lbl}>Peso bruto (g)</label><input style={inp} type="number" step="0.1" min="0" value={fcPesoG} onChange={e => setFcPesoG(e.target.value)} placeholder="Ex: 150" /></div>
+                      <div>
+                        <label style={lbl}>Peso bruto (g)</label>
+                        <input style={inp} inputMode="decimal" value={fcPesoG} placeholder="Ex: 150"
+                          onChange={e => { if (/^\d*\.?\d*$/.test(e.target.value)) setFcPesoG(e.target.value) }}
+                          onKeyDown={e => { if (!/[\d.,Backspace,Delete,Tab,ArrowLeft,ArrowRight]/.test(e.key)) e.preventDefault() }} />
+                      </div>
                     </div>
                   </div>
                   <div>
                     <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Medidas (cm)</p>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-                      <div><label style={lbl}>Altura (cm)</label><input style={inp} type="number" step="0.1" min="0" value={fcAltura} onChange={e => setFcAltura(e.target.value)} placeholder="0,0" /></div>
-                      <div><label style={lbl}>Largura (cm)</label><input style={inp} type="number" step="0.1" min="0" value={fcLargura} onChange={e => setFcLargura(e.target.value)} placeholder="0,0" /></div>
-                      <div><label style={lbl}>Comprimento (cm)</label><input style={inp} type="number" step="0.1" min="0" value={fcComprimento} onChange={e => setFcComprimento(e.target.value)} placeholder="0,0" /></div>
+                      {([
+                        ['Altura (cm)', fcAltura, setFcAltura],
+                        ['Largura (cm)', fcLargura, setFcLargura],
+                        ['Comprimento (cm)', fcComprimento, setFcComprimento],
+                      ] as [string, string, (v:string)=>void][]).map(([label, val, set]) => (
+                        <div key={label}>
+                          <label style={lbl}>{label}</label>
+                          <input style={inp} inputMode="decimal" value={val} placeholder="0,0"
+                            onChange={e => { if (/^\d*\.?\d*$/.test(e.target.value)) set(e.target.value) }}
+                            onKeyDown={e => { if (!/[\d.,Backspace,Delete,Tab,ArrowLeft,ArrowRight]/.test(e.key)) e.preventDefault() }} />
+                        </div>
+                      ))}
                     </div>
                   </div>
                   {(fcPesoG || fcAltura || fcLargura || fcComprimento) && (
@@ -813,39 +958,65 @@ export default function EstoquePage() {
               {/* ── TAB: FOTOS */}
               {fcTab === 'fotos' && (
                 <>
-                  <div>
-                    <p style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>
-                      Adicione URLs de imagens do produto (hospedadas no Supabase Storage, Imgur, ou qualquer CDN).
-                    </p>
-                    <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-                      <input style={{ ...inp, flex: 1 }} value={fcFotoInput} onChange={e => setFcFotoInput(e.target.value)} placeholder="https://..." onKeyDown={e => {
-                        if (e.key === 'Enter' && fcFotoInput.trim()) {
-                          setFcFotos(prev => [...prev, fcFotoInput.trim()]); setFcFotoInput('')
-                        }
-                      }} />
-                      <button onClick={() => { if (fcFotoInput.trim()) { setFcFotos(prev => [...prev, fcFotoInput.trim()]); setFcFotoInput('') } }}
-                        style={{ padding: '8px 16px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                        + Adicionar
-                      </button>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                    <div>
+                      <p style={{ fontSize: 13, fontWeight: 500, color: '#374151' }}>Fotos do produto</p>
+                      <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{fcFotos.length}/4 fotos · Formatos: JPG, PNG, WebP · Máx. 5 MB por foto</p>
                     </div>
+                    {fcFotos.length < 4 && (
+                      <label style={{ padding: '8px 16px', background: '#6366f1', color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        + Adicionar foto
+                        <input type="file" accept="image/*" multiple style={{ display: 'none' }}
+                          onChange={e => adicionarFotos(e.target.files)} />
+                      </label>
+                    )}
                   </div>
                   {fcFotos.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
-                      <div style={{ fontSize: 36, marginBottom: 8 }}>🖼</div>
-                      <p style={{ fontSize: 13 }}>Nenhuma foto adicionada</p>
-                    </div>
+                    <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '48px 0', border: '2px dashed #e2e8f0', borderRadius: 12, color: '#94a3b8', cursor: 'pointer', gap: 8 }}>
+                      <span style={{ fontSize: 40 }}>🖼</span>
+                      <p style={{ fontSize: 14, fontWeight: 500, color: '#64748b' }}>Clique para adicionar fotos</p>
+                      <p style={{ fontSize: 12 }}>ou arraste arquivos aqui</p>
+                      <input type="file" accept="image/*" multiple style={{ display: 'none' }}
+                        onChange={e => adicionarFotos(e.target.files)} />
+                    </label>
                   ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
-                      {fcFotos.map((url, i) => (
-                        <div key={i} style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', border: '1px solid #e2e8f0', aspectRatio: '1' }}>
-                          <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-                          <button onClick={() => setFcFotos(prev => prev.filter((_, j) => j !== i))}
-                            style={{ position: 'absolute', top: 4, right: 4, width: 22, height: 22, borderRadius: '50%', background: 'rgba(15,23,42,0.7)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
-                            ×
-                          </button>
-                          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '4px 6px', background: 'rgba(0,0,0,0.5)', fontSize: 9, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{url.split('/').pop()}</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+                      {fcFotos.map((foto, i) => (
+                        <div key={i} style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', border: '1px solid #e2e8f0', aspectRatio: '4/3', background: '#f8fafc' }}>
+                          <img src={foto.url} alt={`Foto ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                            onError={e => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="50%" dominant-baseline="middle" text-anchor="middle" font-size="40">🖼</text></svg>' }} />
+                          {foto.file && (
+                            <div style={{ position: 'absolute', top: 6, left: 6, background: '#6366f1', color: '#fff', fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4 }}>LOCAL</div>
+                          )}
+                          <div style={{ position: 'absolute', top: 6, right: 6, display: 'flex', gap: 4 }}>
+                            <label title="Substituir foto" style={{ width: 28, height: 28, borderRadius: 6, background: 'rgba(15,23,42,0.7)', color: '#fff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>
+                              ✎
+                              <input type="file" accept="image/*" style={{ display: 'none' }}
+                                onChange={e => substituirFoto(i, e.target.files)} />
+                            </label>
+                            <button onClick={() => removerFoto(i)} title="Remover foto"
+                              style={{ width: 28, height: 28, borderRadius: 6, background: 'rgba(220,38,38,0.85)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                              ×
+                            </button>
+                          </div>
+                          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '6px 8px', background: 'linear-gradient(transparent,rgba(0,0,0,0.55))', fontSize: 10, color: '#fff' }}>
+                            Foto {i + 1}{i === 0 ? ' · Principal' : ''}
+                          </div>
                         </div>
                       ))}
+                      {fcFotos.length < 4 && (
+                        <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '2px dashed #c7d2fe', borderRadius: 10, aspectRatio: '4/3', color: '#a5b4fc', cursor: 'pointer', gap: 6 }}>
+                          <span style={{ fontSize: 28 }}>+</span>
+                          <span style={{ fontSize: 12 }}>Adicionar</span>
+                          <input type="file" accept="image/*" multiple style={{ display: 'none' }}
+                            onChange={e => adicionarFotos(e.target.files)} />
+                        </label>
+                      )}
+                    </div>
+                  )}
+                  {fcFotos.some(f => f.file) && (
+                    <div style={{ marginTop: 12, padding: '8px 12px', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, fontSize: 12, color: '#92400e' }}>
+                      ⚠ {fcFotos.filter(f => f.file).length} foto(s) pendente(s) de upload — serão enviadas ao salvar.
                     </div>
                   )}
                 </>
@@ -864,7 +1035,7 @@ export default function EstoquePage() {
                 <button onClick={() => setShowModalCompleto(false)} style={{ padding: '9px 18px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer', color: '#374151' }}>Cancelar</button>
                 <button onClick={salvarCompleto} disabled={fSaving || !fNome.trim()}
                   style={{ padding: '9px 22px', background: fSaving || !fNome.trim() ? '#a5b4fc' : '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: fSaving || !fNome.trim() ? 'not-allowed' : 'pointer' }}>
-                  {fSaving ? 'Salvando...' : '✓ Salvar cadastro completo'}
+                  {fcUploadando ? '📤 Enviando fotos...' : fSaving ? 'Salvando...' : '✓ Salvar cadastro completo'}
                 </button>
               </div>
             </div>
