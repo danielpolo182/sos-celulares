@@ -78,6 +78,9 @@ export default function PDVPage() {
   const [salvandoCaixa, setSalvandoCaixa] = useState(false)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [mobileView, setMobileView] = useState<'produtos' | 'carrinho'>('produtos')
+  const [showQuickAdd, setShowQuickAdd] = useState(false)
+  const [qaPreco, setQaPreco] = useState('')
+  const [qaSaving, setQaSaving] = useState(false)
 
   const subtotal = itens.reduce((s, i) => s + i.subtotal, 0)
   const totalPago = pagamentos.reduce((s, p) => s + p.valor, 0)
@@ -180,6 +183,26 @@ export default function PDVPage() {
   }
 
   function removerItem(i: number) { setItens(prev => prev.filter((_, idx) => idx !== i)) }
+
+  async function salvarQuickAdd() {
+    const nome = searchProd.trim()
+    const preco = parseFloat(qaPreco.replace(',', '.')) || 0
+    if (!nome || preco <= 0) return
+    setQaSaving(true)
+    const { data: prod, error } = await supabase.from('produtos').insert({
+      nome, preco_venda: preco, custo_unit: 0, estoque_atual: 0,
+      ativo: true, unidade: 'un', movimenta_estoque: true, cadastro_rapido: true,
+    }).select('id, nome, categoria, preco_venda, custo_unit, estoque_atual').single()
+    if (prod && !error) {
+      const p = prod as Produto
+      setItens(prev => [...prev, { produto_id: p.id, descricao: p.nome, quantidade: 1, preco_unit: p.preco_venda, custo_unit: 0, subtotal: p.preco_venda }])
+      setProdutos(prev => [...prev, p])
+      setShowQuickAdd(false); setQaPreco(''); setSearchProd(''); setProdResults([])
+    } else if (error) {
+      alert(`Erro ao cadastrar: ${error.message}`)
+    }
+    setQaSaving(false)
+  }
 
 
   function calcularTotalComTaxa(valor: number, forma: FormaPagKey, parcelas: number): { total: number; taxa: number; taxaEfetivaPct: number } {
@@ -358,16 +381,41 @@ export default function PDVPage() {
                       ))}
                       {searchProd.trim() && prodResults.length === 0 && (
                         <div>
-                          <div style={{ padding: '8px 14px', fontSize: 12, color: '#94a3b8', background: '#fafafa' }}>
+                          <div style={{ padding: '8px 14px', fontSize: 12, color: '#94a3b8', background: '#fafafa', borderBottom: '1px solid #f1f5f9' }}>
                             Nenhum resultado para &quot;{searchProd}&quot;
                           </div>
-                          <div
-                            onClick={() => window.location.href = `/estoque?novo=${encodeURIComponent(searchProd.trim())}`}
-                            style={{ padding: '10px 14px', cursor: 'pointer', fontSize: 13, color: '#059669', fontWeight: 500, background: '#f0fdf4', display: 'flex', alignItems: 'center', gap: 6 }}
-                            onMouseEnter={e => { e.currentTarget.style.background = '#dcfce7' }}
-                            onMouseLeave={e => { e.currentTarget.style.background = '#f0fdf4' }}>
-                            ➕ Cadastrar &quot;{searchProd}&quot; no Estoque ↗
-                          </div>
+                          {!showQuickAdd ? (
+                            <div onClick={() => setShowQuickAdd(true)}
+                              style={{ padding: '10px 14px', cursor: 'pointer', fontSize: 13, color: '#059669', fontWeight: 500, background: '#f0fdf4', display: 'flex', alignItems: 'center', gap: 6 }}
+                              onMouseEnter={e => { e.currentTarget.style.background = '#dcfce7' }}
+                              onMouseLeave={e => { e.currentTarget.style.background = '#f0fdf4' }}>
+                              ➕ Cadastrar &quot;{searchProd}&quot; como novo produto
+                            </div>
+                          ) : (
+                            <div style={{ padding: '10px 14px', background: '#f0fdf4', borderTop: '1px solid #dcfce7' }}>
+                              <p style={{ fontSize: 12, fontWeight: 600, color: '#065f46', marginBottom: 8 }}>Novo produto: <span style={{ color: '#0f172a' }}>{searchProd}</span></p>
+                              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                <div style={{ flex: 1 }}>
+                                  <label style={{ ...lbl, marginBottom: 2 }}>Preço de venda (R$) *</label>
+                                  <input
+                                    autoFocus type="number" step="0.01" min="0"
+                                    value={qaPreco} onChange={e => setQaPreco(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && salvarQuickAdd()}
+                                    placeholder="0,00"
+                                    style={{ ...inp, padding: '6px 10px', fontSize: 13 }}
+                                  />
+                                </div>
+                                <button onClick={salvarQuickAdd} disabled={qaSaving || !qaPreco}
+                                  style={{ marginTop: 14, padding: '7px 14px', background: !qaPreco ? '#e2e8f0' : '#059669', color: !qaPreco ? '#94a3b8' : '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: !qaPreco ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>
+                                  {qaSaving ? '...' : '✓ Salvar'}
+                                </button>
+                                <button onClick={() => { setShowQuickAdd(false); setQaPreco('') }}
+                                  style={{ marginTop: 14, padding: '7px 10px', background: 'none', border: '1px solid #d1d5db', borderRadius: 7, fontSize: 13, cursor: 'pointer', color: '#6b7280' }}>
+                                  ✕
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
