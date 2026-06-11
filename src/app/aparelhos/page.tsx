@@ -615,8 +615,8 @@ export default function AparelhoPage() {
       preco_compra: parseFloat(cValor), data_compra: new Date().toISOString().split('T')[0],
       checklist_json: cChecklist, checklist_nota: notaGeral(cChecklist),
       observacoes: cObs || null,
-      senha_tipo: cTipoSenha !== 'nenhuma' ? cTipoSenha : null,
-      senha_valor: cTipoSenha === 'pin' ? cSenha : cTipoSenha === 'padrao' && cPadrao.length > 0 ? cPadrao.join(' → ') : null,
+      ...(cTipoSenha !== 'nenhuma' ? { senha_tipo: cTipoSenha } : {}),
+      ...(cTipoSenha === 'pin' ? { senha_valor: cSenha } : cTipoSenha === 'padrao' && cPadrao.length > 0 ? { senha_valor: cPadrao.join(' → ') } : {}),
     }).select('id').single()
 
     if (apErr || !ap) {
