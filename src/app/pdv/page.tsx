@@ -78,6 +78,12 @@ export default function PDVPage() {
   const [caixaObs, setCaixaObs] = useState('')
   const [salvandoCaixa, setSalvandoCaixa] = useState(false)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [mobileView, setMobileView] = useState<'produtos' | 'carrinho'>('produtos')
+  const [showQuickAdd, setShowQuickAdd] = useState(false)
+  const [qaPreco, setQaPreco] = useState('')
+  const [qaCategoria, setQaCategoria] = useState('')
+  const [qaEstoque, setQaEstoque] = useState('')
+  const [qaSaving, setQaSaving] = useState(false)
 
   const subtotal = itens.reduce((s, i) => s + i.subtotal, 0)
   const totalPago = pagamentos.reduce((s, p) => s + p.valor, 0)
@@ -181,6 +187,23 @@ export default function PDVPage() {
 
   function removerItem(i: number) { setItens(prev => prev.filter((_, idx) => idx !== i)) }
 
+  async function salvarQuickAdd() {
+    const nome = searchProd.trim()
+    if (!nome || !qaPreco) return
+    setQaSaving(true)
+    const preco = parseFloat(qaPreco.replace(',', '.')) || 0
+    const estoque = parseInt(qaEstoque) || 0
+    const { data: prod } = await supabase.from('produtos').insert({
+      nome, categoria: qaCategoria || null, preco_venda: preco, custo_medio: 0, estoque_atual: estoque, ativo: true
+    }).select().single()
+    if (prod) {
+      await fetchProdutos()
+      adicionarProduto(prod as Produto)
+      setShowQuickAdd(false); setQaPreco(''); setQaCategoria(''); setQaEstoque('')
+    }
+    setQaSaving(false)
+  }
+
   function calcularTotalComTaxa(valor: number, forma: FormaPagKey, parcelas: number): { total: number; taxa: number; taxaEfetivaPct: number } {
     const cfg = taxasConfig[forma]
     if (!cfg) return { total: valor, taxa: 0, taxaEfetivaPct: 0 }
@@ -276,7 +299,31 @@ export default function PDVPage() {
   const caixaFechada = !!(caixaHoje?.aberto_em && caixaHoje?.fechado_em)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: 'var(--font-sans)', background: '#f8fafc', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, fontFamily: 'var(--font-sans)', background: '#f8fafc', overflow: 'hidden', minHeight: 0 }}>
+      <style>{`
+        .pdv-cols { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+        .pdv-left { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #f8fafc; min-width: 0; }
+        .pdv-right { width: 340px; min-width: 300px; display: flex; flex-direction: column; background: #fff; border-left: 1px solid #e2e8f0; overflow: hidden; }
+        .pdv-right-bottom { border-top: 1px solid #f1f5f9; padding: 10px 12px; background: #fafafa; flex-shrink: 0; }
+        .pdv-mob-tabs { display: none; }
+        .pdv-cart-badge { display: none; }
+        @media (max-width: 767px) {
+          .pdv-mob-tabs { display: flex; gap: 0; border-bottom: 1px solid #e2e8f0; background: #fff; flex-shrink: 0; }
+          .pdv-mob-tab { flex: 1; padding: 10px 8px; border: none; font-size: 13px; font-weight: 500; cursor: pointer; background: transparent; color: #64748b; border-bottom: 2px solid transparent; }
+          .pdv-mob-tab.active { color: #6366f1; border-bottom-color: #6366f1; background: #f5f3ff; }
+          .pdv-left { display: none; }
+          .pdv-left.mob-active { display: flex; }
+          .pdv-right { width: 100%; min-width: 0; border-left: none; display: none; }
+          .pdv-right.mob-active { display: flex; }
+          .pdv-cart-badge { display: inline-block; background: #6366f1; color: #fff; border-radius: 10px; font-size: 10px; padding: 1px 5px; margin-left: 4px; }
+        }
+        @media (min-width: 768px) and (max-width: 1199px) {
+          .pdv-right { width: 300px; min-width: 260px; }
+        }
+        @media (min-width: 1200px) {
+          .pdv-right { width: 360px; }
+        }
+      `}</style>
 
       {/* Cabeçalho com abas */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', background: '#fff', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
@@ -289,14 +336,24 @@ export default function PDVPage() {
         {!caixaAberta && <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 20, background: '#fef2f2', color: '#991b1b' }}>🔒 Caixa {caixaFechada ? 'fechado' : 'não aberto'}</span>}
       </div>
 
+      {/* Mobile tabs (só aparece na aba venda em telas < 768px) */}
+      {aba === 'venda' && (
+        <div className="pdv-mob-tabs">
+          <button className={`pdv-mob-tab${mobileView === 'produtos' ? ' active' : ''}`} onClick={() => setMobileView('produtos')}>🛍 Produtos</button>
+          <button className={`pdv-mob-tab${mobileView === 'carrinho' ? ' active' : ''}`} onClick={() => setMobileView('carrinho')}>
+            🛒 Carrinho{itens.length > 0 && <span className="pdv-cart-badge">{itens.length}</span>}
+          </button>
+        </div>
+      )}
+
       {/* Conteúdo */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      <div className="pdv-cols">
 
         {/* ── ABA VENDA — layout dois colunas */}
         {aba === 'venda' && (
           <>
             {/* Coluna esquerda: busca + grade de produtos */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#f8fafc' }}>
+            <div className={`pdv-left${mobileView === 'produtos' ? ' mob-active' : ''}`}>
               {/* Barra de busca */}
               <div style={{ padding: '12px 16px', background: '#fff', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
                 <div style={{ position: 'relative' }}>
@@ -308,10 +365,10 @@ export default function PDVPage() {
                     onChange={e => buscarProduto(e.target.value)}
                     autoComplete="off"
                   />
-                  {prodResults.length > 0 && (
+                  {(prodResults.length > 0 || (searchProd.trim() && prodResults.length === 0)) && (
                     <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', marginTop: 4, overflow: 'hidden' }}>
                       {prodResults.map(p => (
-                        <div key={p.id} onClick={() => adicionarProduto(p)} style={{ padding: '10px 14px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}
+                        <div key={p.id} onClick={() => { adicionarProduto(p); setShowQuickAdd(false) }} style={{ padding: '10px 14px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}
                           onMouseEnter={e => { e.currentTarget.style.background = '#f5f3ff' }}
                           onMouseLeave={e => { e.currentTarget.style.background = '#fff' }}>
                           <div>
@@ -321,7 +378,43 @@ export default function PDVPage() {
                           <p style={{ fontWeight: 700, color: '#6366f1', whiteSpace: 'nowrap', marginLeft: 12 }}>{formatMoeda(p.preco_venda)}</p>
                         </div>
                       ))}
-                      <div onClick={adicionarAvulso} style={{ padding: '10px 14px', cursor: 'pointer', fontSize: 13, color: '#6366f1', fontWeight: 500, background: '#f8f7ff' }}>+ Item avulso</div>
+                      {searchProd.trim() && prodResults.length === 0 && (
+                        <div>
+                          <div style={{ padding: '8px 14px', fontSize: 12, color: '#94a3b8', borderBottom: '1px solid #f1f5f9', background: '#fafafa' }}>
+                            Nenhum resultado para &quot;{searchProd}&quot;
+                          </div>
+                          <div onClick={() => setShowQuickAdd(v => !v)} style={{ padding: '10px 14px', cursor: 'pointer', fontSize: 13, color: '#059669', fontWeight: 500, background: '#f0fdf4', display: 'flex', alignItems: 'center', gap: 6, borderBottom: showQuickAdd ? '1px solid #e2e8f0' : 'none' }}
+                            onMouseEnter={e => { e.currentTarget.style.background = '#dcfce7' }}
+                            onMouseLeave={e => { e.currentTarget.style.background = '#f0fdf4' }}>
+                            ➕ Cadastrar &quot;{searchProd}&quot; como produto
+                          </div>
+                          {showQuickAdd && (
+                            <div style={{ padding: '10px 14px', background: '#f8fffe', borderBottom: '1px solid #e2e8f0' }}>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 6 }}>
+                                <div>
+                                  <label style={{ ...lbl, marginBottom: 2 }}>Categoria</label>
+                                  <select value={qaCategoria} onChange={e => setQaCategoria(e.target.value)} style={{ ...inp, padding: '5px 8px', fontSize: 12 }}>
+                                    <option value="">Sem categoria</option>
+                                    {Object.keys(CATEGORIA_ICONES).map(c => <option key={c} value={c}>{CATEGORIA_ICONES[c]} {c}</option>)}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label style={{ ...lbl, marginBottom: 2 }}>Estoque inicial</label>
+                                  <input type="number" min="0" value={qaEstoque} onChange={e => setQaEstoque(e.target.value)} placeholder="0" style={{ ...inp, padding: '5px 8px', fontSize: 12 }} />
+                                </div>
+                              </div>
+                              <div style={{ marginBottom: 8 }}>
+                                <label style={{ ...lbl, marginBottom: 2 }}>Preço de venda (R$) *</label>
+                                <input type="number" step="0.01" min="0" value={qaPreco} onChange={e => setQaPreco(e.target.value)} placeholder="0,00" style={{ ...inp, padding: '5px 8px', fontSize: 12 }} />
+                              </div>
+                              <button onClick={salvarQuickAdd} disabled={qaSaving || !qaPreco} style={{ width: '100%', padding: '7px', background: !qaPreco ? '#e2e8f0' : '#059669', color: !qaPreco ? '#94a3b8' : '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: !qaPreco ? 'not-allowed' : 'pointer' }}>
+                                {qaSaving ? 'Salvando...' : '✓ Salvar e adicionar ao carrinho'}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <div onClick={adicionarAvulso} style={{ padding: '10px 14px', cursor: 'pointer', fontSize: 13, color: '#6366f1', fontWeight: 500, background: '#f8f7ff' }}>+ Item avulso (sem cadastro)</div>
                     </div>
                   )}
                 </div>
@@ -353,18 +446,18 @@ export default function PDVPage() {
                   </>
                 )}
 
-                {/* Itens editáveis quando há busca ativa */}
+                {/* Quando há busca ativa sem resultados — instruções no dropdown */}
                 {searchProd && prodResults.length === 0 && searchProd.trim() && (
                   <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
-                    <p style={{ fontSize: 13 }}>Nenhum produto encontrado para &quot;{searchProd}&quot;</p>
-                    <button onClick={adicionarAvulso} style={{ marginTop: 12, fontSize: 12, color: '#6366f1', background: 'none', border: '1px dashed #c7d2fe', borderRadius: 8, cursor: 'pointer', padding: '8px 16px' }}>+ Item avulso</button>
+                    <div style={{ fontSize: 28, marginBottom: 8 }}>🔍</div>
+                    <p style={{ fontSize: 13 }}>Use o menu suspenso para cadastrar &quot;{searchProd}&quot; ou adicionar como item avulso</p>
                   </div>
                 )}
               </div>
             </div>
 
             {/* Coluna direita: carrinho + pagamento */}
-            <div style={{ width: 340, display: 'flex', flexDirection: 'column', background: '#fff', borderLeft: '1px solid #e2e8f0', overflow: 'hidden' }}>
+            <div className={`pdv-right${mobileView === 'carrinho' ? ' mob-active' : ''}`}>
               {/* Feedback venda ok */}
               {vendaOk && ultimaVenda && (
                 <div style={{ padding: '14px 16px', background: '#ecfdf5', borderBottom: '1px solid #bbf7d0', flexShrink: 0 }}>
@@ -405,7 +498,7 @@ export default function PDVPage() {
               </div>
 
               {/* Resumo + Pagamento + Finalizar */}
-              <div style={{ borderTop: '1px solid #f1f5f9', padding: '12px 14px', background: '#fafafa', flexShrink: 0 }}>
+              <div className="pdv-right-bottom">
                 {/* Subtotal, desconto, taxa, total */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#64748b', marginBottom: 5 }}>
                   <span>Subtotal ({itens.length} itens)</span>

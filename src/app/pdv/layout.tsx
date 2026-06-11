@@ -7,7 +7,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', marginLeft: '240px', minWidth: 0, overflow: 'hidden' }}>
         <TopBar />
-        <main style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', marginTop: '52px' }}>
+        <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', marginTop: '52px' }}>
           {children}
         </main>
       </div>
