@@ -182,6 +182,13 @@ export default function AparelhoPage() {
   const [cParcelas, setCParcelas] = useState(2)
   const [salvando, setSalvando] = useState(false)
   const [compraSalva, setCompraSalva] = useState<{id:string;numero:number}|null>(null)
+  const [submitAttempted, setSubmitAttempted] = useState(false)
+
+  // ── Refs para scroll/foco em campos obrigatórios ──────────
+  const modeloRef = useRef<HTMLInputElement>(null)
+  const vNomeRef = useRef<HTMLInputElement>(null)
+  const vCPFRef = useRef<HTMLInputElement>(null)
+  const cValorRef = useRef<HTMLInputElement>(null)
 
   // ── Foto do vendedor ──────────────────────────────────────
   const [fotoVendedor, setFotoVendedor] = useState<string>('')
@@ -569,11 +576,36 @@ export default function AparelhoPage() {
 
   // ── Salvar compra ─────────────────────────────────────────
   async function salvarCompra() {
-    if (!modeloSelecionado || !vNome.trim() || !vCPF.trim() || !cValor) return
+    setSubmitAttempted(true)
+
+    // Validação com scroll para o primeiro campo inválido
+    if (!modeloSelecionado) {
+      modeloRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      modeloRef.current?.focus()
+      return
+    }
+    if (!vNome.trim()) {
+      vNomeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      vNomeRef.current?.focus()
+      return
+    }
+    if (!vCPF.trim() || vCpfErro) {
+      vCPFRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      vCPFRef.current?.focus()
+      return
+    }
+    if (!cValor || parseFloat(cValor) <= 0) {
+      cValorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      cValorRef.current?.focus()
+      return
+    }
+
     setSalvando(true)
     const endCompleto = [vEnd, vBairro, vCidade, vEstado].filter(Boolean).join(', ')
 
-    const { data: ap } = await supabase.from('aparelhos').insert({
+    console.log('[salvarCompra] Inserindo aparelho...', { marca: modeloSelecionado.marca, modelo: modeloSelecionado.modelo, status: 'sem_revisao' })
+
+    const { data: ap, error: apErr } = await supabase.from('aparelhos').insert({
       tipo: cTipo, status: 'sem_revisao',
       marca: modeloSelecionado.marca, modelo: modeloSelecionado.modelo,
       capacidade: cCapacidade || null, cor: cCor || null,
@@ -587,9 +619,15 @@ export default function AparelhoPage() {
       senha_valor: cTipoSenha === 'pin' ? cSenha : cTipoSenha === 'padrao' && cPadrao.length > 0 ? cPadrao.join(' → ') : null,
     }).select('id').single()
 
-    if (!ap) { setSalvando(false); return }
+    if (apErr || !ap) {
+      console.error('[salvarCompra] Erro ao inserir aparelho:', apErr)
+      alert(`Erro ao salvar aparelho: ${apErr?.message ?? 'resposta vazia do banco'}`)
+      setSalvando(false); return
+    }
 
-    const { data: compra } = await supabase.from('aparelho_compras').insert({
+    console.log('[salvarCompra] Aparelho inserido, id:', ap.id, '— inserindo compra...')
+
+    const { data: compra, error: compraErr } = await supabase.from('aparelho_compras').insert({
       aparelho_id: ap.id,
       vendedor_nome: vNome, vendedor_cpf: vCPF, vendedor_rg: vRG || null,
       vendedor_tel: vTel || null, vendedor_email: vEmail || null,
@@ -600,10 +638,18 @@ export default function AparelhoPage() {
       foto_vendedor: fotoVendedor || null,
     }).select('id,numero').single()
 
-    if (compra) {
-      await supabase.from('aparelhos').update({ compra_id: compra.id }).eq('id', ap.id)
-      setCompraSalva({ id: compra.id, numero: compra.numero })
+    if (compraErr || !compra) {
+      console.error('[salvarCompra] Erro ao inserir aparelho_compras:', compraErr)
+      alert(`Aparelho salvo (id: ${ap.id}), mas erro ao registrar compra: ${compraErr?.message ?? 'resposta vazia'}`)
+      setSalvando(false); fetchAll(); return
     }
+
+    console.log('[salvarCompra] Compra inserida, numero:', compra.numero)
+
+    const { error: linkErr } = await supabase.from('aparelhos').update({ compra_id: compra.id }).eq('id', ap.id)
+    if (linkErr) console.warn('[salvarCompra] Aviso: erro ao vincular compra_id:', linkErr)
+
+    setCompraSalva({ id: compra.id, numero: compra.numero })
     setSalvando(false); fetchAll()
   }
 
@@ -1208,7 +1254,7 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
               <label style={lbl}>Modelo do aparelho *</label>
               <div style={{ display:'flex',gap:10 }}>
                 <div style={{ flex:1,position:'relative' }}>
-                  <input style={inp} value={modeloInput} onChange={e => onModeloChange(e.target.value)} placeholder="Ex: Samsung Galaxy A55, iPhone 15 Pro, Redmi 13C..." autoComplete="off" />
+                  <input ref={modeloRef} style={{ ...inp, borderColor: submitAttempted && !modeloSelecionado ? '#ef4444' : modeloSelecionado ? '#22c55e' : '#e2e8f0' }} value={modeloInput} onChange={e => onModeloChange(e.target.value)} placeholder="Ex: Samsung Galaxy A55, iPhone 15 Pro, Redmi 13C..." autoComplete="off" />
                   {showSugestoes && modeloSugestoes.length > 0 && (
                     <div style={{ position:'absolute',top:'100%',left:0,right:0,zIndex:50,background:'#fff',border:'1px solid #e2e8f0',borderRadius:9,boxShadow:'0 8px 24px rgba(0,0,0,0.1)',marginTop:4,overflow:'hidden' }}>
                       {modeloSugestoes.map(d => (
@@ -1235,6 +1281,10 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
                 )}
               </div>
             </div>
+
+            {submitAttempted && !modeloSelecionado && (
+              <p style={{ fontSize:11,color:'#ef4444',marginTop:4 }}>⚠ Selecione o modelo do aparelho</p>
+            )}
 
             {modeloSelecionado && (
               <div style={{ background:'#f0f4ff',border:'1px solid #c7d2fe',borderRadius:10,padding:'12px 16px',marginBottom:14 }}>
@@ -1361,8 +1411,16 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
             </div>
 
             <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:12 }}>
-              <div style={{ gridColumn:'1/-1' }}><label style={lbl}>Nome completo *</label><input style={inp} value={vNome} onChange={e => setVNome(e.target.value)} /></div>
-              <div><label style={lbl}>CPF *</label><input style={{ ...inp, borderColor: vCpfErro ? '#ef4444' : '#e2e8f0' }} value={vCPF} onChange={e => { const v = formatarCPF(e.target.value); setVCPF(v); const raw = v.replace(/\D/g,''); setVCpfErro(raw.length > 0 && raw.length < 11 ? 'CPF incompleto' : raw.length === 11 && !validarCPF(raw) ? 'CPF inválido' : '') }} placeholder="000.000.000-00" maxLength={14} />{vCpfErro && <p style={{ fontSize:11,color:'#ef4444',marginTop:2 }}>{vCpfErro}</p>}</div>
+              <div style={{ gridColumn:'1/-1' }}>
+                <label style={lbl}>Nome completo *</label>
+                <input ref={vNomeRef} style={{ ...inp, borderColor: submitAttempted && !vNome.trim() ? '#ef4444' : vNome.trim() ? '#22c55e' : '#e2e8f0' }} value={vNome} onChange={e => setVNome(e.target.value)} />
+                {submitAttempted && !vNome.trim() && <p style={{ fontSize:11,color:'#ef4444',marginTop:2 }}>⚠ Campo obrigatório</p>}
+              </div>
+              <div>
+                <label style={lbl}>CPF *</label>
+                <input ref={vCPFRef} style={{ ...inp, borderColor: (submitAttempted && !vCPF.trim()) || vCpfErro ? '#ef4444' : vCPF.trim() && !vCpfErro ? '#22c55e' : '#e2e8f0' }} value={vCPF} onChange={e => { const v = formatarCPF(e.target.value); setVCPF(v); const raw = v.replace(/\D/g,''); setVCpfErro(raw.length > 0 && raw.length < 11 ? 'CPF incompleto' : raw.length === 11 && !validarCPF(raw) ? 'CPF inválido' : '') }} placeholder="000.000.000-00" maxLength={14} />
+                {(vCpfErro || (submitAttempted && !vCPF.trim())) && <p style={{ fontSize:11,color:'#ef4444',marginTop:2 }}>{vCpfErro || '⚠ Campo obrigatório'}</p>}
+              </div>
               <div><label style={lbl}>RG</label><input style={inp} value={vRG} onChange={e => setVRG(e.target.value)} /></div>
               <div><label style={lbl}>Telefone</label><input style={inp} value={vTel} onChange={e => setVTel(formatPhone(e.target.value))} placeholder="(00) 00000-0000" maxLength={15} /></div>
               <div><label style={lbl}>E-mail</label><input style={inp} value={vEmail} onChange={e => setVEmail(e.target.value)} /></div>
@@ -1387,7 +1445,11 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
           <div style={card}>
             <p style={sec}>Condições de pagamento</p>
             <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:12 }}>
-              <div><label style={lbl}>Valor pago (R$) *</label><input style={{ ...inp,fontSize:18,fontWeight:600 }} type="number" step="0.01" value={cValor} onChange={e => setCValor(e.target.value)} placeholder="0,00" /></div>
+              <div>
+                <label style={lbl}>Valor pago (R$) *</label>
+                <input ref={cValorRef} style={{ ...inp,fontSize:18,fontWeight:600, borderColor: submitAttempted && (!cValor||parseFloat(cValor)<=0) ? '#ef4444' : cValor && parseFloat(cValor) > 0 ? '#22c55e' : '#e2e8f0' }} type="number" step="0.01" value={cValor} onChange={e => setCValor(e.target.value)} placeholder="0,00" />
+                {submitAttempted && (!cValor || parseFloat(cValor) <= 0) && <p style={{ fontSize:11,color:'#ef4444',marginTop:2 }}>⚠ Informe o valor pago</p>}
+              </div>
               <div>
                 <label style={lbl}>Forma de pagamento</label>
                 <select style={inp} value={cForma} onChange={e => setCForma(e.target.value)}>{FORMAS_PGTO.map(f=><option key={f}>{f}</option>)}</select>
@@ -1422,8 +1484,8 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
             )}
           </div>
 
-          <button onClick={salvarCompra} disabled={salvando || !modeloSelecionado || !vNome.trim() || !vCPF.trim() || !cValor} style={{ width:'100%',padding:'14px',background:salvando||!modeloSelecionado||!vNome.trim()||!vCPF.trim()||!cValor?'#e2e8f0':'#6366f1',color:salvando||!modeloSelecionado||!vNome.trim()||!vCPF.trim()||!cValor?'#94a3b8':'#fff',border:'none',borderRadius:10,fontSize:14,fontWeight:600,cursor:'pointer' }}>
-            {!modeloSelecionado ? '⬆ Selecione o aparelho' : salvando ? 'Salvando...' : '✓ Registrar compra'}
+          <button onClick={salvarCompra} disabled={salvando} style={{ width:'100%',padding:'14px',background:salvando?'#a5b4fc':'#6366f1',color:'#fff',border:'none',borderRadius:10,fontSize:14,fontWeight:600,cursor:salvando?'not-allowed':'pointer' }}>
+            {salvando ? 'Salvando...' : '✓ Registrar compra'}
           </button>
         </div>
       )}
