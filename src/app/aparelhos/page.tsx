@@ -9,10 +9,17 @@ import { validarCPF, formatarCPF } from '@/lib/validators'
 type Aparelho = {
   id: string; tipo: string; status: string
   marca: string; modelo: string; capacidade: string | null; cor: string | null
-  imei: string | null; specs_json: Record<string, any>
+  imei: string | null; imei2: string | null; specs_json: Record<string, any>
   preco_compra: number | null; preco_venda: number | null
   checklist_json: Record<string, string>; checklist_nota: string | null
   observacoes: string | null; created_at: string
+  senha_tipo: string | null; senha_valor: string | null
+}
+
+type ModalSucesso = {
+  tipo: 'compra' | 'venda'
+  numero: number
+  aparelho: { marca: string; modelo: string; capacidade: string | null }
 }
 
 type AparelhoPC = {
@@ -135,7 +142,7 @@ function notaGeral(cl: Record<string,string>): string {
 // ─── Componente principal ─────────────────────────────────
 export default function AparelhoPage() {
   const supabase = createClient()
-  const [aba, setAba] = useState<'estoque'|'comprar'|'vender'>('estoque')
+  const [aba, setAba] = useState<'estoque'|'sem_revisao'|'aguardando_pecas'|'em_reparo'|'checklist'|'historico'|'comprar'|'vender'>('estoque')
   const [aparelhos, setAparelhos] = useState<Aparelho[]>([])
   const [loading, setLoading] = useState(true)
   const [filtroStatus, setFiltroStatus] = useState('todos')
@@ -183,6 +190,7 @@ export default function AparelhoPage() {
   const [salvando, setSalvando] = useState(false)
   const [compraSalva, setCompraSalva] = useState<{id:string;numero:number}|null>(null)
   const [submitAttempted, setSubmitAttempted] = useState(false)
+  const [modalSucesso, setModalSucesso] = useState<ModalSucesso | null>(null)
 
   // ── Refs para scroll/foco em campos obrigatórios ──────────
   const modeloRef = useRef<HTMLInputElement>(null)
@@ -383,6 +391,294 @@ export default function AparelhoPage() {
     setSalvandoStatus(false)
     fetchAll()
     setDetalhes(d => d ? { ...d, status: 'a_venda' } : null)
+  }
+
+  async function reimprimirTermoCompra(aparelhoId: string) {
+    const ap = aparelhos.find(a => a.id === aparelhoId)
+    if (!ap) return
+    const { data: c } = await supabase.from('aparelho_compras')
+      .select('*').eq('aparelho_id', aparelhoId).order('created_at', { ascending: false }).limit(1).single()
+    if (!c) { alert('Dados da compra não encontrados.'); return }
+    gerarTermoCompraHTML({
+      numero: c.numero, hoje: new Date(c.created_at ?? ap.created_at).toLocaleDateString('pt-BR', { day:'2-digit', month:'long', year:'numeric' }),
+      ap, vNomeP: c.vendedor_nome, vCPFP: c.vendedor_cpf, vRGP: c.vendedor_rg ?? '',
+      vTelP: c.vendedor_tel ?? '', vEndP: c.vendedor_end ?? '', vCEPP: c.vendedor_cep ?? '',
+      valorP: c.valor_pago, formaP: c.forma_pagamento,
+      assVend: c.assinatura_vendedor ?? '', assLoja: c.assinatura_loja ?? '', foto: c.foto_vendedor ?? '',
+      senhaT: ap.senha_tipo ?? '', senhaV: ap.senha_valor ?? '',
+    })
+  }
+
+  async function reimprimirTermoVenda(aparelhoId: string) {
+    const ap = aparelhos.find(a => a.id === aparelhoId)
+    if (!ap) return
+    const { data: v } = await supabase.from('aparelho_vendas')
+      .select('*').eq('aparelho_id', aparelhoId).order('created_at', { ascending: false }).limit(1).single()
+    if (!v) { alert('Dados da venda não encontrados.'); return }
+    gerarTermoVendaHTML({
+      numero: v.numero, hoje: new Date(v.created_at ?? ap.created_at).toLocaleDateString('pt-BR', { day:'2-digit', month:'long', year:'numeric' }),
+      ap, bNomeP: v.comprador_nome, bCPFP: v.comprador_cpf,
+      bTelP: v.comprador_tel ?? '', bEndP: v.comprador_end ?? '',
+      valorP: v.valor_venda, formaP: v.forma_pagamento, garantiaP: v.garantia_dias,
+      assCompr: v.assinatura_comprador ?? '', assLoja: v.assinatura_loja ?? '',
+    })
+  }
+
+  function abrirHTML(html: string) {
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const w = window.open(url, '_blank'); if (w) w.onload = () => URL.revokeObjectURL(url)
+  }
+
+  function gerarTermoCompraHTML(p: {
+    numero: number; hoje: string; ap: Aparelho
+    vNomeP: string; vCPFP: string; vRGP: string; vTelP: string; vEndP: string; vCEPP: string
+    valorP: number; formaP: string
+    assVend: string; assLoja: string; foto: string
+    senhaT: string; senhaV: string
+  }) {
+    const specs = p.ap.specs_json as Dispositivo | null
+    const senhaTexto = p.senhaT === 'pin' ? `PIN: ${p.senhaV}` : p.senhaT === 'padrao' ? `Padrão: ${p.senhaV}` : ''
+    const assVendHtml = p.assVend ? `<img src="${p.assVend}" class="sig-img" />` : ''
+    const assLojaHtml = p.assLoja ? `<img src="${p.assLoja}" class="sig-img" />` : ''
+    const fotoHtml = p.foto ? `<img src="${p.foto}" class="foto-vend" alt="Foto vendedor" />` : ''
+    const cl = p.ap.checklist_json ?? {}
+    const nota = p.ap.checklist_nota ?? notaGeral(cl)
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+<title>Termo de Compra #${p.numero}</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@page { size: A4 portrait; margin: 18mm 20mm; }
+* { margin:0;padding:0;box-sizing:border-box; }
+body { font-family:'Inter',Arial,sans-serif;font-size:9pt;color:#1e293b;line-height:1.6; }
+.header { display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:12pt;border-bottom:2pt solid #0f172a;margin-bottom:14pt; }
+.brand h1 { font-size:18pt;font-weight:700;color:#0f172a; }
+.brand p { font-size:8pt;color:#64748b; }
+.doc-title { font-size:14pt;font-weight:700;text-align:right; }
+.doc-num { font-size:9pt;color:#6366f1;font-weight:600;text-align:right; }
+.doc-date { font-size:8pt;color:#94a3b8;text-align:right; }
+section { margin-bottom:12pt; }
+.stitle { font-size:7.5pt;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#6366f1;border-bottom:1pt solid #e0e7ff;padding-bottom:3pt;margin-bottom:8pt; }
+.grid2 { display:grid;grid-template-columns:1fr 1fr;gap:5pt 16pt; }
+.grid3 { display:grid;grid-template-columns:1fr 1fr 1fr;gap:5pt 12pt; }
+.field-label { font-size:7.5pt;color:#94a3b8;font-weight:500; }
+.field-value { font-size:9pt;font-weight:600;border-bottom:0.5pt solid #e2e8f0;padding-bottom:1pt;min-height:13pt; }
+.specs-box { background:#f8fafc;padding:7pt 9pt;border-radius:4pt; }
+.checklist-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:3pt; }
+.ci { display:flex;justify-content:space-between;padding:2.5pt 5pt;border-radius:3pt;font-size:7.5pt; }
+.ci-bom { background:#ecfdf5;color:#065f46; }
+.ci-regular { background:#fef3c7;color:#92400e; }
+.ci-ruim { background:#fef2f2;color:#991b1b; }
+.ci-na { background:#f8fafc;color:#94a3b8; }
+.senha-box { background:#fef3c7;border:1pt solid #fde68a;padding:6pt 10pt;border-radius:4pt;font-size:9pt; }
+.legal { background:#f8fafc;border-left:3pt solid #0f172a;padding:9pt 12pt;font-size:8pt;line-height:1.8; }
+.legal p { margin-bottom:5pt; }
+.legal .art { font-size:7.5pt;color:#6366f1;font-weight:500; }
+.sig-row { display:grid;grid-template-columns:1fr 1fr;gap:14pt;margin-top:12pt; }
+.sig-img { max-height:45pt;max-width:150pt;display:block;margin-bottom:3pt; }
+.sig-line { border-top:1pt solid #0f172a;margin-bottom:3pt;margin-top:20pt; }
+.sig-name { font-size:8.5pt;font-weight:600; }
+.sig-role { font-size:7pt;color:#94a3b8;text-transform:uppercase;letter-spacing:1px; }
+.footer-doc { border-top:0.5pt solid #e2e8f0;padding-top:7pt;font-size:6.5pt;color:#94a3b8;text-align:center;margin-top:12pt; }
+.foto-vend { width:60pt;height:60pt;object-fit:cover;border-radius:4pt;border:1pt solid #e2e8f0;float:right;margin:0 0 6pt 12pt; }
+.nota-badge { display:inline-block;padding:2pt 8pt;border-radius:20pt;font-size:8pt;font-weight:700;${nota==='Bom'?'background:#ecfdf5;color:#065f46':nota==='Regular'?'background:#fef3c7;color:#92400e':'background:#fef2f2;color:#991b1b'}; }
+.valor-d { font-size:14pt;font-weight:700;color:#065f46; }
+</style></head><body>
+
+<div class="header">
+  <div class="brand"><h1>📱 SOS Celulares</h1><p>Assistência Técnica</p></div>
+  <div><div class="doc-title">TERMO DE COMPRA</div><div class="doc-num">Nº ${p.numero}</div><div class="doc-date">${p.hoje}</div></div>
+</div>
+
+<section>
+  <div class="stitle">Vendedor — Dados pessoais</div>
+  ${fotoHtml}
+  <div class="grid2">
+    <div><div class="field-label">Nome completo</div><div class="field-value">${p.vNomeP}</div></div>
+    <div><div class="field-label">CPF</div><div class="field-value">${formatarCPF(p.vCPFP)}</div></div>
+    <div><div class="field-label">RG</div><div class="field-value">${p.vRGP||'—'}</div></div>
+    <div><div class="field-label">Telefone</div><div class="field-value">${p.vTelP?formatPhone(p.vTelP):'—'}</div></div>
+    <div><div class="field-label">CEP</div><div class="field-value">${p.vCEPP||'—'}</div></div>
+  </div>
+  <div style="margin-top:5pt"><div class="field-label">Endereço</div><div class="field-value">${p.vEndP||'—'}</div></div>
+</section>
+
+<section>
+  <div class="stitle">Aparelho — Identificação</div>
+  <div class="grid3">
+    <div><div class="field-label">Marca / Modelo</div><div class="field-value">${p.ap.marca} ${p.ap.modelo}</div></div>
+    <div><div class="field-label">Capacidade</div><div class="field-value">${p.ap.capacidade||'—'}</div></div>
+    <div><div class="field-label">Cor</div><div class="field-value">${p.ap.cor||'—'}</div></div>
+    <div><div class="field-label">IMEI 1</div><div class="field-value">${p.ap.imei||'—'}</div></div>
+    <div><div class="field-label">IMEI 2</div><div class="field-value">${p.ap.imei2||'—'}</div></div>
+    <div><div class="field-label">Estado geral</div><div class="field-value"><span class="nota-badge">${nota}</span></div></div>
+  </div>
+  ${p.ap.imei?`<div style="margin-top:5pt;font-size:8pt">🔍 <a href="https://www.aparelhoslegais.com.br/consulta?imei=${p.ap.imei}" style="color:#6366f1">Consultar Aparelhos Legais</a></div>`:''}
+</section>
+
+${specs?`<section>
+  <div class="stitle">Especificações técnicas</div>
+  <div class="specs-box"><div class="grid3">
+    ${[['Tela',specs.tela],['Processador',specs.processador],['RAM',specs.ram],['Armazenamento',specs.armazenamento],['Câm. traseira',specs.camera_principal],['Câm. frontal',specs.camera_frontal],['Bateria',specs.bateria],['Sistema',specs.sistema]].filter(([,v])=>v).map(([k,v])=>`<div><div class="field-label">${k}</div><div style="font-size:8.5pt;font-weight:600">${v}</div></div>`).join('')}
+  </div></div>
+</section>`:''}
+
+${Object.keys(cl).length>0?`<section>
+  <div class="stitle">Checklist de estado</div>
+  <div class="checklist-grid">
+    ${CHECKLIST_ITENS.filter(i=>cl[i.key]).map(i=>{const v=cl[i.key];const cls=v==='Bom'?'ci-bom':v==='Regular'?'ci-regular':v==='Ruim'?'ci-ruim':'ci-na';return`<div class="ci ${cls}"><span>${i.label}</span><b>${v}</b></div>`}).join('')}
+  </div>
+</section>`:''}
+
+${senhaTexto?`<section>
+  <div class="stitle">Senha do aparelho</div>
+  <div class="senha-box">⚠ ${senhaTexto} — Informação confidencial, de uso exclusivo da SOS Celulares.</div>
+</section>`:''}
+
+<section>
+  <div class="stitle">Condições da compra</div>
+  <div class="grid3">
+    <div><div class="field-label">Valor pago</div><div class="valor-d">R$ ${p.valorP.toFixed(2).replace('.',',')}</div></div>
+    <div><div class="field-label">Forma de pagamento</div><div class="field-value">${p.formaP}</div></div>
+    <div><div class="field-label">Data</div><div class="field-value">${p.hoje}</div></div>
+  </div>
+</section>
+
+<div class="legal">
+  <p><strong>DECLARAÇÃO DE PROPRIEDADE E RESPONSABILIDADE DO VENDEDOR</strong></p>
+  <p>Eu, <strong>${p.vNomeP}</strong>, portador(a) do CPF <strong>${formatarCPF(p.vCPFP)}</strong>${p.vRGP?`, RG <strong>${p.vRGP}</strong>`:''}${p.vEndP?`, residente em <strong>${p.vEndP}</strong>`:''},
+  na qualidade de vendedor(a), declaro, sob as penas da lei, que:</p>
+  <p><strong>I.</strong> Sou o(a) legítimo(a) proprietário(a) do aparelho <strong>${p.ap.marca} ${p.ap.modelo}</strong>, IMEI <strong>${p.ap.imei||'—'}</strong>, possuindo plena capacidade legal e legitimidade para alienar o bem, estando o mesmo livre de ônus, penhoras, alienação fiduciária, financiamento ou qualquer restrição de domínio.</p>
+  <p><strong>II.</strong> O aparelho <strong>não possui origem ilícita</strong> e não foi obtido mediante furto (<span class="art">art. 155 do Código Penal</span>), roubo (<span class="art">art. 157 CP</span>), extorsão (<span class="art">art. 158 CP</span>), estelionato (<span class="art">art. 171 CP</span>), apropriação indébita (<span class="art">art. 168 CP</span>) ou qualquer outro ilícito penal ou civil.</p>
+  <p><strong>III.</strong> O número de IMEI é original e não foi adulterado, clonado ou suprimido. A adulteração de IMEI constitui crime previsto no <span class="art">art. 183 da Lei nº 9.472/1997 (Lei Geral de Telecomunicações)</span>, com pena de detenção de 2 a 4 anos, além de multa.</p>
+  <p><strong>IV.</strong> Declaro ciência de que a posse, aquisição, recebimento ou ocultação de produto de crime configura <strong>receptação</strong>, tipificada no <span class="art">art. 180 do Código Penal</span> (pena: reclusão de 1 a 4 anos, e multa), podendo ser qualificada (<span class="art">art. 180 §1º CP</span>) quando praticada no exercício de atividade comercial, com pena de reclusão de 3 a 8 anos.</p>
+  <p><strong>V.</strong> Assumo <strong>integral responsabilidade civil e criminal</strong> por eventuais irregularidades decorrentes de falsidade das informações prestadas, respondendo pessoalmente por todos os prejuízos causados à loja SOS Celulares e a terceiros, inclusive por falsidade ideológica (<span class="art">art. 299 CP</span>) e por danos materiais e morais (arts. 186 e 927 do Código Civil).</p>
+  <p><strong>VI.</strong> A loja <strong>SOS Celulares</strong> atua de boa-fé, amparada pelo <span class="art">art. 1.202 do Código Civil</span> (posse de boa-fé), ficando expressamente eximida de qualquer responsabilidade em caso de falsidade das declarações ora prestadas, conforme entendimento consolidado pelo <span class="art">STJ (REsp 1.965.994)</span>.</p>
+</div>
+
+<div class="sig-row">
+  <div>
+    ${assVendHtml}
+    <div class="sig-line"></div>
+    <div class="sig-name">${p.vNomeP}</div>
+    <div style="font-size:7.5pt;color:#64748b">CPF: ${formatarCPF(p.vCPFP)}</div>
+    <div class="sig-role">Vendedor</div>
+  </div>
+  <div>
+    ${assLojaHtml}
+    <div class="sig-line"></div>
+    <div class="sig-name">SOS Celulares</div>
+    <div class="sig-role">Representante da Loja</div>
+  </div>
+</div>
+
+<div class="footer-doc">Documento emitido em ${p.hoje} · SOS Celulares · Em conformidade com o Código Penal (Decreto-Lei 2.848/40), Lei 9.472/97 e CDC (Lei 8.078/90)</div>
+<script>window.onload=()=>window.print()<\/script>
+</body></html>`
+    abrirHTML(html)
+  }
+
+  function gerarTermoVendaHTML(p: {
+    numero: number; hoje: string; ap: Aparelho
+    bNomeP: string; bCPFP: string; bTelP: string; bEndP: string
+    valorP: number; formaP: string; garantiaP: number
+    assCompr: string; assLoja: string
+  }) {
+    const assComprHtml = p.assCompr ? `<img src="${p.assCompr}" class="sig-img" />` : ''
+    const assLojaHtml = p.assLoja ? `<img src="${p.assLoja}" class="sig-img" />` : ''
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+<title>Termo de Venda #${p.numero}</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@page { size: A4 portrait; margin: 18mm 20mm; }
+* { margin:0;padding:0;box-sizing:border-box; }
+body { font-family:'Inter',Arial,sans-serif;font-size:9pt;color:#1e293b;line-height:1.6; }
+.header { display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:12pt;border-bottom:2pt solid #0f172a;margin-bottom:14pt; }
+.brand h1 { font-size:18pt;font-weight:700;color:#0f172a; }
+.doc-title { font-size:14pt;font-weight:700;text-align:right;color:#065f46; }
+.doc-num { font-size:9pt;color:#065f46;font-weight:600;text-align:right; }
+.doc-date { font-size:8pt;color:#94a3b8;text-align:right; }
+section { margin-bottom:12pt; }
+.stitle { font-size:7.5pt;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#065f46;border-bottom:1pt solid #bbf7d0;padding-bottom:3pt;margin-bottom:8pt; }
+.grid2 { display:grid;grid-template-columns:1fr 1fr;gap:5pt 16pt; }
+.grid3 { display:grid;grid-template-columns:1fr 1fr 1fr;gap:5pt 12pt; }
+.field-label { font-size:7.5pt;color:#94a3b8;font-weight:500; }
+.field-value { font-size:9pt;font-weight:600;border-bottom:0.5pt solid #e2e8f0;padding-bottom:1pt;min-height:13pt; }
+.legal { background:#f8fafc;border-left:3pt solid #065f46;padding:9pt 12pt;font-size:8pt;line-height:1.8; }
+.legal p { margin-bottom:5pt; }
+.sig-row { display:grid;grid-template-columns:1fr 1fr;gap:14pt;margin-top:12pt; }
+.sig-img { max-height:45pt;max-width:150pt;display:block;margin-bottom:3pt; }
+.sig-line { border-top:1pt solid #0f172a;margin-bottom:3pt;margin-top:20pt; }
+.sig-name { font-size:8.5pt;font-weight:600; }
+.sig-role { font-size:7pt;color:#94a3b8;text-transform:uppercase;letter-spacing:1px; }
+.footer-doc { border-top:0.5pt solid #e2e8f0;padding-top:7pt;font-size:6.5pt;color:#94a3b8;text-align:center;margin-top:12pt; }
+.valor-d { font-size:14pt;font-weight:700;color:#065f46; }
+.garantia-box { background:#ecfdf5;border:1pt solid #86efac;padding:6pt 10pt;border-radius:4pt;font-size:9pt;font-weight:600;color:#065f46; }
+</style></head><body>
+
+<div class="header">
+  <div class="brand"><h1>📱 SOS Celulares</h1><p>Assistência Técnica</p></div>
+  <div><div class="doc-title">TERMO DE VENDA</div><div class="doc-num">Nº ${p.numero}</div><div class="doc-date">${p.hoje}</div></div>
+</div>
+
+<section>
+  <div class="stitle">Comprador</div>
+  <div class="grid2">
+    <div><div class="field-label">Nome completo</div><div class="field-value">${p.bNomeP}</div></div>
+    <div><div class="field-label">CPF</div><div class="field-value">${formatarCPF(p.bCPFP)}</div></div>
+    <div><div class="field-label">Telefone</div><div class="field-value">${p.bTelP||'—'}</div></div>
+    <div><div class="field-label">Endereço</div><div class="field-value">${p.bEndP||'—'}</div></div>
+  </div>
+</section>
+
+<section>
+  <div class="stitle">Produto vendido</div>
+  <div class="grid3">
+    <div><div class="field-label">Modelo</div><div class="field-value">${p.ap.marca} ${p.ap.modelo}</div></div>
+    <div><div class="field-label">Capacidade</div><div class="field-value">${p.ap.capacidade||'—'}</div></div>
+    <div><div class="field-label">Cor</div><div class="field-value">${p.ap.cor||'—'}</div></div>
+    <div><div class="field-label">IMEI</div><div class="field-value">${p.ap.imei||'—'}</div></div>
+  </div>
+</section>
+
+<section>
+  <div class="stitle">Condições da venda</div>
+  <div class="grid3">
+    <div><div class="field-label">Valor</div><div class="valor-d">R$ ${p.valorP.toFixed(2).replace('.',',')}</div></div>
+    <div><div class="field-label">Forma de pagamento</div><div class="field-value">${p.formaP}</div></div>
+    <div><div class="field-label">Data</div><div class="field-value">${p.hoje}</div></div>
+  </div>
+  <div style="margin-top:8pt"><div class="garantia-box">✓ Garantia: ${p.garantiaP} dias a partir desta data</div></div>
+</section>
+
+<div class="legal">
+  <p><strong>TERMOS E CONDIÇÕES DE GARANTIA</strong></p>
+  <p><strong>I.</strong> A SOS Celulares garante o produto acima descrito contra defeitos de fabricação pelo prazo de <strong>${p.garantiaP} dias</strong> a contar da data desta venda, conforme disposto no <strong>art. 26, II, do Código de Defesa do Consumidor (Lei 8.078/90)</strong>.</p>
+  <p><strong>II.</strong> A garantia <strong>não cobre</strong>: danos físicos por quedas, impactos ou líquidos; danos causados por uso inadequado; desgaste natural da bateria; e danos causados por software ou vírus.</p>
+  <p><strong>III.</strong> O comprador declara ter inspecionado e aprovado o estado do produto no ato da compra, estando ciente de tratar-se de <strong>aparelho usado</strong> e das condições descritas no checklist anexo.</p>
+  <p><strong>IV.</strong> Declaro ter recebido o aparelho em perfeitas condições de funcionamento, nas especificações acima descritas, concordando integralmente com os termos desta nota de venda.</p>
+</div>
+
+<div class="sig-row">
+  <div>
+    ${assComprHtml}
+    <div class="sig-line"></div>
+    <div class="sig-name">${p.bNomeP}</div>
+    <div style="font-size:7.5pt;color:#64748b">CPF: ${formatarCPF(p.bCPFP)}</div>
+    <div class="sig-role">Comprador</div>
+  </div>
+  <div>
+    ${assLojaHtml}
+    <div class="sig-line"></div>
+    <div class="sig-name">SOS Celulares</div>
+    <div class="sig-role">Representante da Loja</div>
+  </div>
+</div>
+
+<div class="footer-doc">Documento emitido em ${p.hoje} · SOS Celulares · Conforme CDC (Lei 8.078/90)</div>
+<script>window.onload=()=>window.print()<\/script>
+</body></html>`
+    abrirHTML(html)
   }
 
   function imprimirCard(a: Aparelho) {
@@ -657,6 +953,7 @@ export default function AparelhoPage() {
     if (linkErr) console.warn('[salvarCompra] Aviso: erro ao vincular compra_id:', linkErr)
 
     setCompraSalva({ id: compra.id, numero: compra.numero })
+    setModalSucesso({ tipo: 'compra', numero: compra.numero, aparelho: { marca: modeloSelecionado.marca, modelo: modeloSelecionado.modelo, capacidade: cCapacidade || null } })
     setSalvando(false); fetchAll()
   }
 
@@ -677,6 +974,7 @@ export default function AparelhoPage() {
     if (venda) {
       await supabase.from('aparelhos').update({ status: 'vendido', venda_id: venda.id, preco_venda: parseFloat(bValor), data_venda: new Date().toISOString().split('T')[0] }).eq('id', aparelhoVenda.id)
       setVendaSalva({ id: venda.id, numero: venda.numero })
+      setModalSucesso({ tipo: 'venda', numero: venda.numero, aparelho: { marca: aparelhoVenda.marca, modelo: aparelhoVenda.modelo, capacidade: aparelhoVenda.capacidade } })
     }
     setSalvando(false); fetchAll()
   }
@@ -710,8 +1008,8 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
     const b = new Blob([html],{type:'text/html;charset=utf-8'});const u=URL.createObjectURL(b);const w=window.open(u,'_blank');if(w)w.onload=()=>URL.revokeObjectURL(u)
   }
 
-  // ── Imprimir termo ────────────────────────────────────────
-  function gerarDocumento(tipo: 'compra' | 'venda') {
+  // ── (gerarDocumento removido — substituído por gerarTermoCompraHTML / gerarTermoVendaHTML)
+  function _legacyNoop(tipo: 'compra' | 'venda') {
     const hoje = new Date().toLocaleDateString('pt-BR', { day:'2-digit', month:'long', year:'numeric' })
     const specs = modeloSelecionado
     const endCompleto = [vEnd, vBairro ? `${vBairro}` : '', vCidade && vEstado ? `${vCidade} — ${vEstado}` : vCidade || vEstado].filter(Boolean).join(', ')
@@ -877,137 +1175,131 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
       </div>
 
       {/* Abas */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
-        {([['estoque','📱 Estoque'],['checklist','✅ Checklist'],['historico','📜 Histórico']] as const).map(([k,l]) => (
-          <button key={k} onClick={() => setAba(k as any)} style={{ padding: '10px 18px', fontSize: 13, fontWeight: aba===k?600:400, border: 'none', background: 'none', cursor: 'pointer', color: aba===k?'#6366f1':'#64748b', borderBottom: aba===k?'2px solid #6366f1':'2px solid transparent', marginBottom: -1 }}>{l}</button>
+      <div style={{ display: 'flex', gap: 0, marginBottom: 24, borderBottom: '1px solid #e2e8f0', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        {([
+          ['estoque',   '📱 Estoque',          aparelhos.filter(a=>a.status==='disponivel').length],
+          ['sem_revisao','🔍 Em revisão',       aparelhos.filter(a=>a.status==='sem_revisao').length],
+          ['aguardando_pecas','📦 Aguard. peças',aparelhos.filter(a=>a.status==='aguardando_pecas').length],
+          ['em_reparo', '🔧 Em reparo',         aparelhos.filter(a=>a.status==='em_reparo').length],
+          ['checklist', '✅ Checklist',          aparelhos.filter(a=>a.status==='checklist').length],
+          ['historico', '📜 Histórico',         null],
+        ] as [string,string,number|null][]).map(([k,l,cnt]) => (
+          <button key={k} onClick={() => setAba(k as any)} style={{ padding: '10px 14px', fontSize: 13, fontWeight: aba===k?600:400, border: 'none', background: 'none', cursor: 'pointer', color: aba===k?'#6366f1':'#64748b', borderBottom: aba===k?'2px solid #6366f1':'2px solid transparent', marginBottom: -1, display:'flex', alignItems:'center', gap: 5, whiteSpace:'nowrap' }}>
+            {l}
+            {cnt !== null && cnt > 0 && <span style={{ fontSize:10, fontWeight:700, padding:'1px 6px', borderRadius:10, background: aba===k?'#6366f1':'#e2e8f0', color: aba===k?'#fff':'#64748b' }}>{cnt}</span>}
+          </button>
         ))}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, paddingBottom: 4 }}>
-          <button onClick={() => setAba('comprar' as any)} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 8, cursor: 'pointer', background: aba==='comprar'?'#0f172a':'#1e293b', color: '#fbbf24', display: 'flex', alignItems: 'center', gap: 6 }}>⬇ Registrar compra</button>
-          <button onClick={() => setAba('vender' as any)} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 8, cursor: 'pointer', background: aba==='vender'?'#065f46':'#16a34a', color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}>⬆ Registrar venda</button>
+          <button onClick={() => setAba('comprar')} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 8, cursor: 'pointer', background: aba==='comprar'?'#0f172a':'#1e293b', color: '#fbbf24', display: 'flex', alignItems: 'center', gap: 6 }}>⬇ Registrar compra</button>
+          <button onClick={() => setAba('vender')} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 8, cursor: 'pointer', background: aba==='vender'?'#065f46':'#16a34a', color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}>⬆ Registrar venda</button>
         </div>
       </div>
 
-      {/* ═══ ESTOQUE ═══ */}
-      {aba === 'estoque' && (
-        <div>
-          <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar modelo ou IMEI..." style={{ ...inp, flex: 1, minWidth: 180 }} />
-            <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} style={{ ...inp, width: 'auto' }}>
-              <option value="todos">Todos</option>
-              <option value="sem_revisao">Sem revisão</option>
-              <option value="aguardando_pecas">Aguard. peças</option>
-              <option value="em_reparo">Em reparo</option>
-              <option value="checklist">Checklist</option>
-              <option value="disponivel">Disponíveis</option>
-              <option value="vendido">Vendidos</option>
-            </select>
+      {/* ═══ helper: tabela de aparelhos ═══ */}
+      {(['estoque','sem_revisao','aguardando_pecas','em_reparo','checklist'] as const).includes(aba as any) && (() => {
+        const statusMap: Record<string,string> = { estoque:'disponivel', sem_revisao:'sem_revisao', aguardando_pecas:'aguardando_pecas', em_reparo:'em_reparo', checklist:'checklist' }
+        const filtro = statusMap[aba] ?? 'disponivel'
+        const lista = aparelhos.filter(a => a.status === filtro && (!search || `${a.marca} ${a.modelo}`.toLowerCase().includes(search.toLowerCase())))
+        return (
+          <div>
+            <div style={{ display:'flex',gap:10,marginBottom:16 }}>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar modelo ou IMEI..." style={{ ...inp,flex:1,maxWidth:340 }} />
+            </div>
+            {loading ? <div style={{ textAlign:'center',padding:60,color:'#94a3b8' }}>Carregando...</div> :
+            lista.length === 0 ? (
+              <div style={{ textAlign:'center',padding:60 }}>
+                <div style={{ fontSize:40,marginBottom:12 }}>📱</div>
+                <p style={{ fontSize:14,color:'#94a3b8' }}>Nenhum aparelho aqui</p>
+              </div>
+            ) : (
+              <div style={{ background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,overflow:'hidden' }}>
+                <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13 }}>
+                  <thead><tr style={{ background:'#f8fafc',borderBottom:'1px solid #e2e8f0' }}>
+                    {['Aparelho','IMEI','Estado','Custo','Preço venda','Lucro',''].map(h => <th key={h} style={{ padding:'9px 14px',textAlign:'left',fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.04em',whiteSpace:'nowrap' }}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {lista.map(a => {
+                      const lucro = a.preco_venda && a.preco_compra ? a.preco_venda - a.preco_compra : null
+                      return (
+                        <tr key={a.id} onClick={() => { setDetalhes(a); setDetalheEditando(false); setDetalhePrecoVenda(String(a.preco_venda??'')); setDetalheObs(a.observacoes??''); setAprovacao((a.checklist_json?.aprovacao??{}) as unknown as Record<string,boolean>) }} style={{ borderBottom:'1px solid #f1f5f9',cursor:'pointer' }}
+                          onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background='#f8fafc'}
+                          onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background=''}>
+                          <td style={{ padding:'10px 14px' }}>
+                            <p style={{ fontWeight:500,color:'#0f172a' }}>{a.marca} {a.modelo}</p>
+                            {a.capacidade && <p style={{ fontSize:11,color:'#94a3b8' }}>{a.capacidade}{a.cor?` · ${a.cor}`:''}</p>}
+                          </td>
+                          <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,color:'#64748b' }}>
+                            {a.imei ? <a href={`https://www.aparelhoslegais.com.br/consulta?imei=${a.imei}`} target="_blank" rel="noopener noreferrer" style={{ color:'#6366f1',textDecoration:'none' }} onClick={e=>e.stopPropagation()}>{a.imei} 🔍</a> : '—'}
+                          </td>
+                          <td style={{ padding:'10px 14px' }}>
+                            {a.checklist_nota ? <span style={{ fontSize:11,fontWeight:500,padding:'2px 8px',borderRadius:20,background:a.checklist_nota==='Bom'?'#ecfdf5':a.checklist_nota==='Regular'?'#fef3c7':'#fef2f2',color:a.checklist_nota==='Bom'?'#065f46':a.checklist_nota==='Regular'?'#92400e':'#991b1b' }}>{a.checklist_nota}</span> : '—'}
+                          </td>
+                          <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,color:'#374151' }}>{a.preco_compra?fm(a.preco_compra):'—'}</td>
+                          <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,color:'#374151' }}>{a.preco_venda?fm(a.preco_venda):'—'}</td>
+                          <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,fontWeight:lucro&&lucro>0?600:400,color:lucro&&lucro>0?'#065f46':lucro&&lucro<0?'#991b1b':'#94a3b8' }}>{lucro!==null?fm(lucro):'—'}</td>
+                          <td style={{ padding:'10px 14px' }} onClick={e => e.stopPropagation()}>
+                            <div style={{ display:'flex',gap:6 }}>
+                              {a.status==='disponivel' && <button onClick={() => imprimirCard(a)} style={{ fontSize:12,padding:'5px 10px',border:'1px solid #e0e7ff',borderRadius:7,background:'#eef2ff',cursor:'pointer',color:'#4338ca' }}>🏷</button>}
+                              {a.status==='disponivel' && <button onClick={() => { setAparelhoVenda(a); setAba('vender') }} style={{ fontSize:12,padding:'5px 10px',border:'1px solid #bbf7d0',borderRadius:7,background:'#ecfdf5',cursor:'pointer',color:'#065f46',fontWeight:500 }}>Vender →</button>}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-          {loading ? <div style={{ textAlign:'center',padding:60,color:'#94a3b8' }}>Carregando...</div> :
-          aparelhosFiltrados.length === 0 ? (
-            <div style={{ textAlign:'center',padding:60 }}>
-              <div style={{ fontSize:40,marginBottom:12 }}>📱</div>
-              <p style={{ fontSize:14,fontWeight:500,color:'#374151',marginBottom:12 }}>Nenhum aparelho no estoque</p>
-              <button onClick={() => setAba('comprar')} style={{ padding:'9px 18px',background:'#6366f1',color:'#fff',border:'none',borderRadius:8,fontSize:13,cursor:'pointer' }}>+ Registrar compra</button>
-            </div>
-          ) : (
-            <div style={{ background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,overflow:'hidden' }}>
-              <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13 }}>
-                <thead><tr style={{ background:'#f8fafc',borderBottom:'1px solid #e2e8f0' }}>
-                  {['Aparelho','IMEI','Estado','Compra','Venda','Lucro','Status',''].map(h => <th key={h} style={{ padding:'9px 14px',textAlign:'left',fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.04em',whiteSpace:'nowrap' }}>{h}</th>)}
-                </tr></thead>
-                <tbody>
-                  {aparelhosFiltrados.map(a => {
-                    const st = STATUS_CFG[a.status] ?? STATUS_CFG.disponivel
-                    const lucro = a.preco_venda && a.preco_compra ? a.preco_venda - a.preco_compra : null
-                    return (
-                      <tr key={a.id} onClick={() => { setDetalhes(a); setDetalheEditando(false); setDetalhePrecoVenda(String(a.preco_venda??'')); setDetalheObs(a.observacoes??''); setAprovacao((a.checklist_json?.aprovacao??{}) as unknown as Record<string,boolean>) }} style={{ borderBottom:'1px solid #f1f5f9', cursor:'pointer' }}
-                        onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background='#f8fafc'}
-                        onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background=''}>
-                        <td style={{ padding:'10px 14px' }}>
-                          <p style={{ fontWeight:500,color:'#0f172a' }}>{a.marca} {a.modelo}</p>
-                          {a.capacidade && <p style={{ fontSize:11,color:'#94a3b8' }}>{a.capacidade}{a.cor?` · ${a.cor}`:''}</p>}
-                        </td>
-                        <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,color:'#64748b' }}>
-                          {a.imei ? <a href={`https://www.aparelhoslegais.com.br/consulta?imei=${a.imei}`} target="_blank" rel="noopener noreferrer" style={{ color:'#6366f1',textDecoration:'none' }}>{a.imei} 🔍</a> : '—'}
-                        </td>
-                        <td style={{ padding:'10px 14px' }}>
-                          {a.checklist_nota ? <span style={{ fontSize:11,fontWeight:500,padding:'2px 8px',borderRadius:20,background:a.checklist_nota==='Bom'?'#ecfdf5':a.checklist_nota==='Regular'?'#fef3c7':'#fef2f2',color:a.checklist_nota==='Bom'?'#065f46':a.checklist_nota==='Regular'?'#92400e':'#991b1b' }}>{a.checklist_nota}</span> : '—'}
-                        </td>
-                        <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,color:'#374151' }}>{a.preco_compra?fm(a.preco_compra):'—'}</td>
-                        <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,color:'#374151' }}>{a.preco_venda?fm(a.preco_venda):'—'}</td>
-                        <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,fontWeight:lucro&&lucro>0?600:400,color:lucro&&lucro>0?'#065f46':lucro&&lucro<0?'#991b1b':'#94a3b8' }}>{lucro!==null?fm(lucro):'—'}</td>
-                        <td style={{ padding:'10px 14px' }}><span style={{ fontSize:11,fontWeight:500,padding:'2px 8px',borderRadius:20,background:st.bg,color:st.color }}>{st.label}</span></td>
-                        <td style={{ padding:'10px 14px' }} onClick={e => e.stopPropagation()}>
-                          <div style={{ display:'flex',gap:6 }}>
-                            {(a.status==='a_venda'||a.status==='disponivel') && <button onClick={() => imprimirCard(a)} style={{ fontSize:12,padding:'5px 10px',border:'1px solid #e0e7ff',borderRadius:7,background:'#eef2ff',cursor:'pointer',color:'#4338ca' }}>🏷</button>}
-                            {(a.status==='a_venda'||a.status==='disponivel') && <button onClick={() => { setAparelhoVenda(a); setAba('vender' as any) }} style={{ fontSize:12,padding:'5px 10px',border:'1px solid #bbf7d0',borderRadius:7,background:'#ecfdf5',cursor:'pointer',color:'#065f46',fontWeight:500 }}>Vender →</button>}
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ═══ CHECKLIST ═══ */}
-      {aba === ('checklist' as any) && (
-        <div>
-          <p style={{ fontSize:13,color:'#64748b',marginBottom:16 }}>Aparelhos que precisam passar pelo checklist de aprovação antes de ir à venda.</p>
-          {aparelhos.filter(a => ['sem_revisao','aguardando_pecas','em_reparo','checklist'].includes(a.status)).length === 0 ? (
-            <div style={{ textAlign:'center',padding:60,color:'#94a3b8' }}>
-              <div style={{ fontSize:40,marginBottom:12 }}>✅</div>
-              <p>Nenhum aparelho aguardando revisão.</p>
-            </div>
-          ) : (
-            <div style={{ display:'flex',flexDirection:'column',gap:10 }}>
-              {aparelhos.filter(a => ['sem_revisao','aguardando_pecas','em_reparo','checklist'].includes(a.status)).map(a => (
-                <div key={a.id} style={{ background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,padding:'16px 20px',display:'flex',alignItems:'center',gap:16 }}>
-                  <div style={{ flex:1 }}>
-                    <p style={{ fontWeight:600,color:'#0f172a' }}>{a.marca} {a.modelo} {a.capacidade?`· ${a.capacidade}`:''}</p>
-                    <p style={{ fontSize:12,color:'#94a3b8' }}>IMEI: {a.imei ?? '—'} · Compra: {fm(a.preco_compra??0)}</p>
-                  </div>
-                  <span style={{ fontSize:11,fontWeight:500,padding:'2px 8px',borderRadius:20,background:STATUS_CFG[a.status]?.bg??'#f1f5f9',color:STATUS_CFG[a.status]?.color??'#64748b' }}>{STATUS_CFG[a.status]?.label??a.status}</span>
-                  <button onClick={() => { setDetalhes(a); setDetalheEditando(false); setDetalhePrecoVenda(String(a.preco_venda??'')); setDetalheObs(a.observacoes??'') }} style={{ fontSize:13,padding:'7px 16px',border:'1px solid #c7d2fe',borderRadius:8,background:'#eef2ff',cursor:'pointer',color:'#4338ca',fontWeight:500 }}>Abrir</button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+        )
+      })()}
 
       {/* ═══ HISTÓRICO ═══ */}
-      {aba === ('historico' as any) && (
+      {aba === 'historico' && (
         <div>
-          <p style={{ fontSize:13,color:'#64748b',marginBottom:16 }}>Aparelhos já vendidos.</p>
-          {aparelhos.filter(a => a.status === 'vendido').length === 0 ? (
+          <div style={{ display:'flex',gap:10,marginBottom:16 }}>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar modelo..." style={{ ...inp,flex:1,maxWidth:340 }} />
+          </div>
+          {aparelhos.filter(a => !search || `${a.marca} ${a.modelo}`.toLowerCase().includes(search.toLowerCase())).length === 0 ? (
             <div style={{ textAlign:'center',padding:60,color:'#94a3b8' }}>
               <div style={{ fontSize:40,marginBottom:12 }}>📜</div>
-              <p>Nenhum aparelho vendido ainda.</p>
+              <p>Nenhum registro.</p>
             </div>
           ) : (
             <div style={{ background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,overflow:'hidden' }}>
               <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13 }}>
                 <thead><tr style={{ background:'#f8fafc',borderBottom:'1px solid #e2e8f0' }}>
-                  {['Aparelho','IMEI','Compra','Venda','Lucro','Data'].map(h=><th key={h} style={{ padding:'9px 14px',textAlign:'left',fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.04em' }}>{h}</th>)}
+                  {['Aparelho','IMEI','Custo','Venda','Lucro','Status','Data','Documentos'].map(h=><th key={h} style={{ padding:'9px 14px',textAlign:'left',fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.04em',whiteSpace:'nowrap' }}>{h}</th>)}
                 </tr></thead>
                 <tbody>
-                  {aparelhos.filter(a => a.status === 'vendido').map(a => {
-                    const lucro = a.preco_venda && a.preco_compra ? a.preco_venda - a.preco_compra : null
-                    return (
-                      <tr key={a.id} style={{ borderBottom:'1px solid #f1f5f9' }}>
-                        <td style={{ padding:'10px 14px',fontWeight:500 }}>{a.marca} {a.modelo}{a.capacidade?` · ${a.capacidade}`:''}</td>
-                        <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,color:'#64748b' }}>{a.imei??'—'}</td>
-                        <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12 }}>{a.preco_compra?fm(a.preco_compra):'—'}</td>
-                        <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12 }}>{a.preco_venda?fm(a.preco_venda):'—'}</td>
-                        <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,fontWeight:600,color:lucro&&lucro>0?'#065f46':'#991b1b' }}>{lucro!==null?fm(lucro):'—'}</td>
-                        <td style={{ padding:'10px 14px',fontSize:12,color:'#94a3b8' }}>{new Date(a.created_at).toLocaleDateString('pt-BR')}</td>
-                      </tr>
-                    )
-                  })}
+                  {aparelhos
+                    .filter(a => !search || `${a.marca} ${a.modelo}`.toLowerCase().includes(search.toLowerCase()))
+                    .sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                    .map(a => {
+                      const lucro = a.preco_venda && a.preco_compra ? a.preco_venda - a.preco_compra : null
+                      const st = STATUS_CFG[a.status]
+                      return (
+                        <tr key={a.id} style={{ borderBottom:'1px solid #f1f5f9' }}>
+                          <td style={{ padding:'10px 14px',fontWeight:500,color:'#0f172a' }}>
+                            {a.marca} {a.modelo}
+                            {a.capacidade && <span style={{ fontSize:11,color:'#94a3b8',display:'block' }}>{a.capacidade}{a.cor?` · ${a.cor}`:''}</span>}
+                          </td>
+                          <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,color:'#64748b' }}>{a.imei??'—'}</td>
+                          <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12 }}>{a.preco_compra?fm(a.preco_compra):'—'}</td>
+                          <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12 }}>{a.preco_venda?fm(a.preco_venda):'—'}</td>
+                          <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,fontWeight:600,color:lucro&&lucro>0?'#065f46':lucro&&lucro<0?'#991b1b':'#94a3b8' }}>{lucro!==null?fm(lucro):'—'}</td>
+                          <td style={{ padding:'10px 14px' }}>{st && <span style={{ fontSize:11,fontWeight:500,padding:'2px 8px',borderRadius:20,background:st.bg,color:st.color }}>{st.label}</span>}</td>
+                          <td style={{ padding:'10px 14px',fontSize:12,color:'#94a3b8' }}>{new Date(a.created_at).toLocaleDateString('pt-BR')}</td>
+                          <td style={{ padding:'10px 14px' }}>
+                            <div style={{ display:'flex',gap:6,flexWrap:'wrap' }}>
+                              <button onClick={() => reimprimirTermoCompra(a.id)} style={{ fontSize:11,padding:'4px 10px',border:'1px solid #c7d2fe',borderRadius:7,background:'#eef2ff',cursor:'pointer',color:'#4338ca',whiteSpace:'nowrap' }}>🖨 Compra</button>
+                              {a.status==='vendido' && <button onClick={() => reimprimirTermoVenda(a.id)} style={{ fontSize:11,padding:'4px 10px',border:'1px solid #bbf7d0',borderRadius:7,background:'#ecfdf5',cursor:'pointer',color:'#065f46',whiteSpace:'nowrap' }}>🖨 Venda</button>}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })
+                  }
                 </tbody>
               </table>
             </div>
@@ -1249,16 +1541,6 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
       {/* ═══ COMPRAR ═══ */}
       {aba === 'comprar' && (
         <div style={{ maxWidth: 820 }}>
-          {compraSalva && (
-            <div style={{ background:'#ecfdf5',border:'1px solid #bbf7d0',borderRadius:12,padding:'20px 24px',marginBottom:20 }}>
-              <p style={{ fontSize:15,fontWeight:600,color:'#065f46',marginBottom:12 }}>✅ Compra #{compraSalva.numero} registrada!</p>
-              <div style={{ display:'flex',gap:10,flexWrap:'wrap' }}>
-                <button onClick={() => gerarDocumento('compra')} style={{ padding:'9px 18px',border:'1px solid #86efac',borderRadius:8,fontSize:13,background:'#fff',cursor:'pointer',color:'#065f46',fontWeight:500 }}>🖨 Imprimir termo completo</button>
-                <button onClick={imprimirResumoCompra} style={{ padding:'9px 18px',border:'1px solid #86efac',borderRadius:8,fontSize:13,background:'#fff',cursor:'pointer',color:'#065f46',fontWeight:500 }}>📋 Imprimir resumo</button>
-                <button onClick={() => { setCompraSalva(null); setModeloInput(''); setModeloSelecionado(null); setCIMEI(''); setCIMEI2(''); setCCor(''); setCCapacidade(''); setCObs(''); setCChecklist({}); setCValor(''); setVNome(''); setVCPF(''); setVRG(''); setVTel(''); setVEmail(''); setVCEP(''); setVEnd(''); setVBairro(''); setVCidade(''); setVEstado(''); setAssinaturaVendedor(''); setFotoVendedor(''); setCTipoSenha('nenhuma'); setCScenha(''); setCPadrao([]); limparCanvas(vendCanvasRef, setAssinaturaVendedor) }} style={{ padding:'9px 18px',border:'1px solid #e2e8f0',borderRadius:8,fontSize:13,background:'#fff',cursor:'pointer',color:'#374151' }}>Nova compra</button>
-              </div>
-            </div>
-          )}
 
           {/* Tipo */}
           <div style={card}>
@@ -1518,14 +1800,6 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
       {/* ═══ VENDER ═══ */}
       {aba === 'vender' && (
         <div style={{ maxWidth: 820 }}>
-          {vendaSalva ? (
-            <div style={{ background:'#ecfdf5',border:'1px solid #bbf7d0',borderRadius:12,padding:'20px 24px',marginBottom:20 }}>
-              <p style={{ fontSize:15,fontWeight:600,color:'#065f46',marginBottom:12 }}>✅ Venda #{vendaSalva.numero} registrada!</p>
-              <div style={{ display:'flex',gap:10 }}>
-                <button onClick={() => setVendaSalva(null)} style={{ padding:'9px 18px',border:'1px solid #e2e8f0',borderRadius:8,fontSize:13,background:'#fff',cursor:'pointer',color:'#374151' }}>Nova venda</button>
-              </div>
-            </div>
-          ) : null}
           {!aparelhoVenda ? (
             <div style={card}>
               <p style={sec}>Selecionar aparelho para venda</p>
@@ -1596,6 +1870,63 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {/* ═══ MODAL SUCESSO ═══ */}
+      {modalSucesso && (
+        <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center',padding:20 }}>
+          <div style={{ background:'#fff',borderRadius:20,padding:36,maxWidth:440,width:'100%',boxShadow:'0 24px 64px rgba(0,0,0,0.3)',textAlign:'center' }}>
+            <div style={{ width:64,height:64,borderRadius:'50%',background:modalSucesso.tipo==='compra'?'#fef3c7':'#ecfdf5',display:'flex',alignItems:'center',justifyContent:'center',fontSize:32,margin:'0 auto 16px' }}>
+              {modalSucesso.tipo==='compra'?'⬇':'⬆'}
+            </div>
+            <h2 style={{ fontSize:20,fontWeight:700,color:'#0f172a',marginBottom:6 }}>
+              {modalSucesso.tipo==='compra'?'Compra registrada!':'Venda registrada!'}
+            </h2>
+            <p style={{ fontSize:14,color:'#6366f1',fontWeight:600,marginBottom:4 }}>#{modalSucesso.numero}</p>
+            <p style={{ fontSize:13,color:'#64748b',marginBottom:24 }}>
+              {modalSucesso.aparelho.marca} {modalSucesso.aparelho.modelo}{modalSucesso.aparelho.capacidade?` · ${modalSucesso.aparelho.capacidade}`:''}
+            </p>
+            <div style={{ display:'flex',flexDirection:'column',gap:10 }}>
+              <button onClick={() => {
+                if (modalSucesso.tipo==='compra') {
+                  gerarTermoCompraHTML({
+                    numero: compraSalva?.numero ?? modalSucesso.numero,
+                    hoje: new Date().toLocaleDateString('pt-BR', { day:'2-digit', month:'long', year:'numeric' }),
+                    ap: { ...modalSucesso.aparelho, id:'', tipo:'usado', status:'sem_revisao', cor:cCor||null, imei:cIMEI||null, imei2:cIMEI2||null, specs_json:modeloSelecionado??{}, preco_compra:parseFloat(cValor||'0'), preco_venda:null, checklist_json:cChecklist, checklist_nota:notaGeral(cChecklist), observacoes:cObs||null, created_at:'', senha_tipo:cTipoSenha!=='nenhuma'?cTipoSenha:null, senha_valor:cTipoSenha==='pin'?cSenha:cTipoSenha==='padrao'&&cPadrao.length>0?cPadrao.join(' → '):null },
+                    vNomeP:vNome, vCPFP:vCPF, vRGP:vRG, vTelP:vTel,
+                    vEndP:[vEnd,vBairro,vCidade,vEstado].filter(Boolean).join(', '), vCEPP:vCEP,
+                    valorP:parseFloat(cValor||'0'), formaP:cForma,
+                    assVend:assinaturaVendedor, assLoja:assinaturaLoja, foto:fotoVendedor,
+                    senhaT:cTipoSenha!=='nenhuma'?cTipoSenha:'', senhaV:cTipoSenha==='pin'?cSenha:cTipoSenha==='padrao'?cPadrao.join(' → '):'',
+                  })
+                } else if (aparelhoVenda) {
+                  gerarTermoVendaHTML({
+                    numero: vendaSalva?.numero ?? modalSucesso.numero,
+                    hoje: new Date().toLocaleDateString('pt-BR', { day:'2-digit', month:'long', year:'numeric' }),
+                    ap: aparelhoVenda,
+                    bNomeP:bNome, bCPFP:bCPF, bTelP:bTel, bEndP:bEnd,
+                    valorP:parseFloat(bValor||'0'), formaP:bForma, garantiaP:parseInt(bGarantia),
+                    assCompr:assinaturaComprador, assLoja:assinaturaLoja,
+                  })
+                }
+              }} style={{ padding:'12px',background:'#6366f1',color:'#fff',border:'none',borderRadius:10,fontSize:14,fontWeight:600,cursor:'pointer' }}>
+                🖨 Imprimir termo
+              </button>
+              <button onClick={() => {
+                setModalSucesso(null)
+                if (modalSucesso.tipo==='compra') {
+                  setCompraSalva(null); setModeloInput(''); setModeloSelecionado(null); setCIMEI(''); setCIMEI2(''); setCCor(''); setCCapacidade(''); setCObs(''); setCChecklist({}); setCValor(''); setVNome(''); setVCPF(''); setVRG(''); setVTel(''); setVEmail(''); setVCEP(''); setVEnd(''); setVBairro(''); setVCidade(''); setVEstado(''); setAssinaturaVendedor(''); setFotoVendedor(''); setCTipoSenha('nenhuma'); setCScenha(''); setCPadrao([]); setSubmitAttempted(false)
+                  setAba('estoque')
+                } else {
+                  setVendaSalva(null); setAparelhoVenda(null); setBNome(''); setBCPF(''); setBTel(''); setBEmail(''); setBEnd(''); setBValor(''); setAssinaturaComprador('')
+                  setAba('historico')
+                }
+              }} style={{ padding:'12px',background:'#f1f5f9',color:'#374151',border:'none',borderRadius:10,fontSize:14,fontWeight:500,cursor:'pointer' }}>
+                Fechar
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
