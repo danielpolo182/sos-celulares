@@ -81,9 +81,22 @@ export default function PDVPage() {
 
   const subtotal = itens.reduce((s, i) => s + i.subtotal, 0)
   const totalPago = pagamentos.reduce((s, p) => s + p.valor, 0)
-  const total = Math.max(0, subtotal - desconto)
-  const troco = totalPago > total ? totalPago - total : 0
-  const faltaPagar = Math.max(0, total - totalPago)
+  const baseTotal = Math.max(0, subtotal - desconto)
+
+  // Calcula taxa da forma selecionada reativamente
+  const taxaFormaAtual = (() => {
+    const cfg = taxasConfig[formaPag]
+    if (!cfg) return 0
+    const taxaPct = (cfg.taxas_parcelas && cfg.taxas_parcelas[String(numParcelas)] !== undefined)
+      ? cfg.taxas_parcelas[String(numParcelas)]
+      : cfg.taxa_pct
+    return +(baseTotal * taxaPct / 100 + cfg.taxa_fixa).toFixed(2)
+  })()
+  const total = +(baseTotal + taxaFormaAtual).toFixed(2)
+  const taxaEfetivaAtual = baseTotal > 0 && taxaFormaAtual > 0 ? +((taxaFormaAtual / baseTotal) * 100).toFixed(2) : 0
+
+  const troco = totalPago > total ? +(totalPago - total).toFixed(2) : 0
+  const faltaPagar = Math.max(0, +(total - totalPago).toFixed(2))
 
   const fetchProdutos = useCallback(async () => {
     const { data } = await supabase.from('produtos').select('*').is('deleted_at', null).eq('ativo', true).order('nome')
@@ -183,15 +196,14 @@ export default function PDVPage() {
   }
 
   function adicionarPagamento() {
-    const baseValor = parseFloat(valorPag) || faltaPagar
-    if (!baseValor || baseValor <= 0) return
+    // total já inclui a taxa reativamente — apenas registra o valor que será pago
+    const valorFinal = parseFloat(valorPag) || faltaPagar
+    if (!valorFinal || valorFinal <= 0) return
     if (formaPag === 'credito_parcela') {
-      const { total, taxa, taxaEfetivaPct } = calcularTotalComTaxa(baseValor, formaPag, numParcelas)
-      const valorParcela = +(total / numParcelas).toFixed(2)
-      setPagamentos(prev => [...prev, { forma: formaPag, valor: total, parcelas: numParcelas, valor_parcela: valorParcela, taxa_aplicada: taxaEfetivaPct }])
+      const valorParcela = +(valorFinal / numParcelas).toFixed(2)
+      setPagamentos(prev => [...prev, { forma: formaPag, valor: +valorFinal.toFixed(2), parcelas: numParcelas, valor_parcela: valorParcela, taxa_aplicada: taxaEfetivaAtual > 0 ? taxaEfetivaAtual : undefined }])
     } else {
-      const { total, taxaEfetivaPct } = calcularTotalComTaxa(baseValor, formaPag, 1)
-      setPagamentos(prev => [...prev, { forma: formaPag, valor: total, taxa_aplicada: taxaEfetivaPct > 0 ? taxaEfetivaPct : undefined }])
+      setPagamentos(prev => [...prev, { forma: formaPag, valor: +valorFinal.toFixed(2), taxa_aplicada: taxaEfetivaAtual > 0 ? taxaEfetivaAtual : undefined }])
     }
     setValorPag('')
   }
@@ -200,7 +212,7 @@ export default function PDVPage() {
     if (itens.length === 0 || faltaPagar > 0.01) return
     setSalvando(true)
     const { data: venda } = await supabase.from('vendas').insert({
-      status: 'finalizada', tipo: 'pdv', subtotal, desconto, total,
+      status: 'finalizada', tipo: 'pdv', subtotal, desconto, total, taxa_pagamento: taxaFormaAtual > 0 ? taxaFormaAtual : null,
       valor_recebido: totalPago, troco,
       pagamentos,
       forma_pagamento: pagamentos.length === 1 ? pagamentos[0].forma : 'misto',
@@ -394,16 +406,30 @@ export default function PDVPage() {
 
               {/* Resumo + Pagamento + Finalizar */}
               <div style={{ borderTop: '1px solid #f1f5f9', padding: '12px 14px', background: '#fafafa', flexShrink: 0 }}>
-                {/* Subtotal e desconto */}
+                {/* Subtotal, desconto, taxa, total */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#64748b', marginBottom: 5 }}>
-                  <span>Subtotal ({itens.length} itens)</span><span style={{ fontWeight: 500, color: '#374151' }}>{formatMoeda(subtotal)}</span>
+                  <span>Subtotal ({itens.length} itens)</span>
+                  <span style={{ fontWeight: 500, color: '#374151' }}>{formatMoeda(subtotal)}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: '#64748b', marginBottom: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: '#64748b', marginBottom: 5 }}>
                   <span>Desconto (R$)</span>
-                  <input type="number" value={desconto || ''} onChange={e => setDesconto(parseFloat(e.target.value) || 0)} placeholder="0" style={{ width: 70, padding: '3px 7px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, textAlign: 'right', outline: 'none', fontFamily: 'inherit' }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {desconto > 0 && <span style={{ color: '#065f46', fontWeight: 500, fontSize: 11 }}>− {formatMoeda(desconto)}</span>}
+                    <input type="number" value={desconto || ''} onChange={e => setDesconto(parseFloat(e.target.value) || 0)} placeholder="0" style={{ width: 70, padding: '3px 7px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, textAlign: 'right', outline: 'none', fontFamily: 'inherit' }} />
+                  </div>
                 </div>
+                {taxaFormaAtual > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5, color: '#92400e' }}>
+                    <span>
+                      Taxa ({FORMAS.find(f => f.key === formaPag)?.label ?? formaPag}
+                      {formaPag === 'credito_parcela' ? ` ${numParcelas}x` : ''})
+                      <span style={{ fontSize: 10, marginLeft: 4, opacity: 0.8 }}>efetivo {taxaEfetivaAtual}%</span>
+                    </span>
+                    <span style={{ fontWeight: 500 }}>+ {formatMoeda(taxaFormaAtual)}</span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 18, fontWeight: 700, color: '#6366f1', paddingTop: 8, borderTop: '1px solid #e2e8f0', marginBottom: 10 }}>
-                  <span style={{ fontSize: 13, color: '#0f172a', fontWeight: 600, alignSelf: 'center' }}>Total</span>
+                  <span style={{ fontSize: 13, color: '#0f172a', fontWeight: 600, alignSelf: 'center' }}>Total a cobrar</span>
                   <span>{formatMoeda(total)}</span>
                 </div>
 
@@ -424,23 +450,16 @@ export default function PDVPage() {
                         {Array.from({ length: maxParcelasConfig - 1 }, (_, i) => i + 2).map(n => <option key={n} value={n}>{n}x</option>)}
                       </select>
                     </div>
-                    {(() => {
-                      const base = parseFloat(valorPag) || faltaPagar
-                      if (!base) return null
-                      const { total, taxa, taxaEfetivaPct } = calcularTotalComTaxa(base, 'credito_parcela', numParcelas)
-                      const parcela = (total / numParcelas).toFixed(2).replace('.', ',')
-                      const cfgPct = taxasConfig['credito_parcela']?.taxas_parcelas?.[String(numParcelas)] ?? taxasConfig['credito_parcela']?.taxa_pct ?? 0
-                      return (
-                        <div style={{ fontSize: 12, color: '#92400e' }}>
-                          <span style={{ fontWeight: 600 }}>{numParcelas}x de R$ {parcela}</span>
-                          {taxa > 0 && (
-                            <span style={{ marginLeft: 8, fontSize: 11, color: '#b45309' }}>
-                              (taxa configurada {cfgPct}%{taxasConfig['credito_parcela']?.taxa_fixa ? ` + R$${taxasConfig['credito_parcela'].taxa_fixa.toFixed(2).replace('.',',')} fixo` : ''} → acréscimo real: <strong>{taxaEfetivaPct}%</strong> = +R$ {taxa.toFixed(2).replace('.',',')})
-                            </span>
-                          )}
-                        </div>
-                      )
-                    })()}
+                    {faltaPagar > 0 && (
+                      <div style={{ fontSize: 12, color: '#92400e' }}>
+                        <span style={{ fontWeight: 600 }}>{numParcelas}x de R$ {(faltaPagar / numParcelas).toFixed(2).replace('.', ',')}</span>
+                        {taxaFormaAtual > 0 && (
+                          <span style={{ marginLeft: 8, fontSize: 11, color: '#b45309' }}>
+                            (acréscimo real: <strong>{taxaEfetivaAtual}%</strong> = +{formatMoeda(taxaFormaAtual)})
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
                 <div style={{ display: 'flex', gap: 7, marginBottom: 8 }}>
