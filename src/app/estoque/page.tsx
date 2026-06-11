@@ -5,6 +5,13 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
+type EntradaHistorico = {
+  id: string; produto_id: string; produto_nome?: string
+  quantidade: number; custo_unit: number; data_compra: string; nota_fiscal: string | null; created_at: string
+}
+
+type Fornecedor = { id: string; nome: string; telefone: string | null; email: string | null; ativo: boolean }
+
 type Produto = {
   id: string
   nome: string
@@ -44,7 +51,14 @@ const lbl: React.CSSProperties = { display: 'block', fontSize: 11, fontWeight: 5
 export default function EstoquePage() {
   const supabase = createClient()
   const router = useRouter()
-  const [aba, setAba] = useState<'produtos' | 'entradas' | 'fornecedores'>('produtos')
+  const [aba, setAba] = useState<'produtos' | 'estoque' | 'entradas' | 'fornecedores'>('estoque')
+  const [entradasHistorico, setEntradasHistorico] = useState<EntradaHistorico[]>([])
+  const [fornecedoresList, setFornecedoresList] = useState<Fornecedor[]>([])
+  const [loadingEntradas, setLoadingEntradas] = useState(false)
+  const [loadingFornecedores, setLoadingFornecedores] = useState(false)
+  const [filtroDataInicio, setFiltroDataInicio] = useState('')
+  const [filtroDataFim, setFiltroDataFim] = useState('')
+  const [filtroFornEntrada, setFiltroFornEntrada] = useState('')
   const [produtos, setProdutos] = useState<Produto[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -157,37 +171,64 @@ export default function EstoquePage() {
     setESaving(false); setShowModalEntrada(false); fetchProdutos()
   }
 
+  const fetchEntradasHistorico = useCallback(async () => {
+    setLoadingEntradas(true)
+    let q = supabase.from('produto_entradas').select('*, produtos(nome)').order('data_compra', { ascending: false }).limit(100)
+    if (filtroDataInicio) q = q.gte('data_compra', filtroDataInicio)
+    if (filtroDataFim) q = q.lte('data_compra', filtroDataFim)
+    const { data } = await q
+    setEntradasHistorico((data ?? []).map((e: any) => ({ ...e, produto_nome: e.produtos?.nome })) as EntradaHistorico[])
+    setLoadingEntradas(false)
+  }, [supabase, filtroDataInicio, filtroDataFim])
+
+  const fetchFornecedoresList = useCallback(async () => {
+    setLoadingFornecedores(true)
+    const { data } = await supabase.from('fornecedores').select('id,nome,telefone,email,ativo').order('nome')
+    setFornecedoresList((data ?? []) as Fornecedor[])
+    setLoadingFornecedores(false)
+  }, [supabase])
+
+  useEffect(() => {
+    if (aba === 'entradas') fetchEntradasHistorico()
+    if (aba === 'fornecedores') fetchFornecedoresList()
+    if (aba === 'produtos') router.push('/produtos')
+  }, [aba, fetchEntradasHistorico, fetchFornecedoresList, router])
+
   const lucroMedio = (p: Produto) => p.custo_medio > 0 ? ((p.preco_venda - p.custo_medio) / p.preco_venda * 100).toFixed(0) : null
 
   return (
-    <div style={{ display: 'flex', height: '100vh', fontFamily: 'var(--font-sans)', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: 'var(--font-sans)', overflow: 'hidden' }}>
 
-      {/* LIST */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-
-        {/* Header */}
-        <div style={{ padding: '20px 24px 14px', borderBottom: '1px solid #f1f5f9' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <div>
-              <h1 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', letterSpacing: '-0.02em' }}>Estoque & Produtos</h1>
-              <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{produtos.length} itens cadastrados</p>
-            </div>
-            <button onClick={abrirNovoProduto} style={{ padding: '8px 16px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
-              + Novo produto
-            </button>
+      {/* Header + tabs */}
+      <div style={{ padding: '16px 24px 0', borderBottom: '1px solid #e2e8f0', background: '#fff', flexShrink: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div>
+            <h1 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', letterSpacing: '-0.02em' }}>Produtos & Estoque</h1>
+            <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{produtos.length} itens · {produtos.filter(p => p.estoque_atual <= p.estoque_minimo).length} com estoque baixo</p>
           </div>
+          {aba === 'estoque' && (
+            <button onClick={abrirNovoProduto} style={{ padding: '8px 16px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>+ Novo produto</button>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 2 }}>
+          {([['produtos','📦 Produtos'],['estoque','📊 Estoque'],['entradas','📥 Entradas'],['fornecedores','🏭 Fornecedores']] as const).map(([k,l]) => (
+            <button key={k} onClick={() => setAba(k)} style={{ padding: '9px 16px', fontSize: 13, fontWeight: aba === k ? 600 : 400, border: 'none', background: 'none', cursor: 'pointer', color: aba === k ? '#6366f1' : '#64748b', borderBottom: aba === k ? '2px solid #6366f1' : '2px solid transparent', whiteSpace: 'nowrap', marginBottom: -1 }}>{l}</button>
+          ))}
+        </div>
+      </div>
 
+      {/* ── ABA ESTOQUE (saldos) */}
+      {aba === 'estoque' && (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {/* Filtros */}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ padding: '12px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', gap: 8, flexWrap: 'wrap', flexShrink: 0 }}>
             <input placeholder="Buscar produto..." value={search} onChange={e => setSearch(e.target.value)}
               style={{ ...inp, flex: 1, minWidth: 160, background: '#f8fafc' }} />
-            <select value={filtroCat} onChange={e => setFiltroCat(e.target.value)}
-              style={{ ...inp, width: 'auto' }}>
+            <select value={filtroCat} onChange={e => setFiltroCat(e.target.value)} style={{ ...inp, width: 'auto' }}>
               <option value="todas">Todas categorias</option>
               {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
-        </div>
 
         {/* Table */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -264,7 +305,78 @@ export default function EstoquePage() {
             </table>
           )}
         </div>
-      </div>
+        </div>
+      )}
+
+      {/* ── ABA ENTRADAS */}
+      {aba === 'entradas' && (
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+            <input type="date" value={filtroDataInicio} onChange={e => setFiltroDataInicio(e.target.value)} style={{ ...inp, width: 'auto' }} />
+            <span style={{ alignSelf: 'center', color: '#94a3b8' }}>até</span>
+            <input type="date" value={filtroDataFim} onChange={e => setFiltroDataFim(e.target.value)} style={{ ...inp, width: 'auto' }} />
+            <button onClick={fetchEntradasHistorico} style={{ padding: '8px 14px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, cursor: 'pointer' }}>Filtrar</button>
+          </div>
+          {loadingEntradas ? (
+            <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Carregando...</div>
+          ) : entradasHistorico.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 60 }}><div style={{ fontSize: 36, marginBottom: 12 }}>📥</div><p style={{ color: '#94a3b8' }}>Nenhuma entrada registrada</p></div>
+          ) : (
+            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead><tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                  {['Data','Produto','Quantidade','Custo unit.','Total','NF / Ref.'].map(h => <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>)}
+                </tr></thead>
+                <tbody>
+                  {entradasHistorico.map(e => (
+                    <tr key={e.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '9px 14px', color: '#64748b', fontSize: 12 }}>{new Date(e.data_compra + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                      <td style={{ padding: '9px 14px', fontWeight: 500, color: '#0f172a' }}>{e.produto_nome ?? e.produto_id}</td>
+                      <td style={{ padding: '9px 14px', color: '#374151' }}>{e.quantidade} un</td>
+                      <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontSize: 12 }}>R$ {Number(e.custo_unit).toFixed(2).replace('.', ',')}</td>
+                      <td style={{ padding: '9px 14px', fontWeight: 600, color: '#0f172a', fontFamily: 'monospace', fontSize: 12 }}>R$ {(e.quantidade * Number(e.custo_unit)).toFixed(2).replace('.', ',')}</td>
+                      <td style={{ padding: '9px 14px', color: '#94a3b8', fontSize: 12 }}>{e.nota_fiscal ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── ABA FORNECEDORES */}
+      {aba === 'fornecedores' && (
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+          {loadingFornecedores ? (
+            <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Carregando...</div>
+          ) : fornecedoresList.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 60 }}><div style={{ fontSize: 36, marginBottom: 12 }}>🏭</div><p style={{ color: '#94a3b8' }}>Nenhum fornecedor cadastrado</p><button onClick={() => router.push('/fornecedores')} style={{ marginTop: 12, padding: '8px 16px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>Gerenciar fornecedores</button></div>
+          ) : (
+            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
+              <div style={{ padding: '12px 18px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <p style={{ fontSize: 13, color: '#64748b' }}>{fornecedoresList.length} fornecedores</p>
+                <button onClick={() => router.push('/fornecedores')} style={{ fontSize: 12, color: '#6366f1', background: 'none', border: 'none', cursor: 'pointer' }}>Gerenciar completo →</button>
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead><tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                  {['Fornecedor','Telefone','E-mail','Status'].map(h => <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>)}
+                </tr></thead>
+                <tbody>
+                  {fornecedoresList.map(f => (
+                    <tr key={f.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '10px 14px', fontWeight: 500, color: '#0f172a' }}>{f.nome}</td>
+                      <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{f.telefone ?? '—'}</td>
+                      <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{f.email ?? '—'}</td>
+                      <td style={{ padding: '10px 14px' }}><span style={{ fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20, background: f.ativo ? '#ecfdf5' : '#f1f5f9', color: f.ativo ? '#065f46' : '#94a3b8' }}>{f.ativo ? 'Ativo' : 'Inativo'}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* MODAL PRODUTO */}
       {showModalProd && (

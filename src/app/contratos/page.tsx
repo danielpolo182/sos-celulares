@@ -14,6 +14,9 @@ type Contrato = {
 const TIPO_CONFIG: Record<string, { label: string; icon: string; bg: string; color: string }> = {
   prestacao_servico: { label: 'Prestação de serviço', icon: '🔧', bg: '#eef2ff', color: '#3730a3' },
   fornecedor:        { label: 'Fornecedor',            icon: '🏭', bg: '#f0fdf4', color: '#065f46' },
+  licitacao:         { label: 'Licitação',             icon: '📋', bg: '#fff7ed', color: '#9a3412' },
+  parceria:          { label: 'Parceria',              icon: '🤝', bg: '#fdf4ff', color: '#7e22ce' },
+  aluguel:           { label: 'Aluguel',               icon: '🏠', bg: '#eff6ff', color: '#1d4ed8' },
   outro:             { label: 'Outro',                 icon: '📄', bg: '#f8fafc', color: '#475569' },
 }
 
@@ -51,8 +54,8 @@ export default function ContratosPage() {
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
-  function abrirNovo() {
-    setFTitulo(''); setFTipo('prestacao_servico'); setFConteudo('')
+  function abrirNovo(tipoPreSelecionado = 'prestacao_servico') {
+    setFTitulo(''); setFTipo(tipoPreSelecionado); setFConteudo('')
     setFAtivo(true); setFImprimirOS(false); setFAssinaturaCliente(true)
     setFAssinaturaGestor(true); setFDigital(true)
     setEditId(null); setAbaModal('editor'); setShowModal(true)
@@ -135,46 +138,59 @@ export default function ContratosPage() {
           <h1 style={{ fontSize: 20, fontWeight: 600, color: '#0f172a', letterSpacing: '-0.02em' }}>Contratos</h1>
           <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>{contratos.length} contratos · {ativos} ativos</p>
         </div>
-        <button onClick={abrirNovo} style={{ padding: '9px 18px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>+ Novo contrato</button>
+        {/* Header btn removido — cada seção tem seu próprio botão */}
       </div>
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Carregando...</div>
-      ) : contratos.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: 60 }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>📄</div>
-          <p style={{ fontSize: 14, fontWeight: 500, color: '#374151' }}>Nenhum contrato cadastrado</p>
-          <button onClick={abrirNovo} style={{ marginTop: 16, padding: '9px 18px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>+ Criar primeiro contrato</button>
-        </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {contratos.map(c => {
-            const tc = TIPO_CONFIG[c.tipo] ?? TIPO_CONFIG.outro
-            return (
-              <div key={c.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '16px 20px', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-                <div style={{ width: 40, height: 40, borderRadius: 10, background: tc.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>{tc.icon}</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                    <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{c.titulo}</p>
-                    <span style={{ fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20, background: tc.bg, color: tc.color }}>{tc.label}</span>
-                    {c.imprimir_na_os && <span style={{ fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20, background: '#eef2ff', color: '#3730a3' }}>🖨 Imprime na OS</span>}
-                    <span style={{ fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20, background: c.ativo ? '#ecfdf5' : '#f1f5f9', color: c.ativo ? '#065f46' : '#94a3b8' }}>{c.ativo ? 'Ativo' : 'Inativo'}</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 10, fontSize: 12, color: '#94a3b8', flexWrap: 'wrap' }}>
-                    {c.requer_assinatura_cliente && <span>✍ Assinatura do cliente</span>}
-                    {c.requer_assinatura_gestor && <span>✍ Assinatura do gestor</span>}
-                    {c.permite_assinatura_digital && <span>📱 Permite digital</span>}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                  <button onClick={() => imprimirContrato(c)} style={{ fontSize: 12, padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: 7, background: '#fff', cursor: 'pointer', color: '#374151' }}>🖨 Imprimir</button>
-                  <button onClick={() => abrirEdit(c)} style={{ fontSize: 12, padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: 7, background: '#fff', cursor: 'pointer', color: '#374151' }}>Editar</button>
-                  <button onClick={() => toggleAtivo(c)} style={{ fontSize: 12, padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: 7, background: '#fff', cursor: 'pointer', color: c.ativo ? '#ef4444' : '#10b981' }}>{c.ativo ? 'Desativar' : 'Ativar'}</button>
-                </div>
+        <>
+          {/* ── SEÇÃO 1: Prestação de Serviço */}
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div>
+                <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>🔧 Prestação de Serviço</p>
+                <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 1 }}>Contratos com clientes da assistência</p>
               </div>
-            )
-          })}
-        </div>
+              <button onClick={() => abrirNovo('prestacao_servico')} style={{ fontSize: 12, padding: '7px 14px', background: '#eef2ff', color: '#3730a3', border: '1px solid #c7d2fe', borderRadius: 7, cursor: 'pointer', fontWeight: 500 }}>+ Novo contrato de serviço</button>
+            </div>
+            {contratos.filter(c => c.tipo === 'prestacao_servico').length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '24px', background: '#f8fafc', border: '1px dashed #e2e8f0', borderRadius: 10, color: '#94a3b8', fontSize: 13 }}>
+                Nenhum contrato de prestação cadastrado
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {contratos.filter(c => c.tipo === 'prestacao_servico').map(c => <ContratoCard key={c.id} c={c} onEdit={abrirEdit} onToggle={toggleAtivo} onPrint={imprimirContrato} showBadgeTipo={false} />)}
+              </div>
+            )}
+          </div>
+
+          {/* ── DIVISOR */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '24px 0' }}>
+            <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>📁 Outros Contratos</span>
+            </div>
+            <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+          </div>
+
+          {/* ── SEÇÃO 2: Outros */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <p style={{ fontSize: 12, color: '#64748b' }}>Licitações, compras com fornecedores, parcerias e mais</p>
+              <button onClick={() => abrirNovo('fornecedor')} style={{ fontSize: 12, padding: '7px 14px', background: '#f8fafc', color: '#374151', border: '1px solid #e2e8f0', borderRadius: 7, cursor: 'pointer', fontWeight: 500 }}>+ Outro contrato</button>
+            </div>
+            {contratos.filter(c => c.tipo !== 'prestacao_servico').length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '24px', background: '#f8fafc', border: '1px dashed #e2e8f0', borderRadius: 10, color: '#94a3b8', fontSize: 13 }}>
+                Nenhum outro contrato cadastrado
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {contratos.filter(c => c.tipo !== 'prestacao_servico').map(c => <ContratoCard key={c.id} c={c} onEdit={abrirEdit} onToggle={toggleAtivo} onPrint={imprimirContrato} showBadgeTipo={true} />)}
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {/* MODAL */}
@@ -309,6 +325,39 @@ export default function ContratosPage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function ContratoCard({ c, onEdit, onToggle, onPrint, showBadgeTipo }: {
+  c: Contrato
+  onEdit: (c: Contrato) => void
+  onToggle: (c: Contrato) => void
+  onPrint: (c: Contrato) => void
+  showBadgeTipo: boolean
+}) {
+  const tc = TIPO_CONFIG[c.tipo] ?? TIPO_CONFIG.outro
+  return (
+    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '14px 18px', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+      <div style={{ width: 38, height: 38, borderRadius: 9, background: tc.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>{tc.icon}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3, flexWrap: 'wrap' }}>
+          <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{c.titulo}</p>
+          {showBadgeTipo && <span style={{ fontSize: 10, fontWeight: 500, padding: '1px 7px', borderRadius: 20, background: tc.bg, color: tc.color }}>{tc.icon} {tc.label}</span>}
+          {c.imprimir_na_os && <span style={{ fontSize: 10, fontWeight: 500, padding: '1px 7px', borderRadius: 20, background: '#eef2ff', color: '#3730a3' }}>🖨 OS</span>}
+          <span style={{ fontSize: 10, fontWeight: 500, padding: '1px 7px', borderRadius: 20, background: c.ativo ? '#ecfdf5' : '#f1f5f9', color: c.ativo ? '#065f46' : '#94a3b8' }}>{c.ativo ? 'Ativo' : 'Inativo'}</span>
+        </div>
+        <div style={{ display: 'flex', gap: 8, fontSize: 11, color: '#94a3b8', flexWrap: 'wrap' }}>
+          {c.requer_assinatura_cliente && <span>✍ Cliente</span>}
+          {c.requer_assinatura_gestor && <span>✍ Gestor</span>}
+          {c.permite_assinatura_digital && <span>📱 Digital</span>}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+        <button onClick={() => onPrint(c)} style={{ fontSize: 11, padding: '5px 10px', border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', cursor: 'pointer', color: '#374151' }}>🖨</button>
+        <button onClick={() => onEdit(c)} style={{ fontSize: 11, padding: '5px 10px', border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', cursor: 'pointer', color: '#374151' }}>Editar</button>
+        <button onClick={() => onToggle(c)} style={{ fontSize: 11, padding: '5px 10px', border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', cursor: 'pointer', color: c.ativo ? '#ef4444' : '#10b981' }}>{c.ativo ? 'Desativar' : 'Ativar'}</button>
+      </div>
     </div>
   )
 }

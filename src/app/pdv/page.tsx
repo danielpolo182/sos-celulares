@@ -19,7 +19,7 @@ type Pagamento = { forma: 'dinheiro' | 'pix' | 'credito' | 'debito'; valor: numb
 
 type MovimentoCaixa = {
   id: string; tipo: string; valor: number
-  forma: string | null; observacoes: string | null; created_at: string
+  forma: string | null; observacoes: string | null; created_at: string; data_ref: string
 }
 
 type CaixaHoje = {
@@ -28,7 +28,7 @@ type CaixaHoje = {
   aberto_em: string | null; fechado_em: string | null
 }
 
-type ModoPDV = 'padrao' | 'touch' | 'visual'
+type MaisVendido = { produto_id: string; total_qtd: number; produto: Produto | null }
 
 const FORMAS: { key: 'dinheiro' | 'pix' | 'credito' | 'debito'; label: string; icon: string; cor: string }[] = [
   { key: 'dinheiro', label: 'Dinheiro', icon: '💵', cor: '#16a34a' },
@@ -46,12 +46,13 @@ const inp: React.CSSProperties = { width: '100%', padding: '9px 12px', border: '
 const lbl: React.CSSProperties = { display: 'block', fontSize: 11, fontWeight: 500, color: '#64748b', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.04em' }
 
 function formatMoeda(v: number) { return `R$ ${v.toFixed(2).replace('.', ',')}` }
+function hoje() { return new Date().toISOString().split('T')[0] }
 
 export default function PDVPage() {
   const supabase = createClient()
-  const [modo, setModo] = useState<ModoPDV>('padrao')
   const [aba, setAba] = useState<'venda' | 'caixa' | 'historico'>('venda')
   const [produtos, setProdutos] = useState<Produto[]>([])
+  const [maisVendidos, setMaisVendidos] = useState<Produto[]>([])
   const [searchProd, setSearchProd] = useState('')
   const [prodResults, setProdResults] = useState<Produto[]>([])
   const [itens, setItens] = useState<ItemVenda[]>([])
@@ -66,7 +67,7 @@ export default function PDVPage() {
   const [caixaHoje, setCaixaHoje] = useState<CaixaHoje | null>(null)
   const [movimentos, setMovimentos] = useState<MovimentoCaixa[]>([])
   const [showCaixaModal, setShowCaixaModal] = useState(false)
-  const [caixaAcao, setCaixaAcao] = useState<'abertura' | 'fechamento' | 'sangria' | 'suprimento'>('abertura')
+  const [caixaAcao, setCaixaAcao] = useState<'abertura' | 'fechamento' | 'sangria' | 'suprimento' | 'reabertura'>('abertura')
   const [caixaValor, setCaixaValor] = useState('')
   const [caixaObs, setCaixaObs] = useState('')
   const [salvandoCaixa, setSalvandoCaixa] = useState(false)
@@ -80,41 +81,59 @@ export default function PDVPage() {
 
   const fetchProdutos = useCallback(async () => {
     const { data } = await supabase.from('produtos').select('*').is('deleted_at', null).eq('ativo', true).order('nome')
-    setProdutos((data ?? []) as Produto[])
+    const lista = (data ?? []) as Produto[]
+    setProdutos(lista)
+
+    // Buscar mais vendidos dos últimos 30 dias
+    const from30 = new Date(); from30.setDate(from30.getDate() - 30)
+    const { data: vi } = await supabase
+      .from('venda_itens')
+      .select('produto_id, quantidade')
+      .gte('created_at', from30.toISOString())
+      .not('produto_id', 'is', null)
+
+    if (vi && vi.length > 0) {
+      const totais: Record<string, number> = {}
+      vi.forEach(r => { if (r.produto_id) totais[r.produto_id] = (totais[r.produto_id] ?? 0) + (r.quantidade ?? 1) })
+      const topIds = Object.entries(totais).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([id]) => id)
+      const topProdutos = topIds.map(id => lista.find(p => p.id === id)).filter(Boolean) as Produto[]
+      setMaisVendidos(topProdutos)
+    } else {
+      // fallback: primeiros 12 por nome
+      setMaisVendidos(lista.slice(0, 12))
+    }
   }, [supabase])
 
   const fetchCaixa = useCallback(async () => {
-    const hoje = new Date().toISOString().split('T')[0]
-    const { data: caixa } = await supabase.from('vw_caixa_hoje').select('*').eq('data_ref', hoje).single()
+    const d = hoje()
+    const { data: caixa } = await supabase.from('vw_caixa_hoje').select('*').eq('data_ref', d).single()
     setCaixaHoje(caixa as CaixaHoje | null)
-    const { data: movs } = await supabase.from('caixa_movimentos').select('*').eq('data_ref', hoje).order('created_at', { ascending: false })
+    const { data: movs } = await supabase.from('caixa_movimentos').select('*').eq('data_ref', d).order('created_at', { ascending: false })
     setMovimentos((movs ?? []) as MovimentoCaixa[])
   }, [supabase])
 
-  // Carregar modo salvo nas configs
   useEffect(() => {
     fetchProdutos()
     fetchCaixa()
-    supabase.from('sistema_config').select('valor').eq('chave', 'pdv_modo_visualizacao').single()
-      .then(({ data }) => { if (data) setModo(data.valor as ModoPDV) })
-  }, [fetchProdutos, fetchCaixa, supabase])
+  }, [fetchProdutos, fetchCaixa])
 
   function buscarProduto(q: string) {
     setSearchProd(q)
     if (searchTimer.current) clearTimeout(searchTimer.current)
     searchTimer.current = setTimeout(() => {
       if (!q.trim()) { setProdResults([]); return }
-      setProdResults(produtos.filter(p => p.nome.toLowerCase().includes(q.toLowerCase())).slice(0, 8))
+      setProdResults(produtos.filter(p => p.nome.toLowerCase().includes(q.toLowerCase())).slice(0, 10))
     }, 200)
   }
 
   function adicionarProduto(p: Produto) {
-    const exist = itens.findIndex(i => i.produto_id === p.id)
-    if (exist >= 0) {
-      const novo = [...itens]; novo[exist].quantidade++; novo[exist].subtotal = novo[exist].quantidade * novo[exist].preco_unit; setItens(novo)
-    } else {
-      setItens(prev => [...prev, { produto_id: p.id, descricao: p.nome, quantidade: 1, preco_unit: p.preco_venda, custo_unit: p.custo_medio, subtotal: p.preco_venda }])
-    }
+    setItens(prev => {
+      const exist = prev.findIndex(i => i.produto_id === p.id)
+      if (exist >= 0) {
+        const novo = [...prev]; novo[exist] = { ...novo[exist], quantidade: novo[exist].quantidade + 1, subtotal: (novo[exist].quantidade + 1) * novo[exist].preco_unit }; return novo
+      }
+      return [...prev, { produto_id: p.id, descricao: p.nome, quantidade: 1, preco_unit: p.preco_venda, custo_unit: p.custo_medio, subtotal: p.preco_venda }]
+    })
     setSearchProd(''); setProdResults([])
   }
 
@@ -141,7 +160,7 @@ export default function PDVPage() {
     const { data: venda } = await supabase.from('vendas').insert({
       status: 'finalizada', tipo: 'pdv', subtotal, desconto, total,
       valor_recebido: totalPago, troco,
-      pagamentos: pagamentos,
+      pagamentos,
       forma_pagamento: pagamentos.length === 1 ? pagamentos[0].forma : 'misto',
       pago: true, observacoes: obs || null,
     }).select('id, numero').single()
@@ -154,7 +173,7 @@ export default function PDVPage() {
           if (prod) await supabase.from('produtos').update({ estoque_atual: Math.max(0, prod.estoque_atual - item.quantidade) }).eq('id', item.produto_id)
         }
       }
-      await supabase.from('caixa_movimentos').insert({ tipo: 'venda', valor: total, forma: pagamentos.length === 1 ? pagamentos[0].forma : 'misto', referencia_id: venda.id, observacoes: `Venda #${venda.numero}` })
+      await supabase.from('caixa_movimentos').insert({ tipo: 'venda', valor: total, forma: pagamentos.length === 1 ? pagamentos[0].forma : 'misto', referencia_id: venda.id, observacoes: `Venda #${venda.numero}`, data_ref: hoje() })
       setUltimaVenda({ numero: venda.numero, total, troco })
       setVendaOk(true)
       setItens([]); setPagamentos([]); setDesconto(0); setObs('')
@@ -164,9 +183,10 @@ export default function PDVPage() {
   }
 
   async function salvarCaixa() {
-    const v = parseFloat(caixaValor); if (!v) return
+    const v = parseFloat(caixaValor); if (isNaN(v) || v < 0) return
     setSalvandoCaixa(true)
-    await supabase.from('caixa_movimentos').insert({ tipo: caixaAcao, valor: v, forma: 'dinheiro', observacoes: caixaObs || null })
+    const tipoReal = caixaAcao === 'reabertura' ? 'abertura' : caixaAcao
+    await supabase.from('caixa_movimentos').insert({ tipo: tipoReal, valor: v, forma: 'dinheiro', observacoes: caixaObs || null, data_ref: hoje() })
     setSalvandoCaixa(false); setShowCaixaModal(false); setCaixaValor(''); setCaixaObs(''); fetchCaixa()
   }
 
@@ -192,299 +212,212 @@ export default function PDVPage() {
     const _b = new Blob([html], { type: 'text/html;charset=utf-8' }); const _u = URL.createObjectURL(_b); const _w = window.open(_u, '_blank'); if (_w) _w.onload = () => URL.revokeObjectURL(_u)
   }
 
-  const caixaAberta = caixaHoje?.aberto_em && !caixaHoje?.fechado_em
-
-  // ── PAINEL DIREITO (resumo + pagamento) — igual nos 3 modos
-  const painelDireito = (
-    <div style={{ width: modo === 'visual' ? '100%' : 320, display: 'flex', flexDirection: 'column', background: '#fff', borderLeft: modo === 'visual' ? 'none' : '1px solid #e2e8f0', overflow: 'hidden' }}>
-      {vendaOk && ultimaVenda && (
-        <div style={{ padding: '14px 16px', background: '#ecfdf5', borderBottom: '1px solid #bbf7d0' }}>
-          <p style={{ fontSize: 14, fontWeight: 600, color: '#065f46', marginBottom: 6 }}>✅ Venda #{ultimaVenda.numero} finalizada!</p>
-          {ultimaVenda.troco > 0 && <p style={{ fontSize: 15, fontWeight: 700, color: '#065f46', marginBottom: 8 }}>Troco: {formatMoeda(ultimaVenda.troco)}</p>}
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={imprimir} style={{ flex: 1, padding: '7px', border: '1px solid #86efac', borderRadius: 7, fontSize: 12, cursor: 'pointer', background: '#fff', color: '#065f46', fontWeight: 500 }}>🖨 Imprimir</button>
-            <button onClick={() => setVendaOk(false)} style={{ flex: 1, padding: '7px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 12, cursor: 'pointer', background: '#fff', color: '#374151' }}>Nova venda</button>
-          </div>
-        </div>
-      )}
-
-      {/* Resumo */}
-      <div style={{ padding: '14px 16px', borderBottom: '1px solid #f1f5f9' }}>
-        <p style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Resumo</p>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6 }}>
-          <span style={{ color: '#64748b' }}>Subtotal ({itens.length} itens)</span>
-          <span style={{ fontWeight: 500 }}>{formatMoeda(subtotal)}</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, marginBottom: 6 }}>
-          <span style={{ color: '#64748b' }}>Desconto (R$)</span>
-          <input type="number" value={desconto || ''} onChange={e => setDesconto(parseFloat(e.target.value) || 0)} placeholder="0"
-            style={{ width: 80, padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, textAlign: 'right', outline: 'none' }} />
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 20, fontWeight: 700, color: '#6366f1', marginTop: 10, paddingTop: 10, borderTop: '1px solid #f1f5f9' }}>
-          <span style={{ fontSize: 14, color: '#0f172a', fontWeight: 600 }}>Total</span>
-          <span>{formatMoeda(total)}</span>
-        </div>
-      </div>
-
-      {/* Pagamento */}
-      <div style={{ padding: '14px 16px', flex: 1, overflowY: 'auto' }}>
-        <p style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Pagamento</p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 10 }}>
-          {FORMAS.map(f => (
-            <button key={f.key} onClick={() => setFormaPag(f.key)} style={{ padding: '10px 4px', borderRadius: 8, border: '1px solid', cursor: 'pointer', fontSize: 11, fontWeight: 500, textAlign: 'center', background: formaPag === f.key ? f.cor + '15' : '#f8fafc', color: formaPag === f.key ? f.cor : '#64748b', borderColor: formaPag === f.key ? f.cor + '80' : '#e2e8f0' }}>
-              <div style={{ fontSize: 18, marginBottom: 2 }}>{f.icon}</div>
-              <div>{f.label}</div>
-            </button>
-          ))}
-        </div>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-          <input type="number" step="0.01" value={valorPag} onChange={e => setValorPag(e.target.value)} onKeyDown={e => e.key === 'Enter' && adicionarPagamento()}
-            placeholder={faltaPagar > 0 ? faltaPagar.toFixed(2) : '0,00'} style={{ ...inp, flex: 1 }} />
-          <button onClick={adicionarPagamento} style={{ padding: '9px 14px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>+</button>
-        </div>
-        {pagamentos.map((p, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: '#f8f7ff', border: '1px solid #e0e7ff', borderRadius: 7, marginBottom: 6, fontSize: 13 }}>
-            <span style={{ color: '#4338ca', fontWeight: 500, textTransform: 'capitalize' }}>{p.forma}</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontWeight: 600 }}>{formatMoeda(p.valor)}</span>
-              <button onClick={() => setPagamentos(prev => prev.filter((_, idx) => idx !== i))} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
-            </div>
-          </div>
-        ))}
-        {pagamentos.length > 0 && (
-          <div style={{ padding: '10px', background: '#f8fafc', borderRadius: 8, fontSize: 13, marginTop: 6 }}>
-            {faltaPagar > 0.01 && <div style={{ display: 'flex', justifyContent: 'space-between', color: '#991b1b', fontWeight: 600 }}><span>Falta</span><span>{formatMoeda(faltaPagar)}</span></div>}
-            {troco > 0.01 && <div style={{ display: 'flex', justifyContent: 'space-between', color: '#065f46', fontWeight: 700, fontSize: 15 }}><span>Troco</span><span>{formatMoeda(troco)}</span></div>}
-          </div>
-        )}
-        <div style={{ marginTop: 10 }}>
-          <label style={lbl}>Observações</label>
-          <input style={inp} value={obs} onChange={e => setObs(e.target.value)} placeholder="Opcional..." />
-        </div>
-      </div>
-
-      {/* Botão finalizar */}
-      <div style={{ padding: '14px 16px' }}>
-        <button onClick={finalizarVenda} disabled={salvando || itens.length === 0 || faltaPagar > 0.01} style={{ width: '100%', padding: '14px', background: salvando || itens.length === 0 || faltaPagar > 0.01 ? '#e2e8f0' : '#6366f1', color: salvando || itens.length === 0 || faltaPagar > 0.01 ? '#94a3b8' : '#fff', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: salvando || itens.length === 0 || faltaPagar > 0.01 ? 'not-allowed' : 'pointer' }}>
-          {salvando ? 'Finalizando...' : itens.length === 0 ? 'Adicione itens' : faltaPagar > 0.01 ? `Falta ${formatMoeda(faltaPagar)}` : `✓ Finalizar · ${formatMoeda(total)}`}
-        </button>
-      </div>
-    </div>
-  )
+  const caixaAberta = !!(caixaHoje?.aberto_em && !caixaHoje?.fechado_em)
+  const caixaFechada = !!(caixaHoje?.aberto_em && caixaHoje?.fechado_em)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: 'var(--font-sans)', background: '#f8fafc', overflow: 'hidden' }}>
 
-      {/* Seletor de modo */}
+      {/* Cabeçalho com abas */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', background: '#fff', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
-        <div style={{ display: 'flex', gap: 4, marginRight: 'auto' }}>
+        <div style={{ display: 'flex', gap: 4 }}>
           {([['venda', '🛒 Venda'], ['caixa', '💰 Caixa'], ['historico', '📋 Histórico']] as const).map(([k, l]) => (
             <button key={k} onClick={() => setAba(k)} style={{ padding: '8px 16px', fontSize: 13, fontWeight: aba === k ? 600 : 400, border: 'none', background: aba === k ? '#eef2ff' : 'transparent', cursor: 'pointer', color: aba === k ? '#6366f1' : '#64748b', borderRadius: 7 }}>{l}</button>
           ))}
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
-          {([['padrao', '⊞ Padrão'], ['touch', '👆 Touch'], ['visual', '🎨 Visual']] as const).map(([m, l]) => (
-            <button key={m} onClick={() => setModo(m)} style={{ padding: '7px 12px', fontSize: 12, fontWeight: modo === m ? 600 : 400, border: '1px solid', cursor: 'pointer', borderRadius: 7, background: modo === m ? '#e0e7ff' : '#fff', color: modo === m ? '#3730a3' : '#64748b', borderColor: modo === m ? '#818cf8' : '#e2e8f0' }}>{l}</button>
-          ))}
-        </div>
+        {caixaAberta && <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 20, background: '#ecfdf5', color: '#065f46' }}>✅ Caixa aberto · {formatMoeda(caixaHoje?.saldo_atual ?? 0)}</span>}
+        {!caixaAberta && <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 20, background: '#fef2f2', color: '#991b1b' }}>🔒 Caixa {caixaFechada ? 'fechado' : 'não aberto'}</span>}
       </div>
 
       {/* Conteúdo */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
 
-        {/* ── MODO PADRÃO */}
-        {aba === 'venda' && modo === 'padrao' && (
+        {/* ── ABA VENDA — layout dois colunas */}
+        {aba === 'venda' && (
           <>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', background: '#fff' }}>
+            {/* Coluna esquerda: busca + grade de produtos */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#f8fafc' }}>
+              {/* Barra de busca */}
+              <div style={{ padding: '12px 16px', background: '#fff', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
                 <div style={{ position: 'relative' }}>
-                  <input style={{ ...inp, paddingLeft: 36 }} placeholder="Buscar produto..." value={searchProd} onChange={e => buscarProduto(e.target.value)} autoComplete="off" />
-                  <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: '#94a3b8' }}>🔍</span>
+                  <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: '#94a3b8', pointerEvents: 'none' }}>🔍</span>
+                  <input
+                    style={{ ...inp, paddingLeft: 38, fontSize: 14 }}
+                    placeholder="Buscar produto pelo nome..."
+                    value={searchProd}
+                    onChange={e => buscarProduto(e.target.value)}
+                    autoComplete="off"
+                  />
                   {prodResults.length > 0 && (
                     <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', marginTop: 4, overflow: 'hidden' }}>
                       {prodResults.map(p => (
                         <div key={p.id} onClick={() => adicionarProduto(p)} style={{ padding: '10px 14px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}
                           onMouseEnter={e => { e.currentTarget.style.background = '#f5f3ff' }}
                           onMouseLeave={e => { e.currentTarget.style.background = '#fff' }}>
-                          <div><p style={{ fontWeight: 500, color: '#0f172a' }}>{p.nome}</p><p style={{ fontSize: 11, color: '#94a3b8' }}>Estoque: {p.estoque_atual}</p></div>
-                          <p style={{ fontWeight: 600, color: '#6366f1' }}>{formatMoeda(p.preco_venda)}</p>
+                          <div>
+                            <p style={{ fontWeight: 500, color: '#0f172a' }}>{p.nome}</p>
+                            <p style={{ fontSize: 11, color: '#94a3b8' }}>Estoque: {p.estoque_atual} · {p.categoria ?? 'Sem categoria'}</p>
+                          </div>
+                          <p style={{ fontWeight: 700, color: '#6366f1', whiteSpace: 'nowrap', marginLeft: 12 }}>{formatMoeda(p.preco_venda)}</p>
                         </div>
                       ))}
                       <div onClick={adicionarAvulso} style={{ padding: '10px 14px', cursor: 'pointer', fontSize: 13, color: '#6366f1', fontWeight: 500, background: '#f8f7ff' }}>+ Item avulso</div>
                     </div>
                   )}
                 </div>
-                <button onClick={adicionarAvulso} style={{ fontSize: 12, color: '#6366f1', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0 0' }}>+ Item avulso</button>
               </div>
-              <div style={{ flex: 1, overflowY: 'auto', padding: '10px 14px' }}>
-                {itens.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '60px 20px', color: '#94a3b8' }}><div style={{ fontSize: 36, marginBottom: 10 }}>🛒</div><p>Busque um produto para começar</p></div>
-                ) : itens.map((item, i) => (
-                  <div key={i} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', marginBottom: 8 }}>
-                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                      <div style={{ flex: 1 }}>
-                        {item.produto_id ? <p style={{ fontSize: 13, fontWeight: 500, color: '#0f172a', marginBottom: 6 }}>{item.descricao}</p> : <input style={{ ...inp, marginBottom: 6 }} value={item.descricao} onChange={e => atualizarItem(i, 'descricao', e.target.value)} placeholder="Descrição..." />}
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <div style={{ flex: 1 }}><label style={lbl}>Qtd</label><input style={inp} type="number" min="1" value={item.quantidade} onChange={e => atualizarItem(i, 'quantidade', parseInt(e.target.value) || 1)} /></div>
-                          <div style={{ flex: 2 }}><label style={lbl}>Preço (R$)</label><input style={inp} type="number" step="0.01" value={item.preco_unit} onChange={e => atualizarItem(i, 'preco_unit', parseFloat(e.target.value) || 0)} /></div>
-                          <div style={{ flex: 2, paddingTop: 16 }}><p style={{ fontSize: 14, fontWeight: 600, color: '#6366f1' }}>{formatMoeda(item.subtotal)}</p></div>
-                        </div>
-                      </div>
-                      <button onClick={() => removerItem(i)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 18, padding: 0, flexShrink: 0 }}>×</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            {painelDireito}
-          </>
-        )}
 
-        {/* ── MODO TOUCH (botões grandes para tablet) */}
-        {aba === 'venda' && modo === 'touch' && (
-          <>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <div style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', background: '#fff' }}>
-                <input style={{ ...inp, fontSize: 16, padding: '12px 16px' }} placeholder="🔍 Buscar produto..." value={searchProd} onChange={e => buscarProduto(e.target.value)} autoComplete="off" />
-              </div>
-              <div style={{ flex: 1, overflowY: 'auto', padding: '14px' }}>
-                {/* Grid de produtos para touch */}
+              {/* Grade de mais vendidos */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
                 {!searchProd && (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10, marginBottom: 14 }}>
-                    {produtos.slice(0, 20).map(p => (
-                      <button key={p.id} onClick={() => adicionarProduto(p)} disabled={p.estoque_atual === 0} style={{
-                        padding: '16px 10px', borderRadius: 12, border: '1px solid #e2e8f0',
-                        background: p.estoque_atual === 0 ? '#f8fafc' : '#fff', cursor: p.estoque_atual === 0 ? 'not-allowed' : 'pointer',
-                        textAlign: 'center', opacity: p.estoque_atual === 0 ? 0.5 : 1,
-                      }}>
-                        <div style={{ fontSize: 28, marginBottom: 6 }}>{CATEGORIA_ICONES[p.categoria ?? ''] ?? '📦'}</div>
-                        <div style={{ fontSize: 12, fontWeight: 500, color: '#0f172a', marginBottom: 4, lineHeight: 1.3 }}>{p.nome.length > 30 ? p.nome.slice(0, 28) + '…' : p.nome}</div>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: '#6366f1' }}>{formatMoeda(p.preco_venda)}</div>
-                        <div style={{ fontSize: 10, color: p.estoque_atual === 0 ? '#ef4444' : '#94a3b8', marginTop: 2 }}>{p.estoque_atual === 0 ? 'Sem estoque' : `${p.estoque_atual} un`}</div>
-                      </button>
-                    ))}
-                  </div>
+                  <>
+                    <p style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>⭐ Mais vendidos (30 dias)</p>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10, marginBottom: 20 }}>
+                      {maisVendidos.map(p => {
+                        const qtdNoCarrinho = itens.find(i => i.produto_id === p.id)?.quantidade ?? 0
+                        const semEstoque = p.estoque_atual === 0
+                        return (
+                          <button key={p.id} onClick={() => !semEstoque && adicionarProduto(p)} disabled={semEstoque}
+                            style={{ padding: '14px 12px', borderRadius: 12, border: `2px solid ${qtdNoCarrinho > 0 ? '#818cf8' : '#e2e8f0'}`, background: qtdNoCarrinho > 0 ? '#eef2ff' : semEstoque ? '#f8fafc' : '#fff', cursor: semEstoque ? 'not-allowed' : 'pointer', textAlign: 'center', opacity: semEstoque ? 0.5 : 1, transition: 'all 0.12s' }}>
+                            <div style={{ fontSize: 28, marginBottom: 6 }}>{CATEGORIA_ICONES[p.categoria ?? ''] ?? '📦'}</div>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: qtdNoCarrinho > 0 ? '#3730a3' : '#0f172a', marginBottom: 4, lineHeight: 1.3 }}>{p.nome.length > 28 ? p.nome.slice(0, 26) + '…' : p.nome}</div>
+                            <div style={{ fontSize: 15, fontWeight: 800, color: qtdNoCarrinho > 0 ? '#4338ca' : '#6366f1' }}>{formatMoeda(p.preco_venda)}</div>
+                            {qtdNoCarrinho > 0 && <div style={{ fontSize: 10, color: '#4338ca', marginTop: 3, fontWeight: 600 }}>× {qtdNoCarrinho} no carrinho</div>}
+                            {semEstoque && <div style={{ fontSize: 10, color: '#ef4444', marginTop: 3 }}>Sem estoque</div>}
+                            {!semEstoque && qtdNoCarrinho === 0 && <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 3 }}>{p.estoque_atual} un</div>}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <button onClick={adicionarAvulso} style={{ fontSize: 12, color: '#6366f1', background: 'none', border: '1px dashed #c7d2fe', borderRadius: 8, cursor: 'pointer', padding: '8px 16px', width: '100%' }}>+ Adicionar item avulso (sem produto)</button>
+                  </>
                 )}
 
-                {/* Resultados da busca */}
-                {searchProd && prodResults.map(p => (
-                  <div key={p.id} onClick={() => adicionarProduto(p)} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px 16px', marginBottom: 8, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div><p style={{ fontSize: 15, fontWeight: 500, color: '#0f172a' }}>{p.nome}</p><p style={{ fontSize: 12, color: '#94a3b8' }}>Estoque: {p.estoque_atual}</p></div>
-                    <p style={{ fontSize: 18, fontWeight: 700, color: '#6366f1' }}>{formatMoeda(p.preco_venda)}</p>
-                  </div>
-                ))}
-
-                {/* Itens adicionados */}
-                {itens.length > 0 && (
-                  <div style={{ marginTop: 14 }}>
-                    <p style={{ fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Itens ({itens.length})</p>
-                    {itens.map((item, i) => (
-                      <div key={i} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 16px', marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div style={{ flex: 1 }}>
-                          <p style={{ fontSize: 14, fontWeight: 500, color: '#0f172a' }}>{item.descricao || 'Item avulso'}</p>
-                          <div style={{ display: 'flex', gap: 10, marginTop: 6, alignItems: 'center' }}>
-                            <button onClick={() => atualizarItem(i, 'quantidade', Math.max(1, item.quantidade - 1))} style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                            <span style={{ fontSize: 15, fontWeight: 600, minWidth: 24, textAlign: 'center' }}>{item.quantidade}</span>
-                            <button onClick={() => atualizarItem(i, 'quantidade', item.quantidade + 1)} style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
-                          </div>
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <p style={{ fontSize: 16, fontWeight: 700, color: '#6366f1' }}>{formatMoeda(item.subtotal)}</p>
-                          <button onClick={() => removerItem(i)} style={{ fontSize: 12, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', marginTop: 4 }}>Remover</button>
-                        </div>
-                      </div>
-                    ))}
+                {/* Itens editáveis quando há busca ativa */}
+                {searchProd && prodResults.length === 0 && searchProd.trim() && (
+                  <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
+                    <p style={{ fontSize: 13 }}>Nenhum produto encontrado para &quot;{searchProd}&quot;</p>
+                    <button onClick={adicionarAvulso} style={{ marginTop: 12, fontSize: 12, color: '#6366f1', background: 'none', border: '1px dashed #c7d2fe', borderRadius: 8, cursor: 'pointer', padding: '8px 16px' }}>+ Item avulso</button>
                   </div>
                 )}
               </div>
             </div>
-            {painelDireito}
-          </>
-        )}
 
-        {/* ── MODO VISUAL (tela cheia, checkout embaixo) */}
-        {aba === 'venda' && modo === 'visual' && (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            {/* Produtos em grade grande */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '16px', background: '#f8fafc' }}>
-              <div style={{ marginBottom: 14 }}>
-                <input style={{ ...inp, fontSize: 15, padding: '12px 16px', borderRadius: 10 }} placeholder="🔍 Buscar produto..." value={searchProd} onChange={e => buscarProduto(e.target.value)} autoComplete="off" />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
-                {(searchProd ? prodResults : produtos.slice(0, 30)).map(p => {
-                  const jaAdicionado = itens.find(i => i.produto_id === p.id)
-                  return (
-                    <button key={p.id} onClick={() => adicionarProduto(p)} disabled={p.estoque_atual === 0} style={{
-                      padding: '20px 16px', borderRadius: 14, border: `2px solid ${jaAdicionado ? '#818cf8' : '#e2e8f0'}`,
-                      background: jaAdicionado ? '#eef2ff' : p.estoque_atual === 0 ? '#f8fafc' : '#fff',
-                      cursor: p.estoque_atual === 0 ? 'not-allowed' : 'pointer', textAlign: 'center',
-                      opacity: p.estoque_atual === 0 ? 0.4 : 1, transition: 'all 0.15s',
-                    }}>
-                      <div style={{ fontSize: 36, marginBottom: 10 }}>{CATEGORIA_ICONES[p.categoria ?? ''] ?? '📦'}</div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: jaAdicionado ? '#3730a3' : '#0f172a', marginBottom: 6, lineHeight: 1.4 }}>{p.nome.length > 35 ? p.nome.slice(0, 33) + '…' : p.nome}</div>
-                      <div style={{ fontSize: 18, fontWeight: 800, color: jaAdicionado ? '#4338ca' : '#6366f1' }}>{formatMoeda(p.preco_venda)}</div>
-                      {jaAdicionado && <div style={{ fontSize: 11, color: '#4338ca', marginTop: 4, fontWeight: 600 }}>× {jaAdicionado.quantidade} no carrinho</div>}
-                      {p.estoque_atual === 0 && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>Sem estoque</div>}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* Checkout fixo na base */}
-            {itens.length > 0 && (
-              <div style={{ borderTop: '1px solid #e2e8f0', background: '#fff', padding: '16px 20px' }}>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>{itens.length} produto(s) · Subtotal {formatMoeda(subtotal)}</p>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      {FORMAS.map(f => (
-                        <button key={f.key} onClick={() => { setFormaPag(f.key); setPagamentos([{ forma: f.key, valor: total }]) }} style={{ padding: '10px 18px', borderRadius: 8, border: '1px solid', cursor: 'pointer', fontSize: 13, fontWeight: 500, background: formaPag === f.key ? f.cor + '15' : '#f8fafc', color: formaPag === f.key ? f.cor : '#64748b', borderColor: formaPag === f.key ? f.cor + '80' : '#e2e8f0' }}>
-                          {f.icon} {f.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
-                    <div style={{ textAlign: 'right' }}>
-                      <p style={{ fontSize: 12, color: '#64748b' }}>Total</p>
-                      <p style={{ fontSize: 28, fontWeight: 800, color: '#6366f1' }}>{formatMoeda(total)}</p>
-                    </div>
-                    <button onClick={finalizarVenda} disabled={salvando || faltaPagar > 0.01} style={{ padding: '16px 32px', background: salvando || pagamentos.length === 0 ? '#e2e8f0' : '#6366f1', color: salvando || pagamentos.length === 0 ? '#94a3b8' : '#fff', border: 'none', borderRadius: 12, fontSize: 16, fontWeight: 700, cursor: salvando || pagamentos.length === 0 ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>
-                      {salvando ? 'Finalizando...' : pagamentos.length === 0 ? 'Selecione pagamento' : `✓ Finalizar`}
-                    </button>
-                    {itens.length > 0 && <button onClick={() => { setItens([]); setPagamentos([]) }} style={{ padding: '16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, fontSize: 20, cursor: 'pointer', color: '#ef4444' }}>🗑</button>}
+            {/* Coluna direita: carrinho + pagamento */}
+            <div style={{ width: 340, display: 'flex', flexDirection: 'column', background: '#fff', borderLeft: '1px solid #e2e8f0', overflow: 'hidden' }}>
+              {/* Feedback venda ok */}
+              {vendaOk && ultimaVenda && (
+                <div style={{ padding: '14px 16px', background: '#ecfdf5', borderBottom: '1px solid #bbf7d0', flexShrink: 0 }}>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: '#065f46', marginBottom: 6 }}>✅ Venda #{ultimaVenda.numero} finalizada!</p>
+                  {ultimaVenda.troco > 0 && <p style={{ fontSize: 15, fontWeight: 700, color: '#065f46', marginBottom: 8 }}>Troco: {formatMoeda(ultimaVenda.troco)}</p>}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={imprimir} style={{ flex: 1, padding: '7px', border: '1px solid #86efac', borderRadius: 7, fontSize: 12, cursor: 'pointer', background: '#fff', color: '#065f46', fontWeight: 500 }}>🖨 Imprimir</button>
+                    <button onClick={() => setVendaOk(false)} style={{ flex: 1, padding: '7px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 12, cursor: 'pointer', background: '#fff', color: '#374151' }}>Nova venda</button>
                   </div>
                 </div>
-                {vendaOk && ultimaVenda && (
-                  <div style={{ marginTop: 12, background: '#ecfdf5', borderRadius: 8, padding: '10px 14px', display: 'flex', gap: 10, alignItems: 'center' }}>
-                    <p style={{ fontSize: 14, fontWeight: 600, color: '#065f46', flex: 1 }}>✅ Venda #{ultimaVenda.numero} · {ultimaVenda.troco > 0 ? `Troco: ${formatMoeda(ultimaVenda.troco)}` : 'Exato'}</p>
-                    <button onClick={imprimir} style={{ padding: '6px 12px', border: '1px solid #86efac', borderRadius: 7, fontSize: 12, cursor: 'pointer', background: '#fff', color: '#065f46' }}>🖨 Imprimir</button>
-                    <button onClick={() => setVendaOk(false)} style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 12, cursor: 'pointer', background: '#fff', color: '#374151' }}>Nova venda</button>
+              )}
+
+              {/* Carrinho */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px' }}>
+                <p style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Carrinho</p>
+                {itens.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px 10px', color: '#94a3b8' }}><div style={{ fontSize: 32, marginBottom: 8 }}>🛒</div><p style={{ fontSize: 13 }}>Selecione produtos ao lado</p></div>
+                ) : itens.map((item, i) => (
+                  <div key={i} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 9, padding: '10px 12px', marginBottom: 7 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1 }}>
+                        {item.produto_id
+                          ? <p style={{ fontSize: 12, fontWeight: 600, color: '#0f172a', marginBottom: 5 }}>{item.descricao}</p>
+                          : <input style={{ ...inp, fontSize: 12, marginBottom: 5, padding: '5px 8px' }} value={item.descricao} onChange={e => atualizarItem(i, 'descricao', e.target.value)} placeholder="Descrição..." />}
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <button onClick={() => atualizarItem(i, 'quantidade', Math.max(1, item.quantidade - 1))} style={{ width: 26, height: 26, borderRadius: '50%', border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>−</button>
+                          <span style={{ fontSize: 13, fontWeight: 600, minWidth: 20, textAlign: 'center' }}>{item.quantidade}</span>
+                          <button onClick={() => atualizarItem(i, 'quantidade', item.quantidade + 1)} style={{ width: 26, height: 26, borderRadius: '50%', border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>+</button>
+                          <span style={{ color: '#94a3b8', fontSize: 11, marginLeft: 2 }}>×</span>
+                          <input type="number" step="0.01" value={item.preco_unit} onChange={e => atualizarItem(i, 'preco_unit', parseFloat(e.target.value) || 0)} style={{ width: 68, padding: '4px 6px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, outline: 'none', fontFamily: 'inherit' }} />
+                          <span style={{ fontSize: 13, fontWeight: 700, color: '#6366f1', marginLeft: 'auto', whiteSpace: 'nowrap' }}>{formatMoeda(item.subtotal)}</span>
+                        </div>
+                      </div>
+                      <button onClick={() => removerItem(i)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 18, padding: 0, flexShrink: 0, lineHeight: 1 }}>×</button>
+                    </div>
                   </div>
-                )}
+                ))}
               </div>
-            )}
-          </div>
+
+              {/* Resumo + Pagamento + Finalizar */}
+              <div style={{ borderTop: '1px solid #f1f5f9', padding: '12px 14px', background: '#fafafa', flexShrink: 0 }}>
+                {/* Subtotal e desconto */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#64748b', marginBottom: 5 }}>
+                  <span>Subtotal ({itens.length} itens)</span><span style={{ fontWeight: 500, color: '#374151' }}>{formatMoeda(subtotal)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: '#64748b', marginBottom: 8 }}>
+                  <span>Desconto (R$)</span>
+                  <input type="number" value={desconto || ''} onChange={e => setDesconto(parseFloat(e.target.value) || 0)} placeholder="0" style={{ width: 70, padding: '3px 7px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, textAlign: 'right', outline: 'none', fontFamily: 'inherit' }} />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 18, fontWeight: 700, color: '#6366f1', paddingTop: 8, borderTop: '1px solid #e2e8f0', marginBottom: 10 }}>
+                  <span style={{ fontSize: 13, color: '#0f172a', fontWeight: 600, alignSelf: 'center' }}>Total</span>
+                  <span>{formatMoeda(total)}</span>
+                </div>
+
+                {/* Formas de pagamento */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 5, marginBottom: 8 }}>
+                  {FORMAS.map(f => (
+                    <button key={f.key} onClick={() => setFormaPag(f.key)} style={{ padding: '7px 2px', borderRadius: 7, border: '1px solid', cursor: 'pointer', fontSize: 10, fontWeight: 500, textAlign: 'center', background: formaPag === f.key ? f.cor + '15' : '#f8fafc', color: formaPag === f.key ? f.cor : '#64748b', borderColor: formaPag === f.key ? f.cor + '80' : '#e2e8f0' }}>
+                      <div style={{ fontSize: 15, marginBottom: 1 }}>{f.icon}</div>
+                      <div>{f.label}</div>
+                    </button>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: 7, marginBottom: 8 }}>
+                  <input type="number" step="0.01" value={valorPag} onChange={e => setValorPag(e.target.value)} onKeyDown={e => e.key === 'Enter' && adicionarPagamento()}
+                    placeholder={faltaPagar > 0 ? faltaPagar.toFixed(2) : '0,00'} style={{ ...inp, flex: 1, padding: '7px 10px', fontSize: 13 }} />
+                  <button onClick={adicionarPagamento} style={{ padding: '7px 14px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>+</button>
+                </div>
+                {pagamentos.map((p, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 9px', background: '#f0f4ff', border: '1px solid #e0e7ff', borderRadius: 6, marginBottom: 5, fontSize: 12 }}>
+                    <span style={{ color: '#4338ca', fontWeight: 500, textTransform: 'capitalize' }}>{p.forma}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontWeight: 600 }}>{formatMoeda(p.valor)}</span>
+                      <button onClick={() => setPagamentos(prev => prev.filter((_, idx) => idx !== i))} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 15, lineHeight: 1 }}>×</button>
+                    </div>
+                  </div>
+                ))}
+                {pagamentos.length > 0 && faltaPagar > 0.01 && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 9px', background: '#fef2f2', borderRadius: 6, fontSize: 12, color: '#991b1b', fontWeight: 600, marginBottom: 6 }}><span>Falta</span><span>{formatMoeda(faltaPagar)}</span></div>}
+                {troco > 0.01 && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 9px', background: '#ecfdf5', borderRadius: 6, fontSize: 13, color: '#065f46', fontWeight: 700, marginBottom: 6 }}><span>Troco</span><span>{formatMoeda(troco)}</span></div>}
+
+                <div style={{ marginBottom: 8 }}>
+                  <input style={{ ...inp, fontSize: 12, padding: '7px 10px' }} value={obs} onChange={e => setObs(e.target.value)} placeholder="Observações (opcional)..." />
+                </div>
+
+                <button onClick={finalizarVenda} disabled={salvando || itens.length === 0 || faltaPagar > 0.01}
+                  style={{ width: '100%', padding: '12px', background: salvando || itens.length === 0 || faltaPagar > 0.01 ? '#e2e8f0' : '#6366f1', color: salvando || itens.length === 0 || faltaPagar > 0.01 ? '#94a3b8' : '#fff', border: 'none', borderRadius: 9, fontSize: 14, fontWeight: 600, cursor: salvando || itens.length === 0 || faltaPagar > 0.01 ? 'not-allowed' : 'pointer' }}>
+                  {salvando ? 'Finalizando...' : itens.length === 0 ? 'Adicione itens' : faltaPagar > 0.01 ? `Falta ${formatMoeda(faltaPagar)}` : `✓ Finalizar · ${formatMoeda(total)}`}
+                </button>
+              </div>
+            </div>
+          </>
         )}
 
         {/* ── ABA CAIXA */}
         {aba === 'caixa' && (
           <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
-            <div style={{ maxWidth: 600 }}>
+            <div style={{ maxWidth: 620 }}>
+              {/* Status do caixa */}
               <div style={{ background: caixaAberta ? '#f0fdf4' : '#fef2f2', border: `1px solid ${caixaAberta ? '#bbf7d0' : '#fecaca'}`, borderRadius: 12, padding: '16px 20px', marginBottom: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <p style={{ fontSize: 14, fontWeight: 600, color: caixaAberta ? '#065f46' : '#991b1b' }}>{caixaAberta ? '✅ Caixa aberto' : '🔒 Caixa fechado'}</p>
-                    {caixaHoje?.aberto_em && <p style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Aberto às {new Date(caixaHoje.aberto_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>}
+                    <p style={{ fontSize: 14, fontWeight: 600, color: caixaAberta ? '#065f46' : '#991b1b' }}>{caixaAberta ? '✅ Caixa aberto' : caixaFechada ? '🔒 Caixa fechado hoje' : '⚠️ Caixa não foi aberto hoje'}</p>
+                    {caixaHoje?.aberto_em && <p style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Aberto às {new Date(caixaHoje.aberto_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}{caixaHoje.fechado_em ? ` · Fechado às ${new Date(caixaHoje.fechado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}</p>}
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <p style={{ fontSize: 24, fontWeight: 700, color: '#0f172a' }}>{formatMoeda(caixaHoje?.saldo_atual ?? 0)}</p>
-                    <p style={{ fontSize: 11, color: '#64748b' }}>Saldo atual · {caixaHoje?.total_vendas ?? 0} vendas</p>
+                    <p style={{ fontSize: 11, color: '#64748b' }}>Saldo atual · {caixaHoje?.total_vendas ?? 0} venda(s)</p>
                   </div>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16 }}>
+
+              {/* Cards entradas/saídas */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10, marginBottom: 16 }}>
                 {[
                   { label: 'Entradas', value: formatMoeda(caixaHoje?.entradas ?? 0), color: '#065f46', bg: '#ecfdf5' },
                   { label: 'Saídas', value: formatMoeda(caixaHoje?.saidas ?? 0), color: '#991b1b', bg: '#fef2f2' },
@@ -495,22 +428,40 @@ export default function PDVPage() {
                   </div>
                 ))}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 20 }}>
+
+              {/* Botões de ação */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8, marginBottom: 20 }}>
                 {[
-                  { acao: 'abertura' as const, label: '🔓 Abrir caixa', disabled: !!caixaAberta },
-                  { acao: 'fechamento' as const, label: '🔒 Fechar caixa', disabled: !caixaAberta },
-                  { acao: 'sangria' as const, label: '💸 Sangria', disabled: !caixaAberta },
-                  { acao: 'suprimento' as const, label: '💵 Suprimento', disabled: !caixaAberta },
+                  { acao: 'abertura' as const,   label: '🔓 Abrir caixa',    disabled: caixaAberta || caixaFechada },
+                  { acao: 'fechamento' as const,  label: '🔒 Fechar caixa',   disabled: !caixaAberta },
+                  { acao: 'sangria' as const,     label: '💸 Sangria',         disabled: !caixaAberta },
+                  { acao: 'suprimento' as const,  label: '💵 Suprimento',      disabled: !caixaAberta },
                 ].map(b => (
-                  <button key={b.acao} disabled={b.disabled} onClick={() => { setCaixaAcao(b.acao); setCaixaValor(''); setCaixaObs(''); setShowCaixaModal(true) }} style={{ padding: '12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: b.disabled ? 'not-allowed' : 'pointer', background: b.disabled ? '#f8fafc' : '#fff', color: b.disabled ? '#94a3b8' : '#374151', opacity: b.disabled ? 0.5 : 1 }}>{b.label}</button>
+                  <button key={b.acao} disabled={b.disabled} onClick={() => { setCaixaAcao(b.acao); setCaixaValor(''); setCaixaObs(''); setShowCaixaModal(true) }}
+                    style={{ padding: '12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: b.disabled ? 'not-allowed' : 'pointer', background: b.disabled ? '#f8fafc' : '#fff', color: b.disabled ? '#94a3b8' : '#374151', opacity: b.disabled ? 0.5 : 1 }}>{b.label}</button>
                 ))}
               </div>
+
+              {/* Botão reabrir (aparece só quando caixa foi fechado) */}
+              {caixaFechada && (
+                <button onClick={() => { setCaixaAcao('reabertura'); setCaixaValor(''); setCaixaObs(''); setShowCaixaModal(true) }}
+                  style={{ width: '100%', padding: '11px', border: '1px solid #fde68a', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', background: '#fffbeb', color: '#92400e', marginBottom: 16 }}>
+                  🔄 Reabrir caixa (novo período)
+                </button>
+              )}
+
+              {/* Movimentos do dia */}
               <p style={{ fontSize: 12, fontWeight: 500, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Movimentos de hoje</p>
+              {movimentos.length === 0 && <p style={{ fontSize: 13, color: '#94a3b8', padding: '12px 0' }}>Nenhum movimento registrado hoje.</p>}
               {movimentos.map(m => (
                 <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 14px', background: '#fff', border: '1px solid #f1f5f9', borderRadius: 8, marginBottom: 6, fontSize: 13 }}>
-                  <div><span style={{ fontWeight: 500, color: '#374151', textTransform: 'capitalize' }}>{m.tipo}</span>{m.observacoes && <span style={{ color: '#94a3b8', marginLeft: 8 }}>{m.observacoes}</span>}</div>
-                  <span style={{ fontWeight: 600, color: ['sangria','estorno'].includes(m.tipo) ? '#991b1b' : '#065f46' }}>
-                    {['sangria','estorno'].includes(m.tipo) ? '-' : '+'}{formatMoeda(m.valor)}
+                  <div>
+                    <span style={{ fontWeight: 500, color: '#374151', textTransform: 'capitalize' }}>{m.tipo}</span>
+                    {m.observacoes && <span style={{ color: '#94a3b8', marginLeft: 8, fontSize: 12 }}>{m.observacoes}</span>}
+                    <span style={{ color: '#cbd5e1', marginLeft: 8, fontSize: 11 }}>{new Date(m.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                  <span style={{ fontWeight: 600, color: ['sangria', 'estorno', 'fechamento'].includes(m.tipo) ? '#991b1b' : '#065f46' }}>
+                    {['sangria', 'estorno'].includes(m.tipo) ? '-' : '+'}{formatMoeda(m.valor)}
                   </span>
                 </div>
               ))}
@@ -521,7 +472,7 @@ export default function PDVPage() {
         {/* ── ABA HISTÓRICO */}
         {aba === 'historico' && (
           <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
-            <HistoricoVendas supabase={supabase} />
+            <HistoricoCaixa supabase={supabase} />
           </div>
         )}
       </div>
@@ -530,10 +481,16 @@ export default function PDVPage() {
       {showCaixaModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
           <div style={{ background: '#fff', borderRadius: 14, width: 360, padding: '24px' }}>
-            <h3 style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', marginBottom: 16, textTransform: 'capitalize' }}>
-              {caixaAcao === 'abertura' ? '🔓 Abrir caixa' : caixaAcao === 'fechamento' ? '🔒 Fechar caixa' : caixaAcao === 'sangria' ? '💸 Sangria' : '💵 Suprimento'}
+            <h3 style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', marginBottom: 8 }}>
+              {caixaAcao === 'abertura' ? '🔓 Abrir caixa' : caixaAcao === 'fechamento' ? '🔒 Fechar caixa' : caixaAcao === 'reabertura' ? '🔄 Reabrir caixa' : caixaAcao === 'sangria' ? '💸 Sangria' : '💵 Suprimento'}
             </h3>
-            <div style={{ marginBottom: 12 }}><label style={lbl}>Valor (R$) *</label><input style={inp} type="number" step="0.01" value={caixaValor} onChange={e => setCaixaValor(e.target.value)} placeholder="0,00" autoFocus /></div>
+            {(caixaAcao === 'abertura' || caixaAcao === 'reabertura') && (
+              <p style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>Informe o saldo físico contado na gaveta no momento da abertura.</p>
+            )}
+            {caixaAcao === 'fechamento' && (
+              <p style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>Informe o saldo físico contado na gaveta agora.</p>
+            )}
+            <div style={{ marginBottom: 12 }}><label style={lbl}>Valor declarado (R$) *</label><input style={inp} type="number" step="0.01" min="0" value={caixaValor} onChange={e => setCaixaValor(e.target.value)} placeholder="0,00" autoFocus /></div>
             <div style={{ marginBottom: 16 }}><label style={lbl}>Observações</label><input style={inp} value={caixaObs} onChange={e => setCaixaObs(e.target.value)} placeholder="Opcional..." /></div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => setShowCaixaModal(false)} style={{ flex: 1, padding: '9px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer', color: '#374151' }}>Cancelar</button>
@@ -548,26 +505,97 @@ export default function PDVPage() {
   )
 }
 
-function HistoricoVendas({ supabase }: { supabase: ReturnType<typeof createClient> }) {
-  const [vendas, setVendas] = useState<any[]>([])
+function HistoricoCaixa({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [loading, setLoading] = useState(true)
+  const [periodos, setPeriodos] = useState<{ data: string; abertura: MovimentoCaixa | null; fechamento: MovimentoCaixa | null; totalVendas: number; sangrias: number; suprimentos: number }[]>([])
+
+  type MovimentoCaixa = { id: string; tipo: string; valor: number; forma: string | null; observacoes: string | null; created_at: string; data_ref: string }
+
   useEffect(() => {
-    supabase.from('vendas').select('*, venda_itens(*)').eq('status', 'finalizada').eq('tipo', 'pdv').order('created_at', { ascending: false }).limit(30)
-      .then(({ data }) => { setVendas(data ?? []); setLoading(false) })
+    async function load() {
+      const { data: movs } = await supabase
+        .from('caixa_movimentos')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(200)
+
+      if (!movs) { setLoading(false); return }
+
+      const porData: Record<string, MovimentoCaixa[]> = {}
+      movs.forEach((m: MovimentoCaixa) => {
+        const d = m.data_ref ?? m.created_at?.split('T')[0]
+        if (d) { porData[d] = porData[d] ?? []; porData[d].push(m) }
+      })
+
+      const resultado = Object.entries(porData)
+        .sort(([a], [b]) => b.localeCompare(a))
+        .slice(0, 30)
+        .map(([data, lista]) => ({
+          data,
+          abertura: lista.find(m => m.tipo === 'abertura') ?? null,
+          fechamento: lista.find(m => m.tipo === 'fechamento') ?? null,
+          totalVendas: lista.filter(m => m.tipo === 'venda').reduce((s, m) => s + Number(m.valor), 0),
+          sangrias: lista.filter(m => m.tipo === 'sangria').reduce((s, m) => s + Number(m.valor), 0),
+          suprimentos: lista.filter(m => m.tipo === 'suprimento').reduce((s, m) => s + Number(m.valor), 0),
+        }))
+
+      setPeriodos(resultado)
+      setLoading(false)
+    }
+    load()
   }, [supabase])
-  if (loading) return <div style={{ textAlign: 'center', color: '#94a3b8', padding: 40 }}>Carregando...</div>
-  if (vendas.length === 0) return <div style={{ textAlign: 'center', color: '#94a3b8', padding: 40 }}>Nenhuma venda registrada</div>
+
+  if (loading) return <div style={{ textAlign: 'center', color: '#94a3b8', padding: 40 }}>Carregando histórico...</div>
+  if (periodos.length === 0) return <div style={{ textAlign: 'center', color: '#94a3b8', padding: 40 }}>Nenhum movimento registrado.</div>
+
+  function formatMoeda(v: number) { return `R$ ${v.toFixed(2).replace('.', ',')}` }
+
   return (
-    <div style={{ maxWidth: 600 }}>
-      {vendas.map(v => (
-        <div key={v.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 16px', marginBottom: 8 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div><p style={{ fontSize: 13, fontWeight: 600, color: '#6366f1' }}>Venda #{v.numero}</p><p style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{new Date(v.created_at).toLocaleString('pt-BR')}</p></div>
-            <p style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>R$ {Number(v.total).toFixed(2).replace('.', ',')}</p>
+    <div style={{ maxWidth: 700 }}>
+      <p style={{ fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 14 }}>📋 Histórico de Caixa</p>
+      {periodos.map(p => {
+        const abertura = p.abertura ? Number(p.abertura.valor) : 0
+        const fechamento = p.fechamento ? Number(p.fechamento.valor) : null
+        const esperado = abertura + p.totalVendas + p.suprimentos - p.sangrias
+        const diferenca = fechamento !== null ? fechamento - esperado : null
+        return (
+          <div key={p.data} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '14px 18px', marginBottom: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div>
+                <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>
+                  {new Date(p.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })}
+                </p>
+                <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>
+                  {p.abertura ? `Abertura: ${new Date(p.abertura.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : 'Não aberto'}
+                  {p.fechamento ? ` · Fechamento: ${new Date(p.fechamento.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ' · Ainda aberto'}
+                </p>
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20, background: p.fechamento ? '#f1f5f9' : '#ecfdf5', color: p.fechamento ? '#475569' : '#065f46' }}>
+                {p.fechamento ? 'Fechado' : '🟢 Aberto'}
+              </span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
+              {[
+                { label: 'Abertura', value: formatMoeda(abertura), color: '#374151' },
+                { label: 'Vendas', value: formatMoeda(p.totalVendas), color: '#065f46' },
+                { label: 'Fechamento', value: fechamento !== null ? formatMoeda(fechamento) : '—', color: '#374151' },
+                { label: 'Diferença', value: diferenca !== null ? formatMoeda(diferenca) : '—', color: diferenca === null ? '#94a3b8' : diferenca > 0 ? '#065f46' : diferenca < 0 ? '#991b1b' : '#374151' },
+              ].map(c => (
+                <div key={c.label} style={{ background: '#f8fafc', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: c.color }}>{c.value}</p>
+                  <p style={{ fontSize: 10, color: '#94a3b8', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{c.label}</p>
+                </div>
+              ))}
+            </div>
+            {(p.sangrias > 0 || p.suprimentos > 0) && (
+              <div style={{ display: 'flex', gap: 12, marginTop: 8, fontSize: 11, color: '#64748b' }}>
+                {p.sangrias > 0 && <span>💸 Sangria: {formatMoeda(p.sangrias)}</span>}
+                {p.suprimentos > 0 && <span>💵 Suprimento: {formatMoeda(p.suprimentos)}</span>}
+              </div>
+            )}
           </div>
-          <p style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>{v.venda_itens?.length ?? 0} itens · {v.forma_pagamento}</p>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

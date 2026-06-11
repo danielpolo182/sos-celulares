@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useSearchParams } from 'next/navigation'
 
 type Produto = {
   id: string; nome: string; codigo_interno: string | null; codigo_barras: string | null
@@ -126,6 +127,9 @@ export default function ProdutosPage() {
       modelos_compat: fModelos ? fModelos.split(',').map(s => s.trim()).filter(Boolean) : null,
       campos_extras: camposExtras.reduce((acc, {chave, valor}) => { if (chave) acc[chave] = valor; return acc }, {} as Record<string, string>),
     }
+    // Ao salvar produto pendente, marca como completo
+    if (editId) (payload as any).cadastro_rapido = false
+
     let prodId = editId
     if (editId) {
       await supabase.from('produtos').update(payload).eq('id', editId)
@@ -185,6 +189,21 @@ export default function ProdutosPage() {
   })
 
   const custoFinal = (Number(f.custo_unit ?? 0) + Number(f.despesas_extras ?? 0) + Number(f.despesas_acess ?? 0))
+
+  // Feedback de campos obrigatórios
+  function inpReqStyle(value: string | number | null | undefined): React.CSSProperties {
+    const vazio = !value || String(value).trim() === '' || Number(value) === 0
+    return { ...inp, background: vazio ? '#fef2f2' : '#f0fdf4', border: `1px solid ${vazio ? '#fecaca' : '#bbf7d0'}`, transition: 'background 0.2s, border 0.2s' }
+  }
+
+  // Indicadores de aba com erro
+  const abaDadosErro = !f.nome?.trim()
+  const abaValoresErro = !f.preco_venda || Number(f.preco_venda) === 0
+
+  function numKey(e: React.KeyboardEvent<HTMLInputElement>) {
+    const allowed = ['Backspace','Delete','Tab','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','.', ',','-']
+    if (!e.key.match(/^\d$/) && !allowed.includes(e.key) && !e.ctrlKey && !e.metaKey) e.preventDefault()
+  }
 
   const ABAS_FORM: [typeof abaForm, string][] = [
     ['dados','Dados'], ['detalhes','Detalhes'], ['valores','Valores'],
@@ -359,9 +378,14 @@ export default function ProdutosPage() {
 
             {/* Abas */}
             <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', overflowX: 'auto', flexShrink: 0, padding: '0 22px' }}>
-              {ABAS_FORM.map(([k, l]) => (
-                <button key={k} onClick={() => setAbaForm(k)} style={{ padding: '10px 14px', fontSize: 12, fontWeight: abaForm === k ? 600 : 400, border: 'none', background: 'none', cursor: 'pointer', color: abaForm === k ? '#6366f1' : '#64748b', borderBottom: abaForm === k ? '2px solid #6366f1' : '2px solid transparent', whiteSpace: 'nowrap', marginBottom: -1 }}>{l}</button>
-              ))}
+              {ABAS_FORM.map(([k, l]) => {
+                const temErro = (k === 'dados' && abaDadosErro) || (k === 'valores' && abaValoresErro)
+                return (
+                  <button key={k} onClick={() => setAbaForm(k)} style={{ padding: '10px 14px', fontSize: 12, fontWeight: abaForm === k ? 600 : 400, border: 'none', background: 'none', cursor: 'pointer', color: abaForm === k ? '#6366f1' : '#64748b', borderBottom: abaForm === k ? '2px solid #6366f1' : '2px solid transparent', whiteSpace: 'nowrap', marginBottom: -1, position: 'relative' }}>
+                    {l}{temErro && <span style={{ position: 'absolute', top: 8, right: 3, width: 7, height: 7, borderRadius: '50%', background: '#ef4444', display: 'inline-block' }} />}
+                  </button>
+                )
+              })}
             </div>
 
             {/* Conteúdo das abas */}
@@ -372,7 +396,7 @@ export default function ProdutosPage() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                   <p style={sec}>Identificação</p>
                   <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12 }}>
-                    <div><label style={lbl}>Nome *</label><input style={inp} value={f.nome ?? ''} onChange={e => onFChange('nome', e.target.value)} placeholder="Nome do produto" /></div>
+                    <div><label style={lbl}>Nome *</label><input style={inpReqStyle(f.nome)} value={f.nome ?? ''} onChange={e => onFChange('nome', e.target.value)} placeholder="Nome do produto" /></div>
                     <div><label style={lbl}>Código interno</label><input style={inp} value={f.codigo_interno ?? ''} onChange={e => onFChange('codigo_interno', e.target.value)} placeholder="PRD-001" /></div>
                     <div><label style={lbl}>Código de barras</label><input style={inp} value={f.codigo_barras ?? ''} onChange={e => onFChange('codigo_barras', e.target.value)} /></div>
                   </div>
@@ -416,7 +440,7 @@ export default function ProdutosPage() {
                   <p style={sec}>Características físicas</p>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
                     {[['peso_g','Peso (g)'], ['altura_cm','Altura (cm)'], ['largura_cm','Largura (cm)'], ['comprimento_cm','Comprimento (cm)']].map(([field, label]) => (
-                      <div key={field}><label style={lbl}>{label}</label><input style={inp} type="number" step="0.001" value={(f as any)[field] ?? ''} onChange={e => onFChange(field, e.target.value ? parseFloat(e.target.value) : null)} /></div>
+                      <div key={field}><label style={lbl}>{label}</label><input style={inp} type="number" step="0.001" min="0" value={(f as any)[field] ?? ''} onKeyDown={numKey} onChange={e => onFChange(field, e.target.value ? parseFloat(e.target.value) : null)} onBlur={e => { if (e.target.value && isNaN(parseFloat(e.target.value))) onFChange(field, null) }} /></div>
                     ))}
                   </div>
                   <p style={sec}>Campos extras</p>
@@ -436,9 +460,9 @@ export default function ProdutosPage() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                   <p style={sec}>Custos</p>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-                    <div><label style={lbl}>Custo unitário (R$)</label><input style={inp} type="number" step="0.01" value={f.custo_unit ?? 0} onChange={e => onFChange('custo_unit', parseFloat(e.target.value) || 0)} /></div>
-                    <div><label style={lbl}>Despesas extras (R$)</label><input style={inp} type="number" step="0.01" value={f.despesas_extras ?? 0} onChange={e => onFChange('despesas_extras', parseFloat(e.target.value) || 0)} /></div>
-                    <div><label style={lbl}>Despesas acessórias (R$)</label><input style={inp} type="number" step="0.01" value={f.despesas_acess ?? 0} onChange={e => onFChange('despesas_acess', parseFloat(e.target.value) || 0)} /></div>
+                    <div><label style={lbl}>Custo unitário (R$)</label><input style={inp} type="number" step="0.01" min="0" onKeyDown={numKey} value={f.custo_unit ?? 0} onChange={e => onFChange('custo_unit', parseFloat(e.target.value) || 0)} /></div>
+                    <div><label style={lbl}>Despesas extras (R$)</label><input style={inp} type="number" step="0.01" min="0" onKeyDown={numKey} value={f.despesas_extras ?? 0} onChange={e => onFChange('despesas_extras', parseFloat(e.target.value) || 0)} /></div>
+                    <div><label style={lbl}>Despesas acessórias (R$)</label><input style={inp} type="number" step="0.01" min="0" onKeyDown={numKey} value={f.despesas_acess ?? 0} onChange={e => onFChange('despesas_acess', parseFloat(e.target.value) || 0)} /></div>
                   </div>
                   <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 13, color: '#065f46' }}>Custo final calculado</span>
@@ -452,8 +476,8 @@ export default function ProdutosPage() {
                       <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>Altera o preço automaticamente</p>
                     </div>
                     <div>
-                      <label style={lbl}>Preço de venda (R$) — varejo</label>
-                      <input style={inp} type="number" step="0.01" value={f.preco_venda ?? 0} onChange={e => onFChange('preco_venda', parseFloat(e.target.value) || 0)} />
+                      <label style={lbl}>Preço de venda (R$) — varejo *</label>
+                      <input style={inpReqStyle(f.preco_venda)} type="number" step="0.01" min="0" onKeyDown={numKey} value={f.preco_venda ?? 0} onChange={e => onFChange('preco_venda', parseFloat(e.target.value) || 0)} />
                       <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>Altera a margem automaticamente</p>
                     </div>
                     <div>

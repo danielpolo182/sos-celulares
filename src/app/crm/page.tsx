@@ -22,7 +22,7 @@ type Anotacao = { id: string; texto: string; created_at: string; perfis: { nome:
 type Avaliacao = { id: string; nota: number; comentario: string | null; respondido_em: string | null; created_at: string }
 type OSCliente = { id: string; numero: number; status: string; modelo: string | null; valor_final: number | null; valor_orcamento: number | null; created_at: string; defeito_relatado: string }
 type Segmento = { id: string; nome: string; cor_hex: string }
-type Campanha = { id: string; nome: string; status: string; total_destinat: number; total_enviados: number; created_at: string }
+type Campanha = { id: string; nome: string; status: string; mensagem: string; segmento_id: string | null; total_destinat: number; total_enviados: number; created_at: string }
 type Agendamento = { id: string; tipo: string; mensagem: string; agendado_para: string; status: string; clientes: { nome: string } | null }
 
 const NIVEL_CONFIG: Record<string, { label: string; bg: string; color: string; icon: string }> = {
@@ -100,6 +100,10 @@ export default function CRMPage() {
   const [cMsg, setCMsg] = useState('')
   const [cSegmento, setCSegmento] = useState('')
   const [savingCampanha, setSavingCampanha] = useState(false)
+  const [campanhaAberta, setCampanhaAberta] = useState<Campanha | null>(null)
+  const [clientesCampanha, setClientesCampanha] = useState<Cliente[]>([])
+  const [loadingClientesCampanha, setLoadingClientesCampanha] = useState(false)
+  const [enviandoCampanha, setEnviandoCampanha] = useState<string | null>(null)
 
   // Agendamentos
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([])
@@ -200,6 +204,39 @@ export default function CRMPage() {
     const { data: { user } } = await supabase.auth.getUser()
     await supabase.from('campanhas').insert({ nome:cNome.trim(), mensagem:cMsg, segmento_id:cSegmento||null, status:'rascunho', criado_por:user?.id })
     setSavingCampanha(false); setShowCampanha(false); setCNome(''); setCMsg(''); setCSegmento(''); fetchCampanhas()
+  }
+
+  async function abrirCampanha(c: Campanha) {
+    setCampanhaAberta(c)
+    setLoadingClientesCampanha(true)
+    let clientes: Cliente[] = []
+    if (c.segmento_id) {
+      const { data } = await supabase.from('cliente_segmento_membros')
+        .select('clientes(*)')
+        .eq('segmento_id', c.segmento_id)
+        .limit(200)
+      clientes = ((data ?? []).map((m: any) => m.clientes).filter(Boolean) as Cliente[])
+        .filter(cl => cl.telefone && cl.telefone.replace(/\D/g, '').length >= 10)
+    } else {
+      const { data } = await supabase.from('clientes')
+        .select('*').is('deleted_at', null)
+        .not('telefone', 'is', null)
+        .neq('telefone', '')
+        .order('nome').limit(200)
+      clientes = ((data ?? []) as Cliente[])
+        .filter(cl => cl.telefone && cl.telefone.replace(/\D/g, '').length >= 10)
+    }
+    setClientesCampanha(clientes)
+    setLoadingClientesCampanha(false)
+  }
+
+  async function enviarWACampanha(campanha: Campanha, cliente: Cliente) {
+    if (!cliente.telefone) return
+    setEnviandoCampanha(cliente.id)
+    const msg = campanha.mensagem.replace(/{nome}/g, cliente.nome.split(' ')[0])
+    window.open(`https://wa.me/55${cliente.telefone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank')
+    await supabase.from('wa_logs').insert({ tipo: 'campanha', cliente_id: cliente.id, telefone: cliente.telefone, mensagem: msg, data_ref: hoje })
+    setEnviandoCampanha(null)
   }
 
   async function cancelarAgendamento(id: string) {
@@ -545,15 +582,76 @@ export default function CRMPage() {
           <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:16 }}>
             <button onClick={()=>setShowCampanha(true)} style={{ padding:'9px 18px', background:'#6366f1', color:'#fff', border:'none', borderRadius:8, fontSize:13, fontWeight:500, cursor:'pointer' }}>+ Nova campanha</button>
           </div>
+
+          {/* Painel de clientes da campanha */}
+          {campanhaAberta && (
+            <div style={{ background:'#fff', border:'1px solid #c7d2fe', borderRadius:12, marginBottom:20, overflow:'hidden' }}>
+              <div style={{ background:'#eef2ff', padding:'14px 20px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <div>
+                  <p style={{ fontSize:14, fontWeight:600, color:'#3730a3' }}>📣 {campanhaAberta.nome}</p>
+                  <p style={{ fontSize:12, color:'#6366f1', marginTop:2 }}>
+                    {loadingClientesCampanha ? 'Carregando clientes...' : `${clientesCampanha.length} clientes com telefone`}
+                  </p>
+                </div>
+                <button onClick={()=>setCampanhaAberta(null)} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:'#6366f1' }}>×</button>
+              </div>
+              {/* Preview da mensagem */}
+              <div style={{ padding:'12px 20px', borderBottom:'1px solid #e0e7ff', background:'#f5f3ff' }}>
+                <p style={{ fontSize:11, fontWeight:600, color:'#6b21a8', textTransform:'uppercase', letterSpacing:'0.04em', marginBottom:6 }}>Mensagem da campanha</p>
+                <p style={{ fontSize:13, color:'#374151', lineHeight:1.6, whiteSpace:'pre-wrap' }}>{campanhaAberta.mensagem}</p>
+              </div>
+              {loadingClientesCampanha ? (
+                <div style={{ padding:40, textAlign:'center', color:'#94a3b8' }}>Carregando...</div>
+              ) : clientesCampanha.length === 0 ? (
+                <div style={{ padding:40, textAlign:'center' }}>
+                  <p style={{ fontSize:14, color:'#374151' }}>Nenhum cliente com telefone cadastrado neste segmento.</p>
+                </div>
+              ) : (
+                <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+                  <thead><tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
+                    {['Cliente','Telefone','Nível',''].map(h => <th key={h} style={{ padding:'9px 16px', textAlign:'left', fontSize:11, fontWeight:600, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.04em' }}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {clientesCampanha.map(cl => {
+                      const nc = NIVEL_CONFIG[cl.nivel_crm] ?? NIVEL_CONFIG.novo
+                      return (
+                        <tr key={cl.id} style={{ borderBottom:'1px solid #f1f5f9' }}>
+                          <td style={{ padding:'10px 16px', fontWeight:500, color:'#0f172a' }}>{cl.nome}</td>
+                          <td style={{ padding:'10px 16px', color:'#64748b', fontSize:12 }}>{cl.telefone ? formatPhone(cl.telefone) : '—'}</td>
+                          <td style={{ padding:'10px 16px' }}><span style={{ fontSize:11, fontWeight:500, padding:'2px 8px', borderRadius:20, background:nc.bg, color:nc.color }}>{nc.icon} {nc.label}</span></td>
+                          <td style={{ padding:'10px 16px' }}>
+                            <button
+                              onClick={() => enviarWACampanha(campanhaAberta, cl)}
+                              disabled={enviandoCampanha === cl.id}
+                              style={{ padding:'5px 14px', background:'#16a34a', color:'#fff', border:'none', borderRadius:7, fontSize:12, fontWeight:500, cursor:'pointer' }}
+                            >
+                              💬 Enviar WhatsApp
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+
           {campanhas.length === 0 ? (
             <div style={{ textAlign:'center', padding:60 }}><div style={{ fontSize:40, marginBottom:12 }}>📣</div><p style={{ fontSize:14, fontWeight:500, color:'#374151' }}>Nenhuma campanha criada</p></div>
           ) : campanhas.map(c => (
-            <div key={c.id} style={card}>
+            <div key={c.id}
+              onClick={() => campanhaAberta?.id === c.id ? setCampanhaAberta(null) : abrirCampanha(c)}
+              style={{ ...card, cursor:'pointer', border:`1px solid ${campanhaAberta?.id === c.id ? '#c7d2fe' : '#e2e8f0'}`, background:campanhaAberta?.id === c.id ? '#f5f3ff' : '#fff' }}
+            >
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                <div><p style={{ fontSize:14, fontWeight:600, color:'#0f172a' }}>{c.nome}</p><p style={{ fontSize:12, color:'#94a3b8', marginTop:2 }}>{new Date(c.created_at).toLocaleDateString('pt-BR')}</p></div>
+                <div>
+                  <p style={{ fontSize:14, fontWeight:600, color:'#0f172a' }}>{c.nome}</p>
+                  <p style={{ fontSize:12, color:'#94a3b8', marginTop:2 }}>{new Date(c.created_at).toLocaleDateString('pt-BR')} · clique para ver clientes</p>
+                </div>
                 <div style={{ display:'flex', gap:10, alignItems:'center' }}>
-                  <span style={{ fontSize:12 }}>{c.total_enviados}/{c.total_destinat} enviados</span>
                   <span style={{ fontSize:11, fontWeight:500, padding:'2px 8px', borderRadius:20, background:c.status==='concluida'?'#ecfdf5':c.status==='enviando'?'#eff6ff':'#f8fafc', color:c.status==='concluida'?'#065f46':c.status==='enviando'?'#1d4ed8':'#64748b' }}>{c.status}</span>
+                  <span style={{ fontSize:13, color:'#6366f1' }}>{campanhaAberta?.id === c.id ? '▲' : '▼'}</span>
                 </div>
               </div>
             </div>

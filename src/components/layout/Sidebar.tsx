@@ -32,8 +32,7 @@ const NAV: NavItem[] = [
     icon: '',
     children: [
       { href: '/pdv',          icon: 'ti-receipt',          label: 'PDV / Vendas' },
-      { href: '/produtos',     icon: 'ti-tag',              label: 'Produtos' },
-      { href: '/estoque',      icon: 'ti-package',          label: 'Estoque' },
+      { href: '/estoque',      icon: 'ti-package',          label: 'Produtos & Estoque' },
       { href: '/fornecedores', icon: 'ti-building-store',   label: 'Fornecedores' },
       { href: '/contratos',    icon: 'ti-file-description', label: 'Contratos' },
     ],
