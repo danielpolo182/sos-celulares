@@ -552,8 +552,9 @@ ${senhaTexto?`<section>
   <p><strong>II.</strong> O aparelho <strong>não possui origem ilícita</strong> e não foi obtido mediante furto (<span class="art">art. 155 do Código Penal</span>), roubo (<span class="art">art. 157 CP</span>), extorsão (<span class="art">art. 158 CP</span>), estelionato (<span class="art">art. 171 CP</span>), apropriação indébita (<span class="art">art. 168 CP</span>) ou qualquer outro ilícito penal ou civil.</p>
   <p><strong>III.</strong> O número de IMEI é original e não foi adulterado, clonado ou suprimido. A adulteração de IMEI constitui crime previsto no <span class="art">art. 183 da Lei nº 9.472/1997 (Lei Geral de Telecomunicações)</span>, com pena de detenção de 2 a 4 anos, além de multa.</p>
   <p><strong>IV.</strong> Declaro ciência de que a posse, aquisição, recebimento ou ocultação de produto de crime configura <strong>receptação</strong>, tipificada no <span class="art">art. 180 do Código Penal</span> (pena: reclusão de 1 a 4 anos, e multa), podendo ser qualificada (<span class="art">art. 180 §1º CP</span>) quando praticada no exercício de atividade comercial, com pena de reclusão de 3 a 8 anos.</p>
-  <p><strong>V.</strong> Assumo <strong>integral responsabilidade civil e criminal</strong> por eventuais irregularidades decorrentes de falsidade das informações prestadas, respondendo pessoalmente por todos os prejuízos causados à loja SOS Celulares e a terceiros, inclusive por falsidade ideológica (<span class="art">art. 299 CP</span>) e por danos materiais e morais (arts. 186 e 927 do Código Civil).</p>
-  <p><strong>VI.</strong> A loja <strong>SOS Celulares</strong> atua de boa-fé, amparada pelo <span class="art">art. 1.202 do Código Civil</span> (posse de boa-fé), ficando expressamente eximida de qualquer responsabilidade em caso de falsidade das declarações ora prestadas, conforme entendimento consolidado pelo <span class="art">STJ (REsp 1.965.994)</span>.</p>
+  <p><strong>V.</strong> Assumo <strong>integral e exclusiva responsabilidade civil e criminal</strong> pela veracidade das informações aqui prestadas, obrigando-me a ressarcir a SOS Celulares de toda e qualquer perda, dano, custo ou despesa — inclusive honorários advocatícios e custas processuais — que esta venha a suportar em decorrência de falsidade, omissão ou inexatidão desta declaração, sem prejuízo da minha responsabilização por falsidade ideológica (<span class="art">art. 299 CP</span>) e do dever de indenizar previsto nos <span class="art">arts. 186, 187 e 927 do Código Civil</span>.</p>
+  <p><strong>VI.</strong> Respondo pela <strong>evicção</strong> do bem, nos termos dos <span class="art">arts. 447 a 457 do Código Civil</span>, obrigando-me a restituir o valor recebido e a indenizar a SOS Celulares por perdas e danos (<span class="art">arts. 402 a 404 do Código Civil</span>) caso o aparelho venha a ser reivindicado, apreendido ou subtraído da posse da empresa ou de terceiro a quem ela o transfira, em razão de vício na origem ou na titularidade do bem.</p>
+  <p><strong>VII.</strong> Declaro ciência de que a SOS Celulares <strong>contrata de boa-fé</strong> (<span class="art">art. 422 do Código Civil</span>), confiando nas declarações acima e realizando as verificações ordinariamente cabíveis à sua atividade — entre elas a conferência do número de IMEI e a minha identificação —, sem conhecimento de qualquer vício quanto à origem ou à propriedade do aparelho.</p>
 </div>
 
 <div class="sig-row">
@@ -1006,148 +1007,6 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
 <script>window.onload=()=>{window.print()};window.onafterprint=()=>window.close()<\/script>
 </body></html>`
     const b = new Blob([html],{type:'text/html;charset=utf-8'});const u=URL.createObjectURL(b);const w=window.open(u,'_blank');if(w)w.onload=()=>URL.revokeObjectURL(u)
-  }
-
-  // ── (gerarDocumento removido — substituído por gerarTermoCompraHTML / gerarTermoVendaHTML)
-  function _legacyNoop(tipo: 'compra' | 'venda') {
-    const hoje = new Date().toLocaleDateString('pt-BR', { day:'2-digit', month:'long', year:'numeric' })
-    const specs = modeloSelecionado
-    const endCompleto = [vEnd, vBairro ? `${vBairro}` : '', vCidade && vEstado ? `${vCidade} — ${vEstado}` : vCidade || vEstado].filter(Boolean).join(', ')
-
-    const assVendHtml = assinaturaVendedor ? `<img src="${assinaturaVendedor}" class="sig-img" alt="Assinatura vendedor" />` : ''
-    const assLojaHtml = assinaturaLoja     ? `<img src="${assinaturaLoja}"     class="sig-img" alt="Assinatura loja" />` : ''
-    const assComprHtml = assinaturaComprador ? `<img src="${assinaturaComprador}" class="sig-img" alt="Assinatura comprador" />` : ''
-    const fotoHtml = fotoVendedor ? `<img src="${fotoVendedor}" class="foto-vend" alt="Foto vendedor" />` : ''
-
-    const html = tipo === 'compra' ? `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
-<title>Termo de Compra #${compraSalva?.numero ?? ''}</title>
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-@page { size: A4 portrait; margin: 18mm 20mm; }
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: 'Inter', Arial, sans-serif; font-size: 9pt; color: #1e293b; line-height: 1.6; }
-.header { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 12pt; border-bottom: 2pt solid #0f172a; margin-bottom: 14pt; }
-.brand h1 { font-size: 18pt; font-weight: 700; color: #0f172a; }
-.brand p { font-size: 8pt; color: #64748b; }
-.doc-title { font-size: 14pt; font-weight: 700; text-align: right; }
-.doc-num { font-size: 9pt; color: #6366f1; font-weight: 600; text-align: right; }
-.doc-date { font-size: 8pt; color: #94a3b8; text-align: right; }
-section { margin-bottom: 12pt; }
-.stitle { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #6366f1; border-bottom: 1pt solid #e0e7ff; padding-bottom: 3pt; margin-bottom: 8pt; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 5pt 16pt; }
-.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5pt 12pt; }
-.field-label { font-size: 7.5pt; color: #94a3b8; font-weight: 500; }
-.field-value { font-size: 9pt; font-weight: 600; border-bottom: 0.5pt solid #e2e8f0; padding-bottom: 1pt; min-height: 13pt; }
-.specs-box { background: #f8fafc; padding: 7pt 9pt; border-radius: 4pt; }
-.checklist-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 3pt; }
-.ci { display: flex; justify-content: space-between; padding: 2.5pt 5pt; border-radius: 3pt; font-size: 7.5pt; }
-.ci-bom     { background: #ecfdf5; color: #065f46; }
-.ci-regular { background: #fef3c7; color: #92400e; }
-.ci-ruim    { background: #fef2f2; color: #991b1b; }
-.ci-na      { background: #f8fafc; color: #94a3b8; }
-.legal { background: #f8fafc; border-left: 3pt solid #0f172a; padding: 9pt 12pt; font-size: 8.5pt; line-height: 1.75; }
-.legal p { margin-bottom: 5pt; }
-.sig-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14pt; margin-top: 12pt; }
-.sig-box {}
-.sig-img { max-height: 45pt; max-width: 150pt; display: block; margin-bottom: 3pt; }
-.sig-line { border-top: 1pt solid #0f172a; margin-bottom: 3pt; margin-top: 20pt; }
-.sig-name { font-size: 8.5pt; font-weight: 600; }
-.sig-role { font-size: 7pt; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
-.footer-doc { border-top: 0.5pt solid #e2e8f0; padding-top: 7pt; font-size: 6.5pt; color: #94a3b8; text-align: center; margin-top: 12pt; }
-.foto-vend { width: 60pt; height: 60pt; object-fit: cover; border-radius: 4pt; border: 1pt solid #e2e8f0; float: right; margin: 0 0 6pt 12pt; }
-.nota-badge { display: inline-block; padding: 2pt 8pt; border-radius: 20pt; font-size: 8pt; font-weight: 700; ${notaGeral(cChecklist)==='Bom'?'background:#ecfdf5;color:#065f46':notaGeral(cChecklist)==='Regular'?'background:#fef3c7;color:#92400e':'background:#fef2f2;color:#991b1b'}; }
-.valor-d { font-size: 14pt; font-weight: 700; color: #065f46; }
-</style></head><body>
-
-<div class="header">
-  <div class="brand"><h1>📱 SOS Celulares</h1><p>Assistência Técnica</p></div>
-  <div><div class="doc-title">TERMO DE COMPRA</div><div class="doc-num">Nº ${compraSalva?.numero ?? '—'}</div><div class="doc-date">${hoje}</div></div>
-</div>
-
-<section>
-  <div class="stitle">Vendedor — Dados pessoais</div>
-  ${fotoHtml}
-  <div class="grid2">
-    <div><div class="field-label">Nome completo</div><div class="field-value">${vNome}</div></div>
-    <div><div class="field-label">CPF</div><div class="field-value">${formatarCPF(vCPF)}</div></div>
-    <div><div class="field-label">RG</div><div class="field-value">${vRG||'—'}</div></div>
-    <div><div class="field-label">Telefone</div><div class="field-value">${vTel?formatPhone(vTel):'—'}</div></div>
-    <div><div class="field-label">E-mail</div><div class="field-value">${vEmail||'—'}</div></div>
-    <div><div class="field-label">CEP</div><div class="field-value">${vCEP||'—'}</div></div>
-  </div>
-  <div style="margin-top:5pt"><div class="field-label">Endereço completo</div><div class="field-value">${endCompleto||vEnd}</div></div>
-</section>
-
-<section>
-  <div class="stitle">Aparelho — Identificação</div>
-  <div class="grid3">
-    <div><div class="field-label">Marca / Modelo</div><div class="field-value">${specs?.marca||''} ${specs?.modelo||modeloInput}</div></div>
-    <div><div class="field-label">Capacidade</div><div class="field-value">${cCapacidade||'—'}</div></div>
-    <div><div class="field-label">Cor</div><div class="field-value">${cCor||'—'}</div></div>
-    <div><div class="field-label">IMEI 1</div><div class="field-value">${cIMEI||'—'}</div></div>
-    <div><div class="field-label">IMEI 2</div><div class="field-value">${cIMEI2||'—'}</div></div>
-    <div><div class="field-label">Estado geral</div><div class="field-value"><span class="nota-badge">${notaGeral(cChecklist)}</span></div></div>
-  </div>
-  ${cIMEI ? `<div style="margin-top:5pt;font-size:8pt">🔍 Consulta: <a href="https://www.aparelhoslegais.com.br/consulta?imei=${cIMEI}" style="color:#6366f1">aparelhoslegais.com.br/consulta?imei=${cIMEI}</a></div>` : ''}
-</section>
-
-${specs ? `<section>
-  <div class="stitle">Especificações técnicas</div>
-  <div class="specs-box"><div class="grid3">
-    ${[['Tela',specs.tela],['Resolução',specs.resolucao],['Processador',specs.processador],['RAM',specs.ram],['Armazenamento',specs.armazenamento],['Câmera tras.',specs.camera_principal],['Câmera front.',specs.camera_frontal],['Bateria',specs.bateria],['Sistema',specs.sistema]].filter(([,v])=>v).map(([k,v])=>`<div><div class="field-label">${k}</div><div style="font-size:8.5pt;font-weight:600">${v}</div></div>`).join('')}
-  </div></div>
-</section>` : ''}
-
-${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
-  <div class="stitle">Checklist de estado do aparelho</div>
-  <div class="checklist-grid">
-    ${CHECKLIST_ITENS.filter(i=>cChecklist[i.key]).map(i=>{const v=cChecklist[i.key];const cls=v==='Bom'?'ci-bom':v==='Regular'?'ci-regular':v==='Ruim'?'ci-ruim':'ci-na';return`<div class="ci ${cls}"><span>${i.label}</span><b>${v}</b></div>`}).join('')}
-  </div>
-  ${cObs?`<div style="margin-top:5pt;font-size:8pt;background:#f8fafc;padding:5pt;border-radius:3pt"><b>Obs:</b> ${cObs}</div>`:''}
-</section>`:''}
-
-<section>
-  <div class="stitle">Condições da compra</div>
-  <div class="grid3">
-    <div><div class="field-label">Valor pago</div><div class="valor-d">R$ ${parseFloat(cValor||'0').toFixed(2).replace('.',',')}</div></div>
-    <div><div class="field-label">Forma de pagamento</div><div class="field-value">${cForma}</div></div>
-    <div><div class="field-label">Data</div><div class="field-value">${hoje}</div></div>
-  </div>
-</section>
-
-<div class="legal">
-  <p><strong>DECLARAÇÃO E RESPONSABILIDADE DO VENDEDOR</strong></p>
-  <p>Eu, <strong>${vNome}</strong>, portador(a) do CPF <strong>${formatarCPF(vCPF)}</strong>${vRG?`, RG <strong>${vRG}</strong>`:''}${vEnd?`, residente em <strong>${endCompleto||vEnd}</strong>`:''},  declaro para todos os fins de direito que:</p>
-  <p><strong>I.</strong> Sou o(a) legítimo(a) proprietário(a) do aparelho <strong>${specs?.marca||''} ${specs?.modelo||modeloInput}</strong>, IMEI <strong>${cIMEI||'—'}</strong>, e tenho plena capacidade legal para alienar o bem descrito neste instrumento.</p>
-  <p><strong>II.</strong> O aparelho <strong>não possui origem ilícita</strong>, não foi obtido mediante furto (art. 155 CP), roubo (art. 157 CP), estelionato (art. 171 CP) ou qualquer conduta criminosa, e está livre de bloqueios, financiamentos, penhoras ou restrições que impeçam sua comercialização.</p>
-  <p><strong>III.</strong> Assumo total responsabilidade civil e criminal por eventuais irregularidades, inclusive pelo crime de receptação (art. 180 CP), respondendo pessoalmente por quaisquer prejuízos causados a terceiros em decorrência de falsidade das informações ora prestadas.</p>
-  <p><strong>IV.</strong> A loja <strong>SOS Celulares</strong> age de boa-fé, confiando nas declarações acima, sendo expressamente eximida de qualquer responsabilidade em caso de falsidade das informações prestadas pelo declarante.</p>
-</div>
-
-<div class="sig-row">
-  <div class="sig-box">
-    ${assVendHtml}
-    <div class="sig-line"></div>
-    <div class="sig-name">${vNome}</div>
-    <div style="font-size:7.5pt;color:#64748b">CPF: ${formatarCPF(vCPF)}</div>
-    <div class="sig-role">Vendedor</div>
-  </div>
-  <div class="sig-box">
-    ${assLojaHtml}
-    <div class="sig-line"></div>
-    <div class="sig-name">SOS Celulares</div>
-    <div class="sig-role">Representante da Loja</div>
-  </div>
-</div>
-
-<div class="footer-doc">Documento emitido em ${hoje} · SOS Celulares · Em conformidade com o Código Penal Brasileiro e CDC (Lei 8.078/90)</div>
-
-<script>window.onload = () => window.print();<\/script>
-</body></html>` : `<html><body><p>Termo de venda em construção</p><script>window.onload=()=>window.print()<\/script></body></html>`
-
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const w = window.open(url, '_blank'); if (w) w.onload = () => URL.revokeObjectURL(url)
   }
 
   // ─── Filtros estoque
