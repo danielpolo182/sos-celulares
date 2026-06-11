@@ -6,8 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 
 type Produto = {
   id: string; nome: string; categoria: string | null
-  qualidade: string; preco_venda: number; custo_medio: number
-  estoque_atual: number
+  preco_venda: number; custo_unit: number; estoque_atual: number
 }
 
 type ItemVenda = {
@@ -170,7 +169,7 @@ export default function PDVPage() {
       if (exist >= 0) {
         const novo = [...prev]; novo[exist] = { ...novo[exist], quantidade: novo[exist].quantidade + 1, subtotal: (novo[exist].quantidade + 1) * novo[exist].preco_unit }; return novo
       }
-      return [...prev, { produto_id: p.id, descricao: p.nome, quantidade: 1, preco_unit: p.preco_venda, custo_unit: p.custo_medio, subtotal: p.preco_venda }]
+      return [...prev, { produto_id: p.id, descricao: p.nome, quantidade: 1, preco_unit: p.preco_venda, custo_unit: p.custo_unit ?? 0, subtotal: p.preco_venda }]
     })
     setSearchProd(''); setProdResults([])
   }
@@ -194,16 +193,16 @@ export default function PDVPage() {
     const preco = parseFloat(qaPreco.replace(',', '.')) || 0
     const estoque = parseInt(qaEstoque) || 0
     const { data: prod, error } = await supabase.from('produtos').insert({
-      nome, categoria: qaCategoria || null, preco_venda: preco, custo_medio: 0,
-      estoque_atual: estoque, ativo: true, qualidade: 'Não avaliado',
-    }).select('id, nome, categoria, qualidade, preco_venda, custo_medio, estoque_atual').single()
+      nome, categoria: qaCategoria || null, preco_venda: preco, custo_unit: 0,
+      estoque_atual: estoque, ativo: true, unidade: 'un',
+      movimenta_estoque: true, cadastro_rapido: true,
+    }).select('id, nome, categoria, preco_venda, custo_unit, estoque_atual').single()
     if (prod && !error) {
-      // Adiciona direto ao carrinho com o objeto retornado — sem esperar fetchProdutos
       const novoProd = prod as Produto
       setItens(prev => [...prev, {
         produto_id: novoProd.id, descricao: novoProd.nome,
         quantidade: 1, preco_unit: novoProd.preco_venda,
-        custo_unit: novoProd.custo_medio, subtotal: novoProd.preco_venda
+        custo_unit: novoProd.custo_unit ?? 0, subtotal: novoProd.preco_venda
       }])
       setProdutos(prev => [...prev, novoProd])
       setShowQuickAdd(false); setSearchProd(''); setProdResults([])
