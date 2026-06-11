@@ -2,7 +2,6 @@
 export const dynamic = 'force-dynamic'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatarCNPJ, formatarCPF, formatarTelefone, validarCNPJ, validarCPF, validarTelefone } from '@/lib/validators'
 
@@ -122,10 +121,9 @@ const WA_PREVIEW: Record<string,string> = { '{nome}':'João', '{modelo}':'Samsun
 // ─── Componente principal ─────────────────────────────────
 export default function ConfiguracoesPage() {
   const supabase = createClient()
-  const searchParams = useSearchParams()
   const [acesso, setAcesso] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [activeMenu, setActiveMenu] = useState(searchParams.get('menu') ?? 'loja')
+  const [activeMenu, setActiveMenu] = useState('loja')
 
   // Dados
   const [configs, setConfigs] = useState<Config[]>([])
@@ -215,6 +213,13 @@ export default function ConfiguracoesPage() {
   }, [supabase])
 
   useEffect(() => { fetchAll() }, [fetchAll])
+
+  // Lê ?menu= da URL no lado do cliente para evitar Suspense no build
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const m = params.get('menu')
+    if (m) setActiveMenu(m)
+  }, [])
   useEffect(() => { if (activeMenu === 'historico') fetchHistorico() }, [activeMenu, fetchHistorico])
   useEffect(() => { if (activeMenu === 'usuarios') fetchUsuarios() }, [activeMenu, fetchUsuarios])
   useEffect(() => { if (activeMenu === 'permissoes') fetchPermissoes() }, [activeMenu, fetchPermissoes])
