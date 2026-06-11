@@ -201,6 +201,28 @@ export default function NovaOSPage() {
   const [sugestoes, setSugestoes] = useState<RepairSuggestion[]>([])
   const [sugestaoAtiva, setSugestaoAtiva] = useState<RepairSuggestion | null>(null)
 
+  // ── Assinatura do cliente
+  const clienteSigRef = useRef<HTMLCanvasElement>(null)
+  const [assinaturaCliente, setAssinaturaCliente] = useState('')
+  const [desenhando, setDesenhando] = useState(false)
+
+  function onSigDown(e: React.MouseEvent<HTMLCanvasElement>) {
+    setDesenhando(true); const c = clienteSigRef.current; if (!c) return
+    const r = c.getBoundingClientRect(); const ctx = c.getContext('2d')!
+    ctx.beginPath(); ctx.moveTo(e.clientX - r.left, e.clientY - r.top)
+  }
+  function onSigMove(e: React.MouseEvent<HTMLCanvasElement>) {
+    if (!desenhando) return; const c = clienteSigRef.current; if (!c) return
+    const r = c.getBoundingClientRect(); const ctx = c.getContext('2d')!
+    ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 2; ctx.lineCap = 'round'
+    ctx.lineTo(e.clientX - r.left, e.clientY - r.top); ctx.stroke()
+  }
+  function onSigUp() { setDesenhando(false); setAssinaturaCliente(clienteSigRef.current?.toDataURL() ?? '') }
+  function limparSig() {
+    const c = clienteSigRef.current; if (!c) return
+    c.getContext('2d')!.clearRect(0, 0, c.width, c.height); setAssinaturaCliente('')
+  }
+
   // ── OS
   const [defeito, setDefeito] = useState('')
   const [valor, setValor] = useState('')
@@ -303,6 +325,7 @@ export default function NovaOSPage() {
       valor_orcamento: valor ? parseFloat(valor) : null,
       observacoes: observacoes || null,
       status: 'aberta',
+      assinatura_cliente: assinaturaCliente || null,
     }).select('id, numero').single()
 
     if (err) { setError(`Erro: ${err.message}`); setSaving(false); return }
@@ -579,6 +602,18 @@ export default function NovaOSPage() {
             <input style={inp} value={observacoes} onChange={e => setObservacoes(e.target.value)} placeholder="Anotações para o técnico..." />
           </div>
         </div>
+      </div>
+
+      {/* Assinatura do cliente */}
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '18px 22px', marginBottom: 16 }}>
+        <p style={{ fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Assinatura do cliente</p>
+        <p style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>O cliente assina autorizando o serviço e confirmando as informações.</p>
+        <div style={{ position: 'relative', display: 'inline-block', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fafafa' }}>
+          <canvas ref={clienteSigRef} width={480} height={100} style={{ display: 'block', cursor: 'crosshair', borderRadius: 8 }}
+            onMouseDown={onSigDown} onMouseMove={onSigMove} onMouseUp={onSigUp} onMouseLeave={onSigUp} />
+          {!assinaturaCliente && <p style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', color: '#cbd5e1', fontSize: 12, pointerEvents: 'none', userSelect: 'none' }}>Assinar aqui...</p>}
+        </div>
+        {assinaturaCliente && <button onClick={limparSig} style={{ marginLeft: 10, fontSize: 12, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}>Limpar</button>}
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>

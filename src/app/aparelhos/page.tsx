@@ -25,23 +25,31 @@ type Dispositivo = {
 }
 
 // ─── Checklist ────────────────────────────────────────────
-const CHECKLIST_ITENS = [
-  { key: 'tela',         label: 'Tela / Display' },
-  { key: 'touch',        label: 'Touch / Toque' },
-  { key: 'bateria',      label: 'Bateria / Autonomia' },
-  { key: 'carregamento', label: 'Carregamento / Conector' },
-  { key: 'camera_tras',  label: 'Câmera traseira' },
-  { key: 'camera_front', label: 'Câmera frontal' },
-  { key: 'alto_falante', label: 'Alto-falante' },
-  { key: 'microfone',    label: 'Microfone' },
-  { key: 'wifi',         label: 'Wi-Fi' },
-  { key: 'bluetooth',    label: 'Bluetooth' },
-  { key: 'biometria',    label: 'Biometria / Face ID' },
-  { key: 'botoes',       label: 'Botões físicos' },
-  { key: 'chip',         label: 'Leitor de chip' },
-  { key: 'carcaca',      label: 'Carcaça / Estrutura' },
-  { key: 'gps',          label: 'GPS' },
+const CHECKLIST_ESTETICO = [
+  { key: 'est_tela',      label: 'Tela (arranhões/trincas)' },
+  { key: 'est_carcaca',   label: 'Carcaça / Estrutura' },
+  { key: 'est_aro',       label: 'Aro / Lateral' },
+  { key: 'est_tampa',     label: 'Tampa traseira' },
+  { key: 'est_lente_cam', label: 'Lente da câmera' },
+  { key: 'est_botoes',    label: 'Botões (aparência)' },
+  { key: 'est_conector',  label: 'Conector (aparência)' },
 ]
+const CHECKLIST_FUNCIONAL = [
+  { key: 'fn_liga',      label: 'Liga normalmente' },
+  { key: 'fn_touch',     label: 'Touch / Toque' },
+  { key: 'fn_cam_front', label: 'Câmera frontal' },
+  { key: 'fn_cam_tras',  label: 'Câmera traseira' },
+  { key: 'fn_bateria',   label: 'Bateria / Autonomia' },
+  { key: 'fn_wifi_bt',   label: 'Wi-Fi / Bluetooth / GPS' },
+  { key: 'fn_biometria', label: 'Biometria / Face ID' },
+  { key: 'fn_falante',   label: 'Alto-falante' },
+  { key: 'fn_microfone', label: 'Microfone' },
+  { key: 'fn_conector',  label: 'Conector de carga' },
+  { key: 'fn_imei',      label: 'IMEI verificado' },
+  { key: 'fn_conta',     label: 'Conta Google/Apple removida' },
+  { key: 'fn_reset',     label: 'Reset de fábrica feito' },
+]
+const CHECKLIST_ITENS = [...CHECKLIST_ESTETICO, ...CHECKLIST_FUNCIONAL]
 
 const ESTADOS = [
   { v: 'Bom',     bg: '#ecfdf5', color: '#065f46', border: '#86efac' },
@@ -120,6 +128,9 @@ export default function AparelhoPage() {
   const [cIMEI, setCIMEI] = useState('')
   const [cIMEI2, setCIMEI2] = useState('')
   const [cSenha, setCScenha] = useState('')
+  const [cTipoSenha, setCTipoSenha] = useState<'nenhuma'|'pin'|'padrao'>('nenhuma')
+  const [cPadrao, setCPadrao] = useState<number[]>([])
+  const padCanvasRef = useRef<HTMLCanvasElement>(null)
   const [cChecklist, setCChecklist] = useState<Record<string,string>>({})
   const [cObs, setCObs] = useState('')
 
@@ -175,6 +186,9 @@ export default function AparelhoPage() {
 
   // ── Detail modal ─────────────────────────────────────────
   const [detalhes, setDetalhes] = useState<Aparelho | null>(null)
+  const [detalheEditando, setDetalheEditando] = useState(false)
+  const [detalhePrecoVenda, setDetalhePrecoVenda] = useState('')
+  const [detalheObs, setDetalheObs] = useState('')
   const [aprovacao, setAprovacao] = useState<Record<string, boolean>>({})
   const [salvandoStatus, setSalvandoStatus] = useState(false)
 
@@ -186,6 +200,57 @@ export default function AparelhoPage() {
     setAparelhos(prev => prev.map(a => a.id === id ? { ...a, status: novoStatus } : a))
     setDetalhes(d => d?.id === id ? { ...d, status: novoStatus } : d)
   }
+
+  async function salvarEdicaoDetalhe() {
+    if (!detalhes) return
+    setSalvandoStatus(true)
+    const payload: Record<string,unknown> = {}
+    if (detalhePrecoVenda) payload.preco_venda = parseFloat(detalhePrecoVenda)
+    if (detalheObs !== detalhes.observacoes) payload.observacoes = detalheObs || null
+    await supabase.from('aparelhos').update(payload).eq('id', detalhes.id)
+    const updated = { ...detalhes, ...payload }
+    setDetalhes(updated as Aparelho)
+    setAparelhos(prev => prev.map(a => a.id === detalhes.id ? updated as Aparelho : a))
+    setDetalheEditando(false)
+    setSalvandoStatus(false)
+  }
+
+  // ── Canvas padrão 3x3 ────────────────────────────────────
+  function desenharPadrao(pontos: number[]) {
+    const c = padCanvasRef.current; if (!c) return
+    const ctx = c.getContext('2d')!; ctx.clearRect(0,0,c.width,c.height)
+    const size = 120; const gap = size / 3; const r = 10; const offset = gap / 2
+    ctx.fillStyle = '#e2e8f0'
+    for (let i = 0; i < 9; i++) {
+      const x = offset + (i % 3) * gap; const y = offset + Math.floor(i / 3) * gap
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2)
+      ctx.fillStyle = pontos.includes(i+1) ? '#6366f1' : '#e2e8f0'; ctx.fill()
+    }
+    if (pontos.length > 1) {
+      ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 2; ctx.beginPath()
+      pontos.forEach((p,idx) => {
+        const x = offset + ((p-1) % 3) * gap; const y = offset + Math.floor((p-1)/3) * gap
+        idx === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y)
+      }); ctx.stroke()
+    }
+  }
+  function onPadCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
+    const c = padCanvasRef.current; if (!c) return
+    const r = c.getBoundingClientRect()
+    const size = 120; const gap = size / 3; const offset = gap / 2
+    const mx = e.clientX - r.left; const my = e.clientY - r.top
+    for (let i = 0; i < 9; i++) {
+      const x = offset + (i % 3) * gap; const y = offset + Math.floor(i / 3) * gap
+      if (Math.hypot(mx-x, my-y) < 18) {
+        const p = i + 1
+        setCPadrao(prev => {
+          if (prev.includes(p)) return prev
+          const novo = [...prev, p]; desenharPadrao(novo); return novo
+        }); return
+      }
+    }
+  }
+  function limparPadrao() { setCPadrao([]); const c = padCanvasRef.current; if (c) c.getContext('2d')!.clearRect(0,0,c.width,c.height); desenharPadrao([]) }
 
   async function salvarAprovacao(aparelho: Aparelho) {
     const aprovados = Object.values(aprovacao).filter(Boolean).length
@@ -397,6 +462,8 @@ export default function AparelhoPage() {
       preco_compra: parseFloat(cValor), data_compra: new Date().toISOString().split('T')[0],
       checklist_json: cChecklist, checklist_nota: notaGeral(cChecklist),
       observacoes: cObs || null,
+      senha_tipo: cTipoSenha !== 'nenhuma' ? cTipoSenha : null,
+      senha_valor: cTipoSenha === 'pin' ? cSenha : cTipoSenha === 'padrao' && cPadrao.length > 0 ? cPadrao.join(' → ') : null,
     }).select('id').single()
 
     if (!ap) { setSalvando(false); return }
@@ -438,6 +505,35 @@ export default function AparelhoPage() {
       setVendaSalva({ id: venda.id, numero: venda.numero })
     }
     setSalvando(false); fetchAll()
+  }
+
+  // ── Resumo impressão após compra (T03) ───────────────────
+  function imprimirResumoCompra() {
+    if (!modeloSelecionado || !compraSalva) return
+    const hoje = new Date().toLocaleDateString('pt-BR')
+    const senhaTexto = cTipoSenha === 'pin' ? `PIN: ${cSenha}` : cTipoSenha === 'padrao' ? `Padrão: ${cPadrao.join(' → ')}` : 'Sem senha'
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Resumo Compra #${compraSalva.numero}</title>
+<style>@page{size:A5;margin:14mm}*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:10pt;color:#0f172a}
+.tit{font-size:16pt;font-weight:700;margin-bottom:2mm}.sub{font-size:8pt;color:#64748b;margin-bottom:6mm}
+.row{display:flex;justify-content:space-between;padding:3mm 0;border-bottom:0.5pt solid #e2e8f0;font-size:9.5pt}
+.label{color:#64748b}.val{font-weight:600}.total{font-size:14pt;font-weight:700;color:#065f46;padding-top:4mm}
+.footer{margin-top:8mm;font-size:7.5pt;color:#94a3b8;text-align:center}</style></head><body>
+<div class="tit">📱 SOS Celulares</div>
+<div class="sub">Resumo de Compra · ${hoje} · #${compraSalva.numero}</div>
+<div class="row"><span class="label">Aparelho</span><span class="val">${modeloSelecionado.marca} ${modeloSelecionado.modelo}</span></div>
+${cCapacidade ? `<div class="row"><span class="label">Capacidade</span><span class="val">${cCapacidade}</span></div>` : ''}
+${cCor ? `<div class="row"><span class="label">Cor</span><span class="val">${cCor}</span></div>` : ''}
+${cIMEI ? `<div class="row"><span class="label">IMEI</span><span class="val">${cIMEI}</span></div>` : ''}
+<div class="row"><span class="label">Estado geral</span><span class="val">${notaGeral(cChecklist)}</span></div>
+<div class="row"><span class="label">Vendedor</span><span class="val">${vNome}</span></div>
+<div class="row"><span class="label">CPF</span><span class="val">${formatarCPF(vCPF)}</span></div>
+<div class="row"><span class="label">Forma de pagamento</span><span class="val">${cForma}</span></div>
+${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><span class="val">${senhaTexto}</span></div>` : ''}
+<div class="row total"><span>Valor pago</span><span>R$ ${parseFloat(cValor||'0').toFixed(2).replace('.',',')}</span></div>
+<div class="footer">SOS Celulares · Documento interno · ${hoje}</div>
+<script>window.onload=()=>{window.print()};window.onafterprint=()=>window.close()<\/script>
+</body></html>`
+    const b = new Blob([html],{type:'text/html;charset=utf-8'});const u=URL.createObjectURL(b);const w=window.open(u,'_blank');if(w)w.onload=()=>URL.revokeObjectURL(u)
   }
 
   // ── Imprimir termo ────────────────────────────────────────
@@ -607,10 +703,14 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
       </div>
 
       {/* Abas */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid #e2e8f0' }}>
-        {([['estoque','📱 Estoque'],['checklist','✅ Checklist'],['historico','📜 Histórico'],['comprar','⬇ Registrar compra'],['vender','⬆ Registrar venda']] as const).map(([k,l]) => (
+      <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
+        {([['estoque','📱 Estoque'],['checklist','✅ Checklist'],['historico','📜 Histórico']] as const).map(([k,l]) => (
           <button key={k} onClick={() => setAba(k as any)} style={{ padding: '10px 18px', fontSize: 13, fontWeight: aba===k?600:400, border: 'none', background: 'none', cursor: 'pointer', color: aba===k?'#6366f1':'#64748b', borderBottom: aba===k?'2px solid #6366f1':'2px solid transparent', marginBottom: -1 }}>{l}</button>
         ))}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, paddingBottom: 4 }}>
+          <button onClick={() => setAba('comprar' as any)} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 8, cursor: 'pointer', background: aba==='comprar'?'#0f172a':'#1e293b', color: '#fbbf24', display: 'flex', alignItems: 'center', gap: 6 }}>⬇ Registrar compra</button>
+          <button onClick={() => setAba('vender' as any)} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 8, cursor: 'pointer', background: aba==='vender'?'#065f46':'#16a34a', color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}>⬆ Registrar venda</button>
+        </div>
       </div>
 
       {/* ═══ ESTOQUE ═══ */}
@@ -640,7 +740,9 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
                     const st = STATUS_CFG[a.status] ?? STATUS_CFG.disponivel
                     const lucro = a.preco_venda && a.preco_compra ? a.preco_venda - a.preco_compra : null
                     return (
-                      <tr key={a.id} style={{ borderBottom:'1px solid #f1f5f9' }}>
+                      <tr key={a.id} onClick={() => { setDetalhes(a); setDetalheEditando(false); setDetalhePrecoVenda(String(a.preco_venda??'')); setDetalheObs(a.observacoes??''); setAprovacao((a.checklist_json?.aprovacao??{}) as unknown as Record<string,boolean>) }} style={{ borderBottom:'1px solid #f1f5f9', cursor:'pointer' }}
+                        onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background='#f8fafc'}
+                        onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background=''}>
                         <td style={{ padding:'10px 14px' }}>
                           <p style={{ fontWeight:500,color:'#0f172a' }}>{a.marca} {a.modelo}</p>
                           {a.capacidade && <p style={{ fontSize:11,color:'#94a3b8' }}>{a.capacidade}{a.cor?` · ${a.cor}`:''}</p>}
@@ -655,9 +757,8 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
                         <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,color:'#374151' }}>{a.preco_venda?fm(a.preco_venda):'—'}</td>
                         <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,fontWeight:lucro&&lucro>0?600:400,color:lucro&&lucro>0?'#065f46':lucro&&lucro<0?'#991b1b':'#94a3b8' }}>{lucro!==null?fm(lucro):'—'}</td>
                         <td style={{ padding:'10px 14px' }}><span style={{ fontSize:11,fontWeight:500,padding:'2px 8px',borderRadius:20,background:st.bg,color:st.color }}>{st.label}</span></td>
-                        <td style={{ padding:'10px 14px' }}>
+                        <td style={{ padding:'10px 14px' }} onClick={e => e.stopPropagation()}>
                           <div style={{ display:'flex',gap:6 }}>
-                            <button onClick={() => { setDetalhes(a); setAprovacao((a.checklist_json?.aprovacao ?? {}) as unknown as Record<string, boolean>) }} style={{ fontSize:12,padding:'5px 10px',border:'1px solid #e2e8f0',borderRadius:7,background:'#f8fafc',cursor:'pointer',color:'#374151' }}>Ver</button>
                             {(a.status==='a_venda'||a.status==='disponivel') && <button onClick={() => imprimirCard(a)} style={{ fontSize:12,padding:'5px 10px',border:'1px solid #e0e7ff',borderRadius:7,background:'#eef2ff',cursor:'pointer',color:'#4338ca' }}>🏷</button>}
                             {(a.status==='a_venda'||a.status==='disponivel') && <button onClick={() => { setAparelhoVenda(a); setAba('vender' as any) }} style={{ fontSize:12,padding:'5px 10px',border:'1px solid #bbf7d0',borderRadius:7,background:'#ecfdf5',cursor:'pointer',color:'#065f46',fontWeight:500 }}>Vender →</button>}
                           </div>
@@ -748,13 +849,42 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
               <button onClick={() => setDetalhes(null)} style={{ fontSize:20,background:'none',border:'none',cursor:'pointer',color:'#94a3b8' }}>×</button>
             </div>
 
+            {/* Botões topo */}
+            <div style={{ display:'flex',gap:8,marginBottom:16 }}>
+              <button onClick={() => { setDetalheEditando(v => !v) }} style={{ flex:1,padding:'8px',border:'1px solid #c7d2fe',borderRadius:8,fontSize:13,background:detalheEditando?'#eef2ff':'#fff',color:'#4338ca',cursor:'pointer',fontWeight:detalheEditando?600:400 }}>
+                ✏️ {detalheEditando ? 'Editando...' : 'Editar'}
+              </button>
+              <button onClick={() => imprimirCard(detalhes)} style={{ flex:1,padding:'8px',border:'1px solid #e0e7ff',borderRadius:8,fontSize:13,background:'#f8f7ff',color:'#6366f1',cursor:'pointer' }}>
+                🏷 Reimprimir card
+              </button>
+            </div>
+
             {/* Infos */}
             <div style={{ background:'#f8fafc',borderRadius:10,padding:'12px 16px',marginBottom:16 }}>
-              {[['Capacidade',detalhes.capacidade],['Cor',detalhes.cor],['IMEI',detalhes.imei],['Preço compra',detalhes.preco_compra?fm(detalhes.preco_compra):null],['Preço venda',detalhes.preco_venda?fm(detalhes.preco_venda):null]].map(([l,v]) => v ? (
+              {[['Capacidade',detalhes.capacidade],['Cor',detalhes.cor],['IMEI',detalhes.imei],['Preço compra',detalhes.preco_compra?fm(detalhes.preco_compra):null]].map(([l,v]) => v ? (
                 <div key={l as string} style={{ display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'1px solid #e2e8f0',fontSize:13 }}>
                   <span style={{ color:'#64748b' }}>{l}</span><strong style={{ color:'#0f172a' }}>{v}</strong>
                 </div>
               ) : null)}
+              {/* Preço venda editável */}
+              <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',padding:'4px 0',fontSize:13 }}>
+                <span style={{ color:'#64748b' }}>Preço venda</span>
+                {detalheEditando
+                  ? <input type="number" step="0.01" value={detalhePrecoVenda} onChange={e=>setDetalhePrecoVenda(e.target.value)} style={{ width:100,padding:'3px 8px',border:'1px solid #c7d2fe',borderRadius:6,fontSize:13,textAlign:'right',outline:'none' }} />
+                  : <strong style={{ color:'#0f172a' }}>{detalhes.preco_venda?fm(detalhes.preco_venda):'—'}</strong>
+                }
+              </div>
+              {detalheEditando && (
+                <div style={{ marginTop:8 }}>
+                  <label style={lbl}>Observações</label>
+                  <textarea value={detalheObs} onChange={e=>setDetalheObs(e.target.value)} style={{ ...inp,minHeight:50,resize:'vertical',fontSize:12 }} />
+                </div>
+              )}
+              {detalheEditando && (
+                <button onClick={salvarEdicaoDetalhe} disabled={salvandoStatus} style={{ width:'100%',marginTop:8,padding:'8px',background:'#6366f1',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer' }}>
+                  {salvandoStatus?'Salvando...':'✓ Salvar alterações'}
+                </button>
+              )}
             </div>
 
             {/* Mudar status */}
@@ -816,9 +946,10 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
           {compraSalva && (
             <div style={{ background:'#ecfdf5',border:'1px solid #bbf7d0',borderRadius:12,padding:'20px 24px',marginBottom:20 }}>
               <p style={{ fontSize:15,fontWeight:600,color:'#065f46',marginBottom:12 }}>✅ Compra #{compraSalva.numero} registrada!</p>
-              <div style={{ display:'flex',gap:10 }}>
-                <button onClick={() => gerarDocumento('compra')} style={{ padding:'9px 18px',border:'1px solid #86efac',borderRadius:8,fontSize:13,background:'#fff',cursor:'pointer',color:'#065f46',fontWeight:500 }}>🖨 Imprimir termo</button>
-                <button onClick={() => { setCompraSalva(null); setModeloInput(''); setModeloSelecionado(null); setCIMEI(''); setCIMEI2(''); setCCor(''); setCCapacidade(''); setCObs(''); setCChecklist({}); setCValor(''); setVNome(''); setVCPF(''); setVRG(''); setVTel(''); setVEmail(''); setVCEP(''); setVEnd(''); setVBairro(''); setVCidade(''); setVEstado(''); setAssinaturaVendedor(''); setFotoVendedor(''); limparCanvas(vendCanvasRef, setAssinaturaVendedor) }} style={{ padding:'9px 18px',border:'1px solid #e2e8f0',borderRadius:8,fontSize:13,background:'#fff',cursor:'pointer',color:'#374151' }}>Nova compra</button>
+              <div style={{ display:'flex',gap:10,flexWrap:'wrap' }}>
+                <button onClick={() => gerarDocumento('compra')} style={{ padding:'9px 18px',border:'1px solid #86efac',borderRadius:8,fontSize:13,background:'#fff',cursor:'pointer',color:'#065f46',fontWeight:500 }}>🖨 Imprimir termo completo</button>
+                <button onClick={imprimirResumoCompra} style={{ padding:'9px 18px',border:'1px solid #86efac',borderRadius:8,fontSize:13,background:'#fff',cursor:'pointer',color:'#065f46',fontWeight:500 }}>📋 Imprimir resumo</button>
+                <button onClick={() => { setCompraSalva(null); setModeloInput(''); setModeloSelecionado(null); setCIMEI(''); setCIMEI2(''); setCCor(''); setCCapacidade(''); setCObs(''); setCChecklist({}); setCValor(''); setVNome(''); setVCPF(''); setVRG(''); setVTel(''); setVEmail(''); setVCEP(''); setVEnd(''); setVBairro(''); setVCidade(''); setVEstado(''); setAssinaturaVendedor(''); setFotoVendedor(''); setCTipoSenha('nenhuma'); setCScenha(''); setCPadrao([]); limparCanvas(vendCanvasRef, setAssinaturaVendedor) }} style={{ padding:'9px 18px',border:'1px solid #e2e8f0',borderRadius:8,fontSize:13,background:'#fff',cursor:'pointer',color:'#374151' }}>Nova compra</button>
               </div>
             </div>
           )}
@@ -887,7 +1018,29 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
             <div style={{ display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12 }}>
               <div><label style={lbl}>Capacidade</label><input style={inp} value={cCapacidade} onChange={e => setCCapacidade(e.target.value)} placeholder="Ex: 128GB / 64GB/128GB" /></div>
               <div><label style={lbl}>Cor</label><input style={inp} value={cCor} onChange={e => setCCor(e.target.value)} placeholder="Ex: Midnight Black" /></div>
-              <div><label style={lbl}>Senha do aparelho</label><input style={inp} value={cSenha} onChange={e => setCScenha(e.target.value)} placeholder="PIN, senha, padrão..." /></div>
+              <div style={{ gridColumn:'1/-1' }}>
+                <label style={lbl}>Senha do aparelho</label>
+                <div style={{ display:'flex',gap:8,marginBottom:8 }}>
+                  {(['nenhuma','pin','padrao'] as const).map(t => (
+                    <button key={t} onClick={() => setCTipoSenha(t)} style={{ padding:'6px 14px',borderRadius:7,border:`1px solid ${cTipoSenha===t?'#6366f1':'#e2e8f0'}`,background:cTipoSenha===t?'#eef2ff':'#fff',color:cTipoSenha===t?'#4338ca':'#64748b',fontSize:12,fontWeight:cTipoSenha===t?600:400,cursor:'pointer' }}>
+                      {t==='nenhuma'?'Nenhuma':t==='pin'?'PIN / Senha':'Padrão'}
+                    </button>
+                  ))}
+                </div>
+                {cTipoSenha==='pin' && (
+                  <input style={inp} value={cSenha} onChange={e=>setCScenha(e.target.value)} placeholder="Digite o PIN ou senha..." />
+                )}
+                {cTipoSenha==='padrao' && (
+                  <div style={{ display:'flex',gap:16,alignItems:'center' }}>
+                    <canvas ref={padCanvasRef} width={120} height={120} style={{ border:'1px solid #e2e8f0',borderRadius:8,cursor:'pointer',background:'#f8fafc' }} onClick={onPadCanvasClick} />
+                    <div>
+                      <p style={{ fontSize:12,color:'#374151',marginBottom:6 }}>Clique nos pontos para traçar o padrão</p>
+                      {cPadrao.length > 0 && <p style={{ fontSize:13,fontWeight:600,color:'#6366f1',marginBottom:8 }}>{cPadrao.join(' → ')}</p>}
+                      <button onClick={limparPadrao} style={{ fontSize:12,color:'#ef4444',background:'none',border:'none',cursor:'pointer',padding:0 }}>Limpar padrão</button>
+                    </div>
+                  </div>
+                )}
+              </div>
               <div>
                 <label style={lbl}>IMEI 1</label>
                 <input style={inp} value={cIMEI} onChange={e => setCIMEI(e.target.value)} placeholder="15 dígitos" maxLength={15} />
@@ -897,10 +1050,10 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
             </div>
           </div>
 
-          {/* Checklist */}
+          {/* Checklist — duas seções */}
           {cTipo === 'usado' && (
             <div style={card}>
-              <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12 }}>
+              <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14 }}>
                 <p style={sec}>Checklist de estado</p>
                 {Object.keys(cChecklist).length > 0 && (
                   <span style={{ fontSize:12,fontWeight:600,padding:'3px 12px',borderRadius:20,background:notaGeral(cChecklist)==='Bom'?'#ecfdf5':notaGeral(cChecklist)==='Regular'?'#fef3c7':'#fef2f2',color:notaGeral(cChecklist)==='Bom'?'#065f46':notaGeral(cChecklist)==='Regular'?'#92400e':'#991b1b' }}>
@@ -908,8 +1061,11 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
                   </span>
                 )}
               </div>
-              <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))',gap:8 }}>
-                {CHECKLIST_ITENS.map(item => (
+
+              {/* Estético */}
+              <p style={{ fontSize:11,fontWeight:700,color:'#6366f1',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:8 }}>🎨 Estético</p>
+              <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(190px,1fr))',gap:8,marginBottom:16 }}>
+                {CHECKLIST_ESTETICO.map(item => (
                   <div key={item.key} style={{ border:'1px solid #e2e8f0',borderRadius:8,padding:'8px 10px' }}>
                     <p style={{ fontSize:12,fontWeight:500,color:'#374151',marginBottom:6 }}>{item.label}</p>
                     <div style={{ display:'flex',gap:4 }}>
@@ -920,7 +1076,23 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
                   </div>
                 ))}
               </div>
-              <div style={{ marginTop:12 }}>
+
+              {/* Funcional */}
+              <p style={{ fontSize:11,fontWeight:700,color:'#059669',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:8 }}>⚙️ Funcional</p>
+              <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(190px,1fr))',gap:8,marginBottom:12 }}>
+                {CHECKLIST_FUNCIONAL.map(item => (
+                  <div key={item.key} style={{ border:'1px solid #e2e8f0',borderRadius:8,padding:'8px 10px' }}>
+                    <p style={{ fontSize:12,fontWeight:500,color:'#374151',marginBottom:6 }}>{item.label}</p>
+                    <div style={{ display:'flex',gap:4 }}>
+                      {ESTADOS.map(e => (
+                        <button key={e.v} onClick={() => setChecklistItem(item.key, e.v)} style={{ flex:1,padding:'4px 2px',borderRadius:5,border:`1px solid ${cChecklist[item.key]===e.v?e.border:'#e2e8f0'}`,background:cChecklist[item.key]===e.v?e.bg:'#fff',color:cChecklist[item.key]===e.v?e.color:'#94a3b8',fontSize:10,fontWeight:cChecklist[item.key]===e.v?600:400,cursor:'pointer' }}>{e.v}</button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ marginTop:4 }}>
                 <label style={lbl}>Observações</label>
                 <textarea style={{ ...inp,minHeight:60,resize:'vertical' }} value={cObs} onChange={e => setCObs(e.target.value)} placeholder="Arranhões, detalhes relevantes..." />
               </div>
