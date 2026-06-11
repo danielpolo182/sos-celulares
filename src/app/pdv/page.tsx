@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 
 type Produto = {
   id: string; nome: string; categoria: string | null
-  preco_venda: number; custo_unit: number; estoque_atual: number
+  preco_venda: number; custo_unit: number; estoque_atual?: number
 }
 
 type ItemVenda = {
@@ -190,9 +190,9 @@ export default function PDVPage() {
     if (!nome || preco <= 0) return
     setQaSaving(true)
     const { data: prod, error } = await supabase.from('produtos').insert({
-      nome, preco_venda: preco, custo_unit: 0, estoque_atual: 0,
+      nome, preco_venda: preco, custo_unit: 0,
       ativo: true, unidade: 'un', movimenta_estoque: true, cadastro_rapido: true,
-    }).select('id, nome, categoria, preco_venda, custo_unit, estoque_atual').single()
+    }).select('id, nome, categoria, preco_venda, custo_unit').single()
     if (prod && !error) {
       const p = prod as Produto
       setItens(prev => [...prev, { produto_id: p.id, descricao: p.nome, quantidade: 1, preco_unit: p.preco_venda, custo_unit: 0, subtotal: p.preco_venda }])
@@ -248,7 +248,7 @@ export default function PDVPage() {
       for (const item of itens) {
         if (item.produto_id) {
           const prod = produtos.find(p => p.id === item.produto_id)
-          if (prod) await supabase.from('produtos').update({ estoque_atual: Math.max(0, prod.estoque_atual - item.quantidade) }).eq('id', item.produto_id)
+          if (prod && prod.estoque_atual != null) await supabase.from('produtos').update({ estoque_atual: Math.max(0, prod.estoque_atual - item.quantidade) }).eq('id', item.produto_id)
         }
       }
       await supabase.from('caixa_movimentos').insert({ tipo: 'venda', valor: total, forma: pagamentos.length === 1 ? pagamentos[0].forma : 'misto', referencia_id: venda.id, observacoes: `Venda #${venda.numero}`, data_ref: hoje() })
