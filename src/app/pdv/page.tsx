@@ -362,7 +362,7 @@ export default function PDVPage() {
                             Nenhum resultado para &quot;{searchProd}&quot;
                           </div>
                           <div
-                            onClick={() => window.open(`/estoque?novo=${encodeURIComponent(searchProd.trim())}`, '_blank')}
+                            onClick={() => window.location.href = `/estoque?novo=${encodeURIComponent(searchProd.trim())}`}
                             style={{ padding: '10px 14px', cursor: 'pointer', fontSize: 13, color: '#059669', fontWeight: 500, background: '#f0fdf4', display: 'flex', alignItems: 'center', gap: 6 }}
                             onMouseEnter={e => { e.currentTarget.style.background = '#dcfce7' }}
                             onMouseLeave={e => { e.currentTarget.style.background = '#f0fdf4' }}>
