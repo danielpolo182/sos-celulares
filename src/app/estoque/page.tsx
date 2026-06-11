@@ -131,6 +131,17 @@ export default function EstoquePage() {
   useEffect(() => { fetchProdutos() }, [fetchProdutos])
   useEffect(() => { if (produtoSel) fetchEntradas(produtoSel.id) }, [produtoSel, fetchEntradas])
 
+  // Abre modal rápido automaticamente se vier com ?novo=<nome> na URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const nomeParam = params.get('novo')
+    if (nomeParam) {
+      setFNome(decodeURIComponent(nomeParam))
+      setFEditId(null)
+      setShowModalRapido(true)
+    }
+  }, [])
+
   function calcPreco(custo: number, margem: number) {
     if (margem >= 100 || custo <= 0) return 0
     return Math.round(custo / (1 - margem / 100) * 100) / 100
