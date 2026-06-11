@@ -193,13 +193,23 @@ export default function PDVPage() {
     setQaSaving(true)
     const preco = parseFloat(qaPreco.replace(',', '.')) || 0
     const estoque = parseInt(qaEstoque) || 0
-    const { data: prod } = await supabase.from('produtos').insert({
-      nome, categoria: qaCategoria || null, preco_venda: preco, custo_medio: 0, estoque_atual: estoque, ativo: true
-    }).select().single()
-    if (prod) {
-      await fetchProdutos()
-      adicionarProduto(prod as Produto)
-      setShowQuickAdd(false); setQaPreco(''); setQaCategoria(''); setQaEstoque('')
+    const { data: prod, error } = await supabase.from('produtos').insert({
+      nome, categoria: qaCategoria || null, preco_venda: preco, custo_medio: 0,
+      estoque_atual: estoque, ativo: true, qualidade: 'Não avaliado',
+    }).select('id, nome, categoria, qualidade, preco_venda, custo_medio, estoque_atual').single()
+    if (prod && !error) {
+      // Adiciona direto ao carrinho com o objeto retornado — sem esperar fetchProdutos
+      const novoProd = prod as Produto
+      setItens(prev => [...prev, {
+        produto_id: novoProd.id, descricao: novoProd.nome,
+        quantidade: 1, preco_unit: novoProd.preco_venda,
+        custo_unit: novoProd.custo_medio, subtotal: novoProd.preco_venda
+      }])
+      setProdutos(prev => [...prev, novoProd])
+      setShowQuickAdd(false); setSearchProd(''); setProdResults([])
+      setQaPreco(''); setQaCategoria(''); setQaEstoque('')
+      // Atualiza lista em background
+      fetchProdutos()
     }
     setQaSaving(false)
   }
@@ -414,7 +424,6 @@ export default function PDVPage() {
                           )}
                         </div>
                       )}
-                      <div onClick={adicionarAvulso} style={{ padding: '10px 14px', cursor: 'pointer', fontSize: 13, color: '#6366f1', fontWeight: 500, background: '#f8f7ff' }}>+ Item avulso (sem cadastro)</div>
                     </div>
                   )}
                 </div>
@@ -442,15 +451,13 @@ export default function PDVPage() {
                         )
                       })}
                     </div>
-                    <button onClick={adicionarAvulso} style={{ fontSize: 12, color: '#6366f1', background: 'none', border: '1px dashed #c7d2fe', borderRadius: 8, cursor: 'pointer', padding: '8px 16px', width: '100%' }}>+ Adicionar item avulso (sem produto)</button>
                   </>
                 )}
 
-                {/* Quando há busca ativa sem resultados — instruções no dropdown */}
                 {searchProd && prodResults.length === 0 && searchProd.trim() && (
                   <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
                     <div style={{ fontSize: 28, marginBottom: 8 }}>🔍</div>
-                    <p style={{ fontSize: 13 }}>Use o menu suspenso para cadastrar &quot;{searchProd}&quot; ou adicionar como item avulso</p>
+                    <p style={{ fontSize: 13 }}>Use o menu suspenso para cadastrar &quot;{searchProd}&quot;</p>
                   </div>
                 )}
               </div>
