@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { formatarCNPJ, formatarCPF, formatarTelefone, validarCNPJ, validarCPF, validarTelefone } from '@/lib/validators'
 
 // ─── Tipos ────────────────────────────────────────────────
 type Config = {
@@ -401,6 +402,30 @@ export default function ConfiguracoesPage() {
     if (!c) return null
     const val = getVal(chave)
     const modified = isModified(chave)
+
+    // Formatação e validação automática por tipo de campo
+    const isCNPJ = chave.includes('cnpj')
+    const isCPF  = chave.includes('cpf')
+    const isTel  = chave.includes('telefone') || chave.includes('whatsapp') || chave.includes('celular')
+
+    function handleChange(raw: string) {
+      let formatted = raw
+      if (isCNPJ)      formatted = formatarCNPJ(raw)
+      else if (isCPF)  formatted = formatarCPF(raw)
+      else if (isTel)  formatted = formatarTelefone(raw)
+      onEdit(chave, formatted)
+    }
+
+    let validationError = ''
+    if (val) {
+      if (isCNPJ && val.replace(/\D/g,'').length >= 14 && !validarCNPJ(val))
+        validationError = 'CNPJ inválido'
+      else if (isCPF && val.replace(/\D/g,'').length >= 11 && !validarCPF(val))
+        validationError = 'CPF inválido'
+      else if (isTel && val.replace(/\D/g,'').length >= 10 && !validarTelefone(val))
+        validationError = 'Telefone inválido'
+    }
+
     return (
       <div key={chave} style={{ marginBottom: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
@@ -412,7 +437,7 @@ export default function ConfiguracoesPage() {
             {modified && (
               <>
                 <button onClick={() => cancelEdit(chave)} style={{ fontSize: 11, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Cancelar</button>
-                <button onClick={() => salvarConfig(chave)} disabled={saving === chave} style={{ fontSize: 11, padding: '2px 10px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
+                <button onClick={() => salvarConfig(chave)} disabled={saving === chave || !!validationError} style={{ fontSize: 11, padding: '2px 10px', background: saving === chave || validationError ? '#e2e8f0' : '#6366f1', color: saving === chave || validationError ? '#94a3b8' : '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
                   {saving === chave ? '...' : 'Salvar'}
                 </button>
               </>
@@ -425,10 +450,13 @@ export default function ConfiguracoesPage() {
           </select>
         ) : (
           <input
-            style={{ ...inp, borderColor: modified ? '#c7d2fe' : '#e2e8f0' }}
+            style={{ ...inp, borderColor: validationError ? '#fca5a5' : modified ? '#c7d2fe' : '#e2e8f0' }}
             type={type} value={val}
-            onChange={e => onEdit(chave, e.target.value)}
+            onChange={e => handleChange(e.target.value)}
           />
+        )}
+        {validationError && (
+          <p style={{ fontSize: 11, color: '#dc2626', marginTop: 3 }}>⚠ {validationError}</p>
         )}
       </div>
     )

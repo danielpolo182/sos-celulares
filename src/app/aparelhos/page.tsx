@@ -175,10 +175,11 @@ export default function AparelhoPage() {
 
   async function atualizarStatus(id: string, novoStatus: string) {
     setSalvandoStatus(true)
-    await supabase.from('aparelhos').update({ status: novoStatus }).eq('id', id)
+    const { error } = await supabase.from('aparelhos').update({ status: novoStatus }).eq('id', id)
     setSalvandoStatus(false)
-    fetchAll()
-    if (detalhes?.id === id) setDetalhes(d => d ? { ...d, status: novoStatus } : null)
+    if (error) { alert('Erro ao salvar: ' + error.message); return }
+    setAparelhos(prev => prev.map(a => a.id === id ? { ...a, status: novoStatus } : a))
+    setDetalhes(d => d?.id === id ? { ...d, status: novoStatus } : d)
   }
 
   async function salvarAprovacao(aparelho: Aparelho) {
@@ -197,7 +198,6 @@ export default function AparelhoPage() {
   }
 
   function imprimirCard(a: Aparelho) {
-    const st = STATUS_CFG[a.status]
     const nota = a.checklist_nota ?? notaGeral(a.checklist_json ?? {})
     const condLabel = nota === 'Bom' ? 'Usado — Excelente' : nota === 'Regular' ? 'Usado — Bom' : 'Usado — Regular'
     const imeiOculto = a.imei ? a.imei.slice(0, 8) + '****' + a.imei.slice(-2) : '—'
@@ -206,19 +206,19 @@ export default function AparelhoPage() {
   @page { size: 148mm 105mm; margin: 0; }
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
   * { margin:0;padding:0;box-sizing:border-box; }
-  body { font-family:'Inter',sans-serif; width:148mm; height:105mm; background:linear-gradient(135deg,#0f172a 0%,#1e293b 60%,#1e3a5f 100%); color:#fff; overflow:hidden; display:flex; flex-direction:column; padding:10mm 12mm; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-  .top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:5mm; }
-  .loja-nome { font-size:9pt; font-weight:600; color:#94a3b8; letter-spacing:0.08em; text-transform:uppercase; }
-  .cond-badge { font-size:7pt; font-weight:700; padding:2px 8px; border-radius:20px; background:#fbbf24; color:#000; }
-  .modelo { font-size:18pt; font-weight:900; letter-spacing:-0.02em; line-height:1.1; margin-bottom:1mm; }
-  .specs { font-size:8.5pt; color:#94a3b8; margin-bottom:5mm; }
-  .preco-row { display:flex; align-items:flex-end; gap:6mm; }
-  .preco { font-size:26pt; font-weight:900; color:#fbbf24; letter-spacing:-0.03em; line-height:1; }
-  .preco small { font-size:10pt; font-weight:600; color:#fbbf24; vertical-align:top; margin-right:1px; }
-  .garantia { font-size:8pt; color:#86efac; font-weight:600; background:rgba(16,185,129,0.12); padding:2px 8px; border-radius:20px; border:1px solid rgba(16,185,129,0.3); }
-  .bottom { display:flex; justify-content:space-between; align-items:flex-end; margin-top:auto; }
-  .imei-line { font-size:7pt; color:#475569; font-family:monospace; }
-  .status-badge { font-size:7pt; font-weight:700; padding:2px 8px; border-radius:20px; background:${st.bg}; color:${st.color}; }
+  body { font-family:'Inter',sans-serif; width:148mm; height:105mm; background:#fff; color:#0f172a; overflow:hidden; display:flex; flex-direction:column; padding:8mm 10mm; -webkit-print-color-adjust:exact; print-color-adjust:exact; border:2px solid #0f172a; }
+  .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:3mm; padding-bottom:3mm; border-bottom:1.5px solid #0f172a; }
+  .loja-nome { font-size:9pt; font-weight:700; color:#0f172a; letter-spacing:0.04em; text-transform:uppercase; }
+  .cond-badge { font-size:7pt; font-weight:700; padding:2px 10px; border-radius:4px; background:#0f172a; color:#fff; }
+  .modelo { font-size:20pt; font-weight:900; letter-spacing:-0.02em; line-height:1.1; margin-bottom:1mm; color:#0f172a; }
+  .specs { font-size:9pt; color:#475569; margin-bottom:4mm; }
+  .preco-row { display:flex; align-items:flex-end; gap:5mm; margin-bottom:3mm; }
+  .preco { font-size:28pt; font-weight:900; color:#0f172a; letter-spacing:-0.03em; line-height:1; }
+  .preco small { font-size:11pt; font-weight:700; color:#0f172a; vertical-align:top; margin-right:1px; }
+  .garantia { font-size:8pt; color:#065f46; font-weight:700; background:#dcfce7; padding:3px 10px; border-radius:4px; border:1px solid #86efac; }
+  .bottom { display:flex; justify-content:space-between; align-items:center; margin-top:auto; padding-top:3mm; border-top:1px solid #e2e8f0; }
+  .imei-line { font-size:7pt; color:#64748b; font-family:monospace; }
+  .loja-info { font-size:7pt; color:#64748b; }
 </style></head><body>
 <div class="top">
   <div class="loja-nome">SOS Celulares</div>
@@ -227,14 +227,17 @@ export default function AparelhoPage() {
 <div class="modelo">${a.marca} ${a.modelo}</div>
 <div class="specs">${[a.capacidade, a.cor].filter(Boolean).join(' · ') || '—'}</div>
 <div class="preco-row">
-  <div class="preco"><small>R$</small> ${a.preco_venda ? a.preco_venda.toFixed(2).replace('.', ',') : '—'}</div>
+  <div class="preco"><small>R$</small> ${a.preco_venda ? a.preco_venda.toFixed(2).replace('.', ',') : 'Consulte'}</div>
   <span class="garantia">✓ 90 dias de garantia</span>
 </div>
 <div class="bottom">
   <div class="imei-line">IMEI: ${imeiOculto}</div>
-  <span class="status-badge">${st.label}</span>
+  <div class="loja-info">SOS Celulares</div>
 </div>
-<script>window.onload=()=>window.print()<\/script>
+<script>
+  window.onload = () => window.print();
+  window.onafterprint = () => window.close();
+<\/script>
 </body></html>`
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
     const url = URL.createObjectURL(blob)
