@@ -1,8 +1,9 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
 
 type OSResult = {
   id: string; numero: number; status: string; modelo: string | null
@@ -10,6 +11,11 @@ type OSResult = {
   valor_final: number | null; valor_orcamento: number | null
   created_at: string
   clientes: { nome: string; telefone: string | null } | null
+}
+
+type OSSugestao = {
+  id: string; numero: number; modelo: string | null
+  clientes: { nome: string } | null
 }
 
 type Garantia = {
@@ -44,6 +50,11 @@ const STATUS_CFG: Record<string, { label: string; bg: string; color: string; ico
   concluida:             { label: 'Concluída',            bg: '#ecfdf5', color: '#065f46', icon: '✓'  },
 }
 
+const STATUS_LABEL: Record<string, string> = {
+  aberta: 'Aberta', em_andamento: 'Em andamento', pronta: 'Pronta',
+  entregue: 'Entregue', cancelada: 'Cancelada',
+}
+
 const PROXIMOS_STATUS: Record<string, string[]> = {
   aberta:                ['aprovada','negada','parcial','acionando_fornecedor'],
   aprovada:              ['concluida'],
@@ -63,13 +74,20 @@ const lbl: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 5
 
 export default function GarantiasPage() {
   const supabase = createClient()
+  const router = useRouter()
   const [aba, setAba] = useState<'registrar' | 'historico' | 'ranking'>('registrar')
 
   // Registrar
   const [busca, setBusca] = useState('')
   const [buscando, setBuscando] = useState(false)
   const [osEncontrada, setOsEncontrada] = useState<OSResult | null>(null)
+  const [osBloqueada, setOsBloqueada] = useState<{ id: string; numero: number; status: string } | null>(null)
   const [erroBusca, setErroBusca] = useState('')
+  const [sugestoes, setSugestoes] = useState<OSSugestao[]>([])
+  const [showSugestoes, setShowSugestoes] = useState(false)
+  const buscaRef = useRef<HTMLDivElement>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const [motivo, setMotivo] = useState('')
   const [acao, setAcao] = useState<'aprovada'|'negada'|'parcial'|'acionando_fornecedor'|''>('')
   const [justificativa, setJustificativa] = useState('')
@@ -79,6 +97,7 @@ export default function GarantiasPage() {
   const [salvando, setSalvando] = useState(false)
   const [garantiaSalva, setGarantiaSalva] = useState<Garantia | null>(null)
   const [waTemplate, setWaTemplate] = useState('')
+  const [cfgLoja, setCfgLoja] = useState<Record<string, string>>({})
 
   // Histórico
   const [garantias, setGarantias] = useState<Garantia[]>([])
@@ -96,12 +115,19 @@ export default function GarantiasPage() {
   const [ranking, setRanking] = useState<{ nome: string; total: number; acionamentos: number; pct: number }[]>([])
 
   const fetchFornecedores = useCallback(async () => {
-    const [{ data: f }, { data: cfg }] = await Promise.all([
+    const [{ data: f }, { data: cfg }, { data: configs }] = await Promise.all([
       supabase.from('fornecedores').select('id,nome,telefone').eq('ativo', true).order('nome'),
       supabase.from('sistema_config').select('valor').eq('chave', 'wa_garantia_fornecedor').single(),
+      supabase.from('sistema_config').select('chave,valor')
+        .in('chave', ['loja_nome','loja_telefone','loja_email','loja_endereco','loja_cnpj','recibo_os_formato','garantia_dias']),
     ])
     setFornecedores((f ?? []) as Fornecedor[])
     if (cfg) setWaTemplate(cfg.valor)
+    if (configs) {
+      const map: Record<string, string> = {}
+      configs.forEach((c: { chave: string; valor: string }) => { map[c.chave] = c.valor })
+      setCfgLoja(map)
+    }
   }, [supabase])
 
   const fetchHistorico = useCallback(async () => {
@@ -152,14 +178,75 @@ export default function GarantiasPage() {
   useEffect(() => { if (aba === 'ranking') fetchRanking() }, [aba, fetchRanking])
   useEffect(() => { if (garantiaSel) fetchTimeline(garantiaSel.id) }, [garantiaSel, fetchTimeline])
 
+  // Fechar dropdown ao clicar fora
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (buscaRef.current && !buscaRef.current.contains(e.target as Node)) {
+        setShowSugestoes(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Autocomplete: busca sugestões ao digitar
+  function handleBuscaChange(val: string) {
+    setBusca(val)
+    setOsEncontrada(null)
+    setOsBloqueada(null)
+    setErroBusca('')
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    const num = val.replace(/\D/g, '')
+    if (num.length < 2) { setSugestoes([]); setShowSugestoes(false); return }
+    debounceRef.current = setTimeout(async () => {
+      const numInt = parseInt(num)
+      const { data } = await supabase.from('ordens_servico')
+        .select('id,numero,modelo,clientes(nome)')
+        .gte('numero', numInt)
+        .lte('numero', numInt * 10 + 9)
+        .is('deleted_at', null)
+        .order('numero')
+        .limit(8)
+      setSugestoes((data ?? []) as unknown as OSSugestao[])
+      setShowSugestoes(true)
+    }, 300)
+  }
+
+  async function selecionarSugestao(s: OSSugestao) {
+    setShowSugestoes(false)
+    setSugestoes([])
+    setBusca(String(s.numero))
+    await buscarOSPorId(s.id, s.numero)
+  }
+
   async function buscarOS() {
     const num = busca.replace(/\D/g, '')
     if (!num) return
-    setBuscando(true); setErroBusca(''); setOsEncontrada(null); setGarantiaSalva(null)
+    setShowSugestoes(false)
+    setBuscando(true); setErroBusca(''); setOsEncontrada(null); setOsBloqueada(null); setGarantiaSalva(null)
     const { data } = await supabase.from('ordens_servico')
       .select('*,clientes(nome,telefone)').eq('numero', parseInt(num)).is('deleted_at', null).single()
     if (!data) { setErroBusca(`OS #${num} não encontrada.`); setBuscando(false); return }
-    setOsEncontrada(data as unknown as OSResult); setBuscando(false)
+    aplicarResultadoOS(data as unknown as OSResult)
+    setBuscando(false)
+  }
+
+  async function buscarOSPorId(id: string, numero: number) {
+    setBuscando(true); setErroBusca(''); setOsEncontrada(null); setOsBloqueada(null); setGarantiaSalva(null)
+    const { data } = await supabase.from('ordens_servico')
+      .select('*,clientes(nome,telefone)').eq('id', id).single()
+    if (!data) { setErroBusca(`OS #${numero} não encontrada.`); setBuscando(false); return }
+    aplicarResultadoOS(data as unknown as OSResult)
+    setBuscando(false)
+  }
+
+  // Tarefa 02: bloquear OS não entregue
+  function aplicarResultadoOS(data: OSResult) {
+    if (data.status !== 'entregue') {
+      setOsBloqueada({ id: data.id, numero: data.numero, status: data.status })
+      return
+    }
+    setOsEncontrada(data)
   }
 
   function diasDesde(dt: string) { return Math.floor((Date.now() - new Date(dt).getTime()) / (1000 * 60 * 60 * 24)) }
@@ -250,32 +337,226 @@ export default function GarantiasPage() {
     setNovaObs(''); fetchTimeline(g.id)
   }
 
+  // Tarefa 03: templates de impressão por tamanho de papel
   function imprimirRecibo(g: Garantia) {
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Recibo Garantia</title>
-    <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;max-width:300px;margin:0 auto;padding:16px}
-    .c{text-align:center}.b{font-weight:bold}.line{border-top:1px dashed #000;margin:8px 0}.row{display:flex;justify-content:space-between;margin:4px 0}
-    .title{font-size:14px;font-weight:bold;text-align:center;margin-bottom:4px}</style></head><body>
-    <div class="title">SOS Celulares</div>
-    <div class="c" style="font-size:9px;margin-bottom:8px">RECIBO DE DEVOLUÇÃO AO FORNECEDOR</div>
-    <div class="line"></div>
-    <div class="row"><span>Garantia Nº</span><span class="b">#${g.numero}</span></div>
-    <div class="row"><span>Data</span><span>${new Date().toLocaleDateString('pt-BR')}</span></div>
-    <div class="line"></div>
-    <div class="b" style="margin-bottom:4px">FORNECEDOR</div>
-    <div>${g.fornecedores_destino?.nome ?? '—'}</div>
-    <div class="line"></div>
-    <div class="b" style="margin-bottom:4px">PRODUTO / PEÇA</div>
-    <div>${g.os_origem?.modelo ?? '—'}</div>
-    <div class="line"></div>
-    <div class="b" style="margin-bottom:4px">MOTIVO DA DEVOLUÇÃO</div>
-    <div style="line-height:1.5">${g.motivo_retorno}</div>
-    ${g.observacoes_fornecedor ? `<div style="margin-top:4px;font-style:italic">${g.observacoes_fornecedor}</div>` : ''}
-    <div class="line"></div>
-    <div class="row"><span>OS de origem</span><span class="b">#${g.os_origem?.numero}</span></div>
-    <div class="line"></div>
-    <div style="margin-top:16px;font-size:9px;text-align:center">Assinatura do recebedor</div>
-    <div style="border-top:1px solid #000;margin-top:24px;padding-top:4px;font-size:9px;text-align:center">_________________________</div>
-    <script>window.onload=()=>{window.print()}<\/script></body></html>`
+    const formato = cfgLoja.recibo_os_formato || 'a4'
+    const nomeLoja = cfgLoja.loja_nome || 'SOS Celulares'
+    const telLoja = cfgLoja.loja_telefone || ''
+    const emailLoja = cfgLoja.loja_email || ''
+    const endLoja = cfgLoja.loja_endereco || ''
+    const cnpjLoja = cfgLoja.loja_cnpj || ''
+    const garantiaDias = cfgLoja.garantia_dias || '90'
+
+    const dataHoje = new Date().toLocaleDateString('pt-BR')
+    const osNum = g.os_origem?.numero ?? '—'
+    const modelo = g.os_origem?.modelo ?? '—'
+    const defeito = g.os_origem?.defeito_relatado ?? '—'
+    const cliente = g.clientes_origem ? (g.clientes_origem as any)?.clientes?.nome ?? (g.clientes_origem as any)?.nome ?? '—' : '—'
+    const fornecedor = g.fornecedores_destino?.nome ?? '—'
+    const statusLabel = STATUS_CFG[g.status]?.label ?? g.status
+
+    let html = ''
+
+    if (formato === '58mm') {
+      html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Recibo Garantia</title>
+<style>
+  @page { size: 58mm auto; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Courier New', monospace; font-size: 9pt; width: 54mm; padding: 3mm 2mm; color: #000; background: #fff; }
+  .c { text-align: center; } .b { font-weight: bold; }
+  .nome { font-size: 12pt; font-weight: bold; text-align: center; margin-bottom: 1mm; }
+  .sub { font-size: 7.5pt; text-align: center; color: #444; }
+  .dashed { border-top: 1px dashed #000; margin: 2mm 0; }
+  .solid { border-top: 1px solid #000; margin: 2mm 0; }
+  .titulo { font-size: 7pt; text-transform: uppercase; font-weight: bold; color: #333; margin-bottom: 1mm; }
+  .row { display: flex; justify-content: space-between; margin-bottom: 0.5mm; font-size: 8pt; }
+  .row span:first-child { color: #555; } .row span:last-child { font-weight: bold; text-align: right; max-width: 32mm; }
+  .footer { font-size: 6.5pt; text-align: center; color: #777; margin-top: 2mm; }
+  .ass { border-top: 1px solid #000; margin-top: 8mm; margin-bottom: 1mm; }
+</style></head><body>
+<div class="nome">${nomeLoja}</div>
+${endLoja ? `<div class="sub">${endLoja}</div>` : ''}
+${telLoja ? `<div class="sub">${telLoja}</div>` : ''}
+${cnpjLoja ? `<div class="sub">CNPJ: ${cnpjLoja}</div>` : ''}
+<div class="solid"></div>
+<div class="c" style="margin:2mm 0">
+  <div class="sub" style="text-transform:uppercase">Recibo de Garantia</div>
+  <div style="font-size:16pt;font-weight:bold">#${g.numero}</div>
+  <div class="sub">${dataHoje}</div>
+</div>
+<div class="dashed"></div>
+<div class="titulo">▸ OS de Origem</div>
+<div class="row"><span>Nº da OS</span><span>#${osNum}</span></div>
+<div class="row"><span>Modelo</span><span>${modelo}</span></div>
+<div class="row"><span>Cliente</span><span>${cliente}</span></div>
+<div class="dashed"></div>
+<div class="titulo">▸ Garantia</div>
+<div class="row"><span>Status</span><span>${statusLabel}</span></div>
+<div class="row"><span>Fornecedor</span><span>${fornecedor}</span></div>
+<div style="margin-top:1mm;font-size:8pt"><span style="color:#555">Motivo: </span>${g.motivo_retorno}</div>
+<div class="dashed"></div>
+<div style="font-size:7pt;line-height:1.6;color:#333">Garantia: <b>${garantiaDias} dias</b><br>Guarde este recibo.</div>
+<div class="dashed"></div>
+<div class="ass"></div>
+<div class="footer" style="font-size:7pt;text-align:center;color:#555">Assinatura do recebedor</div>
+<div class="footer" style="margin-top:3mm">${nomeLoja}</div>
+<script>window.onload = () => { window.print(); }<\/script>
+</body></html>`
+    } else if (formato === '80mm') {
+      html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Recibo Garantia</title>
+<style>
+  @page { size: 80mm auto; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Courier New', monospace; font-size: 9.5pt; width: 76mm; padding: 3mm 3mm; color: #000; background: #fff; }
+  .nome { font-size: 14pt; font-weight: bold; text-align: center; margin-bottom: 1mm; }
+  .sub { font-size: 8pt; text-align: center; color: #444; line-height: 1.6; }
+  .dashed { border-top: 1px dashed #000; margin: 2.5mm 0; }
+  .solid { border-top: 2px solid #000; margin: 2mm 0; }
+  .badge { text-align: center; padding: 2mm 0; border: 1px solid #000; border-radius: 2mm; margin: 2mm 0; }
+  .titulo { font-size: 7.5pt; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #000; padding-bottom: 0.5mm; margin-bottom: 1.5mm; }
+  .row { display: flex; justify-content: space-between; margin-bottom: 0.7mm; font-size: 8.5pt; }
+  .row .l { color: #555; } .row .v { font-weight: bold; text-align: right; }
+  .aviso { border: 1px solid #555; padding: 1.5mm 2mm; margin: 1mm 0; font-size: 8pt; line-height: 1.6; }
+  .ass-line { display: flex; gap: 5mm; margin-top: 3mm; }
+  .ass-box { flex: 1; } .ass-l { border-top: 1px solid #000; margin-bottom: 1mm; }
+  .ass-label { font-size: 7pt; text-align: center; color: #555; }
+  .footer { font-size: 6.5pt; text-align: center; color: #777; margin-top: 3mm; border-top: 1px dashed #ccc; padding-top: 1.5mm; }
+</style></head><body>
+<div class="nome">${nomeLoja}</div>
+<div class="sub">${endLoja ? endLoja + '<br>' : ''}${telLoja}${emailLoja ? ' · ' + emailLoja : ''}${cnpjLoja ? '<br>CNPJ: ' + cnpjLoja : ''}</div>
+<div class="solid"></div>
+<div class="badge">
+  <div style="font-size:7.5pt;text-transform:uppercase;color:#555">Recibo de Garantia</div>
+  <div style="font-size:20pt;font-weight:bold">#${g.numero}</div>
+  <div class="sub">${dataHoje}</div>
+</div>
+<div class="titulo">OS de Origem</div>
+<div class="row"><span class="l">Nº da OS</span><span class="v">#${osNum}</span></div>
+<div class="row"><span class="l">Modelo</span><span class="v">${modelo}</span></div>
+<div class="row"><span class="l">Cliente</span><span class="v">${cliente}</span></div>
+<div class="dashed"></div>
+<div class="titulo">Defeito Relatado</div>
+<div style="font-size:8.5pt;line-height:1.6;background:#f5f5f5;padding:1.5mm 2mm;border-left:2px solid #000;margin-bottom:1mm">${defeito}</div>
+<div class="dashed"></div>
+<div class="titulo">Garantia</div>
+<div class="row"><span class="l">Nº Garantia</span><span class="v">#${g.numero}</span></div>
+<div class="row"><span class="l">Status</span><span class="v">${statusLabel}</span></div>
+<div class="row"><span class="l">Fornecedor</span><span class="v">${fornecedor}</span></div>
+<div style="font-size:8.5pt;line-height:1.5;margin:1mm 0"><b>Motivo:</b> ${g.motivo_retorno}</div>
+${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g.justificativa}</div>` : ''}
+<div class="aviso"><b>Garantia:</b> ${garantiaDias} dias · Guarde este recibo.</div>
+<div class="ass-line">
+  <div class="ass-box"><div style="height:18mm"></div><div class="ass-l"></div><div class="ass-label">Assinatura do recebedor</div></div>
+  <div class="ass-box"><div style="height:18mm"></div><div class="ass-l"></div><div class="ass-label">Técnico responsável</div></div>
+</div>
+<div class="footer">${nomeLoja}${cnpjLoja ? ' · CNPJ ' + cnpjLoja : ''}</div>
+<script>window.onload = () => { window.print(); }<\/script>
+</body></html>`
+    } else {
+      // A4 (padrão)
+      html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Recibo Garantia</title>
+<style>
+  @page { size: A4; margin: 20mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; font-size: 11pt; color: #000; background: #fff; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 16px; }
+  .loja-nome { font-size: 20pt; font-weight: bold; }
+  .loja-sub { font-size: 9pt; color: #555; line-height: 1.7; margin-top: 4px; }
+  .doc-titulo { text-align: right; }
+  .doc-titulo h2 { font-size: 16pt; font-weight: bold; text-transform: uppercase; }
+  .doc-titulo p { font-size: 10pt; color: #555; }
+  .section { margin-bottom: 16px; }
+  .section h3 { font-size: 10pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em; color: #333; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 8px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px 20px; }
+  .field label { font-size: 8pt; color: #888; display: block; margin-bottom: 2px; text-transform: uppercase; }
+  .field p { font-size: 10.5pt; font-weight: 500; }
+  .motivo-box { background: #f9f9f9; border-left: 3px solid #333; padding: 10px 14px; font-size: 10.5pt; line-height: 1.7; margin-top: 4px; }
+  .status-badge { display: inline-block; padding: 4px 14px; border-radius: 20px; font-weight: 600; font-size: 10pt; border: 1.5px solid #333; }
+  .termos { font-size: 8.5pt; color: #555; line-height: 1.8; border: 1px solid #ddd; padding: 12px 14px; border-radius: 4px; }
+  .ass-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 12px; }
+  .ass-box { text-align: center; }
+  .ass-line { border-top: 1px solid #000; margin-bottom: 6px; }
+  .ass-label { font-size: 9pt; color: #555; }
+  .footer { text-align: center; font-size: 8pt; color: #888; margin-top: 16px; padding-top: 10px; border-top: 1px dashed #ccc; }
+</style></head><body>
+<div class="header">
+  <div>
+    <div class="loja-nome">${nomeLoja}</div>
+    <div class="loja-sub">
+      ${endLoja ? endLoja + '<br>' : ''}
+      ${telLoja ? 'Tel: ' + telLoja : ''}${emailLoja ? ' · ' + emailLoja : ''}
+      ${cnpjLoja ? '<br>CNPJ: ' + cnpjLoja : ''}
+    </div>
+  </div>
+  <div class="doc-titulo">
+    <h2>Recibo de Garantia</h2>
+    <p>Nº <strong>#${g.numero}</strong></p>
+    <p>Data: ${dataHoje}</p>
+  </div>
+</div>
+
+<div class="section">
+  <h3>OS de Origem</h3>
+  <div class="grid3">
+    <div class="field"><label>Nº da OS</label><p>#${osNum}</p></div>
+    <div class="field"><label>Modelo do Aparelho</label><p>${modelo}</p></div>
+    <div class="field"><label>Data da OS</label><p>${g.os_origem?.created_at ? new Date(g.os_origem.created_at).toLocaleDateString('pt-BR') : '—'}</p></div>
+  </div>
+  <div style="margin-top:8px" class="field"><label>Defeito Relatado</label><div class="motivo-box">${defeito}</div></div>
+</div>
+
+<div class="section">
+  <h3>Dados do Cliente</h3>
+  <div class="grid2">
+    <div class="field"><label>Nome</label><p>${cliente}</p></div>
+    <div class="field"><label>Fornecedor Destino</label><p>${fornecedor}</p></div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Detalhes da Garantia</h3>
+  <div class="grid2" style="margin-bottom:10px">
+    <div class="field"><label>Nº da Garantia</label><p>#${g.numero}</p></div>
+    <div class="field"><label>Status</label><p><span class="status-badge">${statusLabel}</span></p></div>
+  </div>
+  <div class="field"><label>Motivo do Retorno</label><div class="motivo-box">${g.motivo_retorno}</div></div>
+  ${g.justificativa ? `<div class="field" style="margin-top:8px"><label>Justificativa</label><div class="motivo-box" style="border-left-color:#888;background:#fff">${g.justificativa}</div></div>` : ''}
+</div>
+
+<div class="section">
+  <h3>Termos de Garantia</h3>
+  <div class="termos">
+    A garantia cobre exclusivamente o serviço realizado e as peças substituídas, pelo prazo de <strong>${garantiaDias} dias</strong> a partir da data de entrega.
+    Não estão cobertos danos causados por mau uso, quedas, líquidos, ou qualquer dano físico externo.
+    A garantia é válida apenas mediante apresentação deste recibo.
+    Em caso de necessidade, entre em contato com ${nomeLoja}${telLoja ? ' pelo telefone ' + telLoja : ''}.
+  </div>
+</div>
+
+<div class="section">
+  <h3>Assinaturas</h3>
+  <div class="ass-grid">
+    <div class="ass-box">
+      <div style="height:40px"></div>
+      <div class="ass-line"></div>
+      <div class="ass-label">Assinatura do Cliente / Responsável</div>
+      <div class="ass-label" style="margin-top:4px">${cliente}</div>
+    </div>
+    <div class="ass-box">
+      <div style="height:40px"></div>
+      <div class="ass-line"></div>
+      <div class="ass-label">Técnico Responsável</div>
+      <div class="ass-label" style="margin-top:4px">${nomeLoja}</div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">${nomeLoja}${cnpjLoja ? ' · CNPJ ' + cnpjLoja : ''} · Documento gerado em ${dataHoje}</div>
+<script>window.onload = () => { window.print(); }<\/script>
+</body></html>`
+    }
+
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const w = window.open(url, '_blank')
@@ -331,13 +612,63 @@ export default function GarantiasPage() {
 
           <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '20px 24px', marginBottom: 14 }}>
             <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 12 }}>🔍 Buscar OS pelo número</p>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <input style={{ ...inp, flex: 1, fontSize: 16 }} value={busca} onChange={e => setBusca(e.target.value)} onKeyDown={e => e.key === 'Enter' && buscarOS()} placeholder="Número da OS" type="number" />
-              <button onClick={buscarOS} disabled={buscando} style={{ padding: '9px 20px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                {buscando ? 'Buscando...' : 'Buscar'}
-              </button>
+            {/* Tarefa 01: campo com autocomplete */}
+            <div ref={buscaRef} style={{ position: 'relative' }}>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <input
+                  style={{ ...inp, flex: 1, fontSize: 16 }}
+                  value={busca}
+                  onChange={e => handleBuscaChange(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') buscarOS(); if (e.key === 'Escape') setShowSugestoes(false) }}
+                  onFocus={() => sugestoes.length > 0 && setShowSugestoes(true)}
+                  placeholder="Digite o número da OS"
+                  type="number"
+                  autoComplete="off"
+                />
+                <button onClick={buscarOS} disabled={buscando} style={{ padding: '9px 20px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  {buscando ? 'Buscando...' : 'Buscar'}
+                </button>
+              </div>
+
+              {/* Dropdown de sugestões */}
+              {showSugestoes && sugestoes.length > 0 && (
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 60, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', zIndex: 50, overflow: 'hidden', marginTop: 4 }}>
+                  {sugestoes.map(s => (
+                    <button
+                      key={s.id}
+                      onMouseDown={e => { e.preventDefault(); selecionarSugestao(s) }}
+                      style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 10 }}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                    >
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#6366f1', minWidth: 48 }}>OS #{s.numero}</span>
+                      <span style={{ fontSize: 13, color: '#1e293b', fontWeight: 500 }}>{s.clientes?.nome ?? '—'}</span>
+                      {s.modelo && <span style={{ fontSize: 12, color: '#94a3b8' }}>· {s.modelo}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
+
             {erroBusca && <p style={{ fontSize: 13, color: '#ef4444', marginTop: 8 }}>{erroBusca}</p>}
+
+            {/* Tarefa 02: aviso de OS não entregue */}
+            {osBloqueada && (
+              <div style={{ marginTop: 12, background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 10, padding: '14px 16px' }}>
+                <p style={{ fontSize: 14, fontWeight: 600, color: '#92400e', marginBottom: 6 }}>
+                  ⚠ OS #{osBloqueada.numero} ainda não foi finalizada
+                </p>
+                <p style={{ fontSize: 13, color: '#78350f', marginBottom: 12 }}>
+                  Esta OS está com status <strong>{STATUS_LABEL[osBloqueada.status] ?? osBloqueada.status}</strong>. Só é possível abrir uma garantia após a OS ser entregue ao cliente.
+                </p>
+                <button
+                  onClick={() => router.push(`/os/${osBloqueada.id}`)}
+                  style={{ padding: '8px 16px', background: '#d97706', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Ir para a OS →
+                </button>
+              </div>
+            )}
           </div>
 
           {osEncontrada && (
@@ -421,7 +752,6 @@ export default function GarantiasPage() {
       {/* ═══ HISTÓRICO ═══ */}
       {aba === 'historico' && (
         <div style={{ display: 'grid', gridTemplateColumns: garantiaSel ? '1fr 380px' : '1fr', gap: 16 }}>
-          {/* Lista */}
           <div>
             <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
               <input placeholder="Buscar por motivo..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 1, minWidth: 160, background: '#f8fafc' }} />
@@ -466,7 +796,6 @@ export default function GarantiasPage() {
             }
           </div>
 
-          {/* Painel lateral de detalhes */}
           {garantiaSel && (
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', height: 'fit-content', position: 'sticky', top: 16 }}>
               <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -475,7 +804,6 @@ export default function GarantiasPage() {
               </div>
 
               <div style={{ padding: '14px 18px', maxHeight: '80vh', overflowY: 'auto' }}>
-                {/* Status atual e ações */}
                 <div style={{ marginBottom: 14 }}>
                   <p style={{ fontSize: 11, fontWeight: 500, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Status atual</p>
                   <span style={{ fontSize: 13, fontWeight: 500, padding: '4px 12px', borderRadius: 20, background: STATUS_CFG[garantiaSel.status]?.bg, color: STATUS_CFG[garantiaSel.status]?.color }}>
@@ -483,7 +811,6 @@ export default function GarantiasPage() {
                   </span>
                 </div>
 
-                {/* Próximas ações possíveis */}
                 {PROXIMOS_STATUS[garantiaSel.status] && PROXIMOS_STATUS[garantiaSel.status].length > 0 && (
                   <div style={{ marginBottom: 14 }}>
                     <p style={{ fontSize: 11, fontWeight: 500, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Ações</p>
@@ -505,7 +832,6 @@ export default function GarantiasPage() {
                   </div>
                 )}
 
-                {/* Detalhes */}
                 <div style={{ marginBottom: 14 }}>
                   <p style={{ fontSize: 11, fontWeight: 500, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Detalhes</p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12 }}>
@@ -530,7 +856,6 @@ export default function GarantiasPage() {
                   </div>
                 </div>
 
-                {/* Linha do tempo */}
                 <div style={{ marginBottom: 14 }}>
                   <p style={{ fontSize: 11, fontWeight: 500, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Linha do tempo</p>
                   {loadingTL ? <p style={{ fontSize: 12, color: '#94a3b8' }}>Carregando...</p> :
@@ -554,7 +879,6 @@ export default function GarantiasPage() {
                   }
                 </div>
 
-                {/* Adicionar observação */}
                 <div>
                   <p style={{ fontSize: 11, fontWeight: 500, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>Adicionar observação</p>
                   <div style={{ display: 'flex', gap: 6 }}>
