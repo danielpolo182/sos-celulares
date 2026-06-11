@@ -185,8 +185,14 @@ export default function PDVPage() {
   async function salvarCaixa() {
     const v = parseFloat(caixaValor); if (isNaN(v) || v < 0) return
     setSalvandoCaixa(true)
-    const tipoReal = caixaAcao === 'reabertura' ? 'abertura' : caixaAcao
-    await supabase.from('caixa_movimentos').insert({ tipo: tipoReal, valor: v, forma: 'dinheiro', observacoes: caixaObs || null, data_ref: hoje() })
+    const d = hoje()
+    if (caixaAcao === 'reabertura') {
+      // Remove abertura e fechamento do dia para começar período limpo
+      await supabase.from('caixa_movimentos').delete().eq('data_ref', d).in('tipo', ['abertura', 'fechamento'])
+      await supabase.from('caixa_movimentos').insert({ tipo: 'abertura', valor: v, forma: 'dinheiro', observacoes: caixaObs || null, data_ref: d })
+    } else {
+      await supabase.from('caixa_movimentos').insert({ tipo: caixaAcao, valor: v, forma: 'dinheiro', observacoes: caixaObs || null, data_ref: d })
+    }
     setSalvandoCaixa(false); setShowCaixaModal(false); setCaixaValor(''); setCaixaObs(''); fetchCaixa()
   }
 

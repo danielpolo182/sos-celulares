@@ -122,13 +122,15 @@ export default function ProdutosPage() {
   async function salvar() {
     if (!f.nome?.trim()) return
     setSaving(true)
+    // Remove campos somente-leitura que não devem ir no update/insert
+    const { id: _id, created_at: _ca, ...fLimpo } = f as any
     const payload = {
-      ...f,
+      ...fLimpo,
       modelos_compat: fModelos ? fModelos.split(',').map(s => s.trim()).filter(Boolean) : null,
       campos_extras: camposExtras.reduce((acc, {chave, valor}) => { if (chave) acc[chave] = valor; return acc }, {} as Record<string, string>),
+      // Marca como completo ao editar produto pendente
+      ...(editId ? { cadastro_rapido: false } : {}),
     }
-    // Ao salvar produto pendente, marca como completo
-    if (editId) (payload as any).cadastro_rapido = false
 
     let prodId = editId
     if (editId) {

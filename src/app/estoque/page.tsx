@@ -191,8 +191,7 @@ export default function EstoquePage() {
   useEffect(() => {
     if (aba === 'entradas') fetchEntradasHistorico()
     if (aba === 'fornecedores') fetchFornecedoresList()
-    if (aba === 'produtos') router.push('/produtos')
-  }, [aba, fetchEntradasHistorico, fetchFornecedoresList, router])
+  }, [aba, fetchEntradasHistorico, fetchFornecedoresList])
 
   const lucroMedio = (p: Produto) => p.custo_medio > 0 ? ((p.preco_venda - p.custo_medio) / p.preco_venda * 100).toFixed(0) : null
 
@@ -206,7 +205,7 @@ export default function EstoquePage() {
             <h1 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', letterSpacing: '-0.02em' }}>Produtos & Estoque</h1>
             <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{produtos.length} itens · {produtos.filter(p => p.estoque_atual <= p.estoque_minimo).length} com estoque baixo</p>
           </div>
-          {aba === 'estoque' && (
+          {(aba === 'estoque' || aba === 'produtos') && (
             <button onClick={abrirNovoProduto} style={{ padding: '8px 16px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>+ Novo produto</button>
           )}
         </div>
@@ -216,6 +215,77 @@ export default function EstoquePage() {
           ))}
         </div>
       </div>
+
+      {/* ── ABA PRODUTOS (listagem + edição) */}
+      {aba === 'produtos' && (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ padding: '12px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', gap: 8, flexWrap: 'wrap', flexShrink: 0 }}>
+            <input placeholder="Buscar produto..." value={search} onChange={e => setSearch(e.target.value)}
+              style={{ ...inp, flex: 1, minWidth: 160, background: '#f8fafc' }} />
+            <select value={filtroCat} onChange={e => setFiltroCat(e.target.value)} style={{ ...inp, width: 'auto' }}>
+              <option value="todas">Todas categorias</option>
+              {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {loading ? (
+              <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Carregando...</div>
+            ) : produtos.length === 0 ? (
+              <div style={{ padding: 60, textAlign: 'center' }}>
+                <div style={{ fontSize: 36, marginBottom: 12 }}>📦</div>
+                <p style={{ fontSize: 14, fontWeight: 500, color: '#374151' }}>Nenhum produto cadastrado</p>
+                <button onClick={abrirNovoProduto} style={{ marginTop: 16, padding: '8px 16px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>+ Cadastrar primeiro produto</button>
+              </div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                    {['Produto','Categoria','Qualidade','Preço venda','Margem','Estoque','Ações'].map(h => (
+                      <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {produtos.filter(p => !search || p.nome.toLowerCase().includes(search.toLowerCase())).filter(p => filtroCat === 'todas' || p.categoria === filtroCat).map(p => {
+                    const margem = lucroMedio(p)
+                    const baixoEstoque = p.estoque_atual <= p.estoque_minimo
+                    const qc = QUALIDADE_CONFIG[p.qualidade] ?? QUALIDADE_CONFIG.compativel
+                    return (
+                      <tr key={p.id} style={{ borderBottom: '1px solid #f1f5f9' }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#fafafa' }}
+                        onMouseLeave={e => { e.currentTarget.style.background = '#fff' }}>
+                        <td style={{ padding: '10px 14px', fontWeight: 500, color: '#0f172a' }}>
+                          {p.nome}
+                          {p.modelos_compat && p.modelos_compat.length > 0 && (
+                            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>{p.modelos_compat.slice(0, 2).join(', ')}{p.modelos_compat.length > 2 ? ` +${p.modelos_compat.length - 2}` : ''}</div>
+                          )}
+                        </td>
+                        <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{p.categoria ?? '—'}</td>
+                        <td style={{ padding: '10px 14px' }}>
+                          <span style={{ fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20, background: qc.bg, color: qc.color }}>{qc.label}</span>
+                        </td>
+                        <td style={{ padding: '10px 14px', fontWeight: 500, color: '#0f172a', fontFamily: 'var(--font-mono)', fontSize: 12 }}>R$ {p.preco_venda.toFixed(2).replace('.', ',')}</td>
+                        <td style={{ padding: '10px 14px' }}>
+                          {margem ? <span style={{ fontSize: 12, fontWeight: 600, color: parseInt(margem) >= 30 ? '#065f46' : parseInt(margem) >= 15 ? '#92400e' : '#991b1b' }}>{margem}%</span> : '—'}
+                        </td>
+                        <td style={{ padding: '10px 14px' }}>
+                          <span style={{ fontSize: 12, fontWeight: 500, color: baixoEstoque ? '#991b1b' : '#065f46' }}>{baixoEstoque ? '⚠ ' : ''}{p.estoque_atual} un</span>
+                        </td>
+                        <td style={{ padding: '10px 14px' }}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button onClick={() => abrirEntrada(p)} style={{ fontSize: 11, padding: '4px 10px', border: '1px solid #e0e7ff', borderRadius: 6, background: '#eef2ff', color: '#4338ca', cursor: 'pointer', fontWeight: 500 }}>+ Entrada</button>
+                            <button onClick={() => abrirEditProduto(p)} style={{ fontSize: 11, padding: '4px 10px', border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', color: '#64748b', cursor: 'pointer' }}>Editar</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── ABA ESTOQUE (saldos) */}
       {aba === 'estoque' && (
