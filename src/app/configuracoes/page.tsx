@@ -242,21 +242,60 @@ export default function ConfiguracoesPage() {
   }
 
   // ── Upload de logo ───────────────────────────────────────
+  const [logoUploading, setLogoUploading] = useState(false)
+  const [logoPreview, setLogoPreview] = useState('')
+
+  async function resizeLogo(file: File): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      const url = URL.createObjectURL(file)
+      img.onload = () => {
+        const MAX_W = 400, MAX_H = 100
+        let w = img.naturalWidth, h = img.naturalHeight
+        const ratio = Math.min(MAX_W / w, MAX_H / h, 1)
+        w = Math.round(w * ratio); h = Math.round(h * ratio)
+        const canvas = document.createElement('canvas')
+        canvas.width = w; canvas.height = h
+        canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
+        URL.revokeObjectURL(url)
+        canvas.toBlob(b => b ? resolve(b) : reject(new Error('canvas failed')), 'image/png')
+      }
+      img.onerror = reject
+      img.src = url
+    })
+  }
+
   async function uploadLogo(file: File) {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    const ext = file.name.split('.').pop()
-    const path = `logos/${user.id}.${ext}`
-    const { error } = await supabase.storage.from('produto-fotos').upload(path, file, { upsert: true })
-    if (!error) {
+    setLogoUploading(true)
+    try {
+      const blob = await resizeLogo(file)
+      const preview = URL.createObjectURL(blob)
+      setLogoPreview(preview)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const path = `logos/${user.id}.png`
+      const { error } = await supabase.storage.from('produto-fotos').upload(path, blob, { upsert: true, contentType: 'image/png' })
+      if (error) { alert('Erro ao enviar logo: ' + error.message); return }
       const { data: urlData } = supabase.storage.from('produto-fotos').getPublicUrl(path)
       setLogoUrl(urlData.publicUrl)
-      // Salvar URL nas configs
       const c = getConfig('loja_logo_url')
       if (c) {
         await supabase.from('sistema_config').update({ valor: urlData.publicUrl }).eq('id', c.id)
+        fetchAll()
       }
+    } finally {
+      setLogoUploading(false)
     }
+  }
+
+  async function deleteLogo() {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    await supabase.storage.from('produto-fotos').remove([`logos/${user.id}.png`])
+    const c = getConfig('loja_logo_url')
+    if (c) await supabase.from('sistema_config').update({ valor: '' }).eq('id', c.id)
+    setLogoUrl(''); setLogoPreview('')
+    fetchAll()
   }
 
   // ─── Render de campos (funções, não componentes — evita remount) ───────────
@@ -423,28 +462,57 @@ export default function ConfiguracoesPage() {
               <input
                 type="file" id="logo-file" accept="image/png,image/jpeg,image/webp"
                 style={{ display: 'none' }}
-                onChange={e => { const f = e.target.files?.[0]; if (f) uploadLogo(f) }}
+                onChange={e => { const f = e.target.files?.[0]; if (f) uploadLogo(f); e.target.value = '' }}
               />
-              <div
-                onClick={() => document.getElementById('logo-file')?.click()}
-                style={{ border: '2px dashed #e2e8f0', borderRadius: 10, padding: '40px 20px', textAlign: 'center', cursor: 'pointer', background: '#f8fafc', marginBottom: 12, transition: 'border-color 0.15s' }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#a5b4fc' }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#e2e8f0' }}
-              >
-                {logoUrl || getVal('loja_logo_url') ? (
-                  <div>
-                    <img src={logoUrl || getVal('loja_logo_url')} style={{ maxHeight: 80, maxWidth: 200, objectFit: 'contain', marginBottom: 8 }} alt="Logo" />
-                    <p style={{ fontSize: 12, color: '#6366f1' }}>Clique para trocar</p>
+              {/* Preview area */}
+              {(logoPreview || logoUrl || getVal('loja_logo_url')) ? (
+                <div style={{ marginBottom: 16 }}>
+                  <label style={lbl}>Logo atual</label>
+                  <div style={{ background: '#0f172a', borderRadius: 8, padding: '16px 20px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+                    <img
+                      src={logoPreview || logoUrl || getVal('loja_logo_url')}
+                      style={{ maxHeight: 60, maxWidth: 240, objectFit: 'contain', display: 'block' }}
+                      alt="Logo"
+                    />
                   </div>
-                ) : (
-                  <>
-                    <div style={{ fontSize: 32, marginBottom: 8 }}>🏪</div>
-                    <p style={{ fontSize: 14, fontWeight: 500, color: '#374151' }}>Clique para enviar o logo</p>
-                    <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>PNG, JPG, WEBP — recomendado 400×200px</p>
-                  </>
-                )}
+                  <p style={{ fontSize: 11, color: '#94a3b8', marginBottom: 10 }}>Preview em fundo escuro (como aparece nas OS)</p>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      onClick={() => document.getElementById('logo-file')?.click()}
+                      disabled={logoUploading}
+                      style={{ fontSize: 12, padding: '6px 14px', border: '1px solid #c7d2fe', borderRadius: 7, background: '#eef2ff', color: '#4338ca', cursor: 'pointer' }}
+                    >
+                      {logoUploading ? 'Enviando...' : '🔄 Trocar logo'}
+                    </button>
+                    <button
+                      onClick={deleteLogo}
+                      style={{ fontSize: 12, padding: '6px 14px', border: '1px solid #fecaca', borderRadius: 7, background: '#fef2f2', color: '#dc2626', cursor: 'pointer' }}
+                    >
+                      🗑 Excluir
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  onClick={() => !logoUploading && document.getElementById('logo-file')?.click()}
+                  style={{ border: '2px dashed #e2e8f0', borderRadius: 10, padding: '40px 20px', textAlign: 'center', cursor: logoUploading ? 'wait' : 'pointer', background: '#f8fafc', marginBottom: 12, transition: 'border-color 0.15s' }}
+                  onMouseEnter={e => { if (!logoUploading) (e.currentTarget as HTMLElement).style.borderColor = '#a5b4fc' }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#e2e8f0' }}
+                >
+                  {logoUploading ? (
+                    <p style={{ fontSize: 14, color: '#6366f1' }}>Enviando e redimensionando...</p>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 32, marginBottom: 8 }}>🏪</div>
+                      <p style={{ fontSize: 14, fontWeight: 500, color: '#374151' }}>Clique para enviar o logo</p>
+                      <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>PNG, JPG, WEBP · será redimensionado para no máximo 400×100px</p>
+                    </>
+                  )}
+                </div>
+              )}
+              <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#0369a1' }}>
+                💡 Dimensões ideais: <strong>400×100px</strong> · formato PNG com fundo transparente. Imagens maiores são redimensionadas automaticamente.
               </div>
-              <p style={{ fontSize: 12, color: '#94a3b8' }}>O logo aparece no cabeçalho das OS e documentos impressos.</p>
             </div>
           </div>
         )}

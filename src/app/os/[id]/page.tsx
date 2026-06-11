@@ -501,10 +501,10 @@ ${itensOrc.length > 0 ? `<table><thead><tr><th>Item</th><th>Qtd</th><th>Unit.</t
 </body></html>`
     }
 
-    // ── A4 REDESENHADO — ocupa toda a folha, sem espaço sobrando ──
-    const via = (titulo: string, accentColor: string) => `
+    // ── A4 PORTRAIT — cada via ocupa metade da folha (148mm) ──
+    const via = (titulo: string, accentColor: string, isCliente: boolean) => `
 <div class="via">
-  <div class="via-header" style="border-left: 4px solid ${accentColor}">
+  <div class="via-header">
     <div class="header-left">
       <div class="loja-nome">${nomeLoja}</div>
       <div class="loja-sub">${[endLoja, telLoja, emailLoja, cnpjLoja ? 'CNPJ: ' + cnpjLoja : ''].filter(Boolean).join(' · ')}</div>
@@ -528,7 +528,7 @@ ${itensOrc.length > 0 ? `<table><thead><tr><th>Item</th><th>Qtd</th><th>Unit.</t
       <div class="field"><span>Modelo</span><strong>${os.modelo ?? '—'}</strong></div>
       <div class="field"><span>IMEI</span><strong style="font-family:monospace;font-size:9pt">${os.imei ?? '—'}</strong></div>
       <div class="field"><span>Cor</span><strong>${os.cor ?? '—'}</strong></div>
-      <div class="field"><span>Senha</span><strong>${senhaTexto}</strong></div>
+      ${!isCliente ? `<div class="field"><span>Senha</span><strong>${senhaTexto}</strong></div>` : ''}
       ${os.acessorios?.length ? `<div class="field"><span>Acessórios</span><strong>${os.acessorios.join(', ')}</strong></div>` : ''}
     </div>
     <div class="bloco">
@@ -552,7 +552,6 @@ ${itensOrc.length > 0 ? `<table><thead><tr><th>Item</th><th>Qtd</th><th>Unit.</t
   <div class="defeito-row">
     <div class="bloco-title" style="color:${accentColor}">DEFEITO RELATADO</div>
     <div class="defeito-text">${os.defeito_relatado}</div>
-    ${solucao ? `<div class="bloco-title" style="color:${accentColor};margin-top:6pt">SOLUÇÃO APLICADA</div><div class="defeito-text">${solucao}</div>` : ''}
   </div>
 
   <div class="grid-2">
@@ -562,9 +561,10 @@ ${itensOrc.length > 0 ? `<table><thead><tr><th>Item</th><th>Qtd</th><th>Unit.</t
       <p>Após o prazo: <strong>R$ ${taxaMensal},00/mês</strong> de armazenamento.</p>
     </div>
     <div class="policy-box" style="border-color:#d97706">
-      <div class="bloco-title" style="color:#d97706">GARANTIA</div>
-      <p>Garantia de <strong>${garantiaDias} dias</strong> sobre o serviço realizado.</p>
-      <p>Não cobre: queda, umidade, mau uso ou danos externos.</p>
+      <div class="bloco-title" style="color:#d97706">GARANTIA — ${garantiaDias} DIAS</div>
+      <p><strong>Cobre:</strong> defeito de mão de obra e peças com vício de fabricação.</p>
+      <p><strong>Não cobre:</strong> queda, umidade, mau uso, danos elétricos, tentativa de reparo por terceiros, danos externos ou por software.</p>
+      <p style="margin-top:2pt;font-size:6.5pt;color:#92400e">A garantia é anulada caso qualquer uma das condições acima seja identificada.</p>
     </div>
   </div>
 
@@ -591,78 +591,78 @@ ${itensOrc.length > 0 ? `<table><thead><tr><th>Item</th><th>Qtd</th><th>Unit.</t
 <meta charset="utf-8">
 <title>OS #${os.numero} — ${nomeLoja}</title>
 <style>
-  @page { size: A4 landscape; margin: 6mm; }
+  @page { size: A4 portrait; margin: 5mm 8mm; }
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Inter', Arial, sans-serif; font-size: 8pt; color: #1e293b; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; height: 100%; }
-  .page { width: 100%; height: 100%; display: flex; gap: 4mm; align-items: stretch; }
+  body { font-family: 'Inter', Arial, sans-serif; font-size: 8pt; color: #1e293b; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .page { width: 100%; display: flex; flex-direction: column; gap: 0; }
 
   /* Separador */
-  .sep { width: 4mm; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-  .sep-line { flex: 1; border-left: 1.5px dashed #cbd5e1; }
-  .sep-text { writing-mode: vertical-rl; font-size: 5.5pt; color: #94a3b8; letter-spacing: 3px; text-transform: uppercase; white-space: nowrap; margin: 3mm 0; }
+  .sep { display: flex; align-items: center; gap: 6pt; padding: 3pt 0; }
+  .sep-line { flex: 1; border-top: 1.5px dashed #cbd5e1; }
+  .sep-text { font-size: 5.5pt; color: #94a3b8; letter-spacing: 3px; text-transform: uppercase; white-space: nowrap; }
 
-  /* Via */
-  .via { flex: 1; display: flex; flex-direction: column; gap: 6pt; border: 1px solid #e2e8f0; border-radius: 4pt; overflow: hidden; }
+  /* Via — cada uma ocupa exatamente metade da página */
+  .via { height: 136mm; display: flex; flex-direction: column; gap: 4pt; border: 1px solid #e2e8f0; border-radius: 4pt; overflow: hidden; page-break-inside: avoid; }
 
   /* Header */
-  .via-header { background: #0f172a; padding: 8pt 10pt; display: flex; justify-content: space-between; align-items: center; }
-  .loja-nome { font-size: 13pt; font-weight: 700; color: #f8fafc; letter-spacing: -0.5px; }
-  .loja-sub { font-size: 6.5pt; color: #64748b; margin-top: 2pt; line-height: 1.5; }
-  .via-tag { font-size: 6pt; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600; }
-  .os-num { font-size: 20pt; font-weight: 700; letter-spacing: -1px; line-height: 1.1; }
-  .os-meta { font-size: 6.5pt; color: #64748b; margin-top: 2pt; }
+  .via-header { background: #0f172a; padding: 7pt 9pt; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+  .loja-nome { font-size: 11pt; font-weight: 700; color: #f8fafc; letter-spacing: -0.5px; }
+  .loja-sub { font-size: 6pt; color: #94a3b8; margin-top: 1pt; line-height: 1.5; }
+  .via-tag { font-size: 5.5pt; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600; }
+  .os-num { font-size: 18pt; font-weight: 700; letter-spacing: -1px; line-height: 1.1; }
+  .os-meta { font-size: 6pt; color: #94a3b8; margin-top: 1pt; }
   .header-right { text-align: right; }
 
   /* Conteúdo */
-  .grid-3 { display: flex; gap: 6pt; padding: 8pt 8pt 0; }
-  .grid-2 { display: flex; gap: 6pt; padding: 0 8pt; }
+  .grid-3 { display: flex; gap: 5pt; padding: 6pt 7pt 0; flex-shrink: 0; }
+  .grid-2 { display: flex; gap: 5pt; padding: 0 7pt; flex-shrink: 0; }
   .bloco { flex: 1; }
-  .bloco-title { font-size: 6pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4pt; padding-bottom: 2pt; border-bottom: 1px solid currentColor; opacity: 0.8; }
-  .field { display: flex; justify-content: space-between; align-items: baseline; padding: 1.5pt 0; border-bottom: 1px solid #f8fafc; gap: 4pt; }
-  .field span { font-size: 7.5pt; color: #64748b; flex-shrink: 0; }
-  .field strong { font-size: 7.5pt; font-weight: 600; text-align: right; }
+  .bloco-title { font-size: 5.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 3pt; padding-bottom: 2pt; border-bottom: 1px solid currentColor; opacity: 0.8; }
+  .field { display: flex; justify-content: space-between; align-items: baseline; padding: 1pt 0; border-bottom: 1px solid #f8fafc; gap: 4pt; }
+  .field span { font-size: 7pt; color: #64748b; flex-shrink: 0; }
+  .field strong { font-size: 7pt; font-weight: 600; text-align: right; }
 
   /* Tabela itens */
-  .items-table { width: 100%; border-collapse: collapse; font-size: 7pt; margin-bottom: 3pt; }
-  .items-table th { background: #f8fafc; padding: 2pt 3pt; text-align: left; font-size: 6.5pt; color: #64748b; text-transform: uppercase; border-bottom: 1px solid #e2e8f0; }
+  .items-table { width: 100%; border-collapse: collapse; font-size: 6.5pt; margin-bottom: 2pt; }
+  .items-table th { background: #f8fafc; padding: 1.5pt 2pt; text-align: left; font-size: 6pt; color: #64748b; text-transform: uppercase; border-bottom: 1px solid #e2e8f0; }
   .items-table th:nth-child(n+2), .items-table td:nth-child(n+2) { text-align: right; }
-  .items-table td { padding: 2pt 3pt; border-bottom: 1px dotted #e2e8f0; }
-  .total-block { display: flex; justify-content: space-between; align-items: center; padding: 4pt 3pt; background: #f8fafc; border-radius: 3pt; border-left: 3pt solid; margin-top: 2pt; }
-  .total-val { font-size: 12pt; font-weight: 700; }
-  .badge { font-size: 6.5pt; font-weight: 700; padding: 1pt 5pt; border-radius: 20pt; }
+  .items-table td { padding: 1.5pt 2pt; border-bottom: 1px dotted #e2e8f0; }
+  .total-block { display: flex; justify-content: space-between; align-items: center; padding: 3pt 3pt; background: #f8fafc; border-radius: 3pt; border-left: 3pt solid; margin-top: 2pt; }
+  .total-val { font-size: 10pt; font-weight: 700; }
+  .badge { font-size: 6pt; font-weight: 700; padding: 1pt 4pt; border-radius: 20pt; }
   .badge-pago { background: #dcfce7; color: #166534; }
   .badge-pend { background: #fef9c3; color: #854d0e; }
 
   /* Defeito */
-  .defeito-row { padding: 0 8pt; }
-  .defeito-text { font-size: 7.5pt; color: #374151; line-height: 1.6; background: #f8fafc; padding: 5pt 6pt; border-radius: 3pt; border-left: 2pt solid #e2e8f0; margin-top: 3pt; }
+  .defeito-row { padding: 0 7pt; flex-shrink: 0; }
+  .defeito-text { font-size: 7pt; color: #374151; line-height: 1.5; background: #f8fafc; padding: 3pt 5pt; border-radius: 3pt; border-left: 2pt solid #e2e8f0; margin-top: 2pt; }
 
   /* Políticas */
-  .policy-box { flex: 1; padding: 5pt 7pt; border-left: 3pt solid; }
-  .policy-box p { font-size: 7pt; color: #374151; line-height: 1.7; margin-top: 1.5pt; }
+  .policy-box { flex: 1; padding: 4pt 6pt; border-left: 2.5pt solid; }
+  .policy-box p { font-size: 6.5pt; color: #374151; line-height: 1.6; margin-top: 1pt; }
 
   /* Assinaturas */
-  .sig-area { padding: 4pt 8pt 6pt; border-top: 1px solid #e2e8f0; margin-top: auto; }
-  .sig-note { font-size: 6.5pt; color: #64748b; font-style: italic; margin-bottom: 8pt; }
-  .sig-row { display: flex; gap: 8pt; }
+  .sig-area { padding: 3pt 7pt 4pt; border-top: 1px solid #e2e8f0; margin-top: auto; flex-shrink: 0; }
+  .sig-note { font-size: 6pt; color: #64748b; font-style: italic; margin-bottom: 5pt; }
+  .sig-row { display: flex; gap: 6pt; }
   .sig-box { flex: 1; }
-  .sig-space { height: 18pt; }
-  .sig-img { max-height: 28pt; max-width: 100pt; display: block; margin-bottom: 2pt; }
+  .sig-space { height: 14pt; }
+  .sig-img { max-height: 22pt; max-width: 80pt; display: block; margin-bottom: 2pt; }
   .sig-line { border-top: 1px solid #1e293b; margin-bottom: 2pt; }
-  .sig-label { font-size: 6.5pt; color: #64748b; text-align: center; line-height: 1.5; }
+  .sig-label { font-size: 6pt; color: #64748b; text-align: center; line-height: 1.4; }
 
   /* Footer */
-  .via-footer { background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 3pt 8pt; font-size: 6pt; color: #94a3b8; }
+  .via-footer { background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 2pt 7pt; font-size: 5.5pt; color: #94a3b8; flex-shrink: 0; }
 </style></head><body>
 <div class="page">
-  ${via('Via da Assistência', '#6366f1')}
+  ${via('VIA DA ASSISTÊNCIA', '#818cf8', false)}
   <div class="sep">
     <div class="sep-line"></div>
-    <div class="sep-text">recortar aqui</div>
+    <div class="sep-text">✂ recortar aqui</div>
     <div class="sep-line"></div>
   </div>
-  ${via('Via do Cliente', '#0f172a')}
+  ${via('VIA DO CLIENTE', '#10b981', true)}
 </div>
 <script>window.onload = () => { window.print(); }<\/script>
 </body></html>`

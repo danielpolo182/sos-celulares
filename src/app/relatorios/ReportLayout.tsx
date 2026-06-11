@@ -56,45 +56,37 @@ export function ReportLayout({ children, title, subtitle, periodo, setPeriodo, d
   const pathname = usePathname()
 
   return (
-    <div style={{ display: 'flex', height: '100%', overflow: 'hidden', fontFamily: "'Inter', -apple-system, sans-serif" }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', fontFamily: "'Inter', -apple-system, sans-serif" }}>
 
-      {/* Segunda sidebar — Relatórios */}
+      {/* Mini cards de navegação */}
       <div style={{
-        width: 200, minWidth: 200, flexShrink: 0,
-        background: '#111827',
-        borderRight: '1px solid rgba(255,255,255,0.05)',
-        display: 'flex', flexDirection: 'column',
-        overflowY: 'auto', overflowX: 'hidden',
+        background: '#fff',
+        borderBottom: '1px solid #e2e8f0',
+        padding: '10px 20px',
+        flexShrink: 0,
       }}>
-        {/* Header */}
-        <div style={{ padding: '16px 14px 10px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-            <i className="ti ti-chart-bar" style={{ fontSize: 14, color: '#818cf8' }} aria-hidden="true" />
-            <span style={{ fontSize: 12, fontWeight: 500, color: '#9ca3af', letterSpacing: '-0.01em' }}>Relatórios</span>
-          </div>
-        </div>
-
-        {/* Nav */}
-        <nav style={{ padding: '8px' }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {RELATORIOS.map(r => {
             const active = pathname === r.href
             return (
               <Link key={r.href} href={r.href} style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '7px 10px', borderRadius: 7, marginBottom: 1,
-                textDecoration: 'none', fontSize: 12.5,
-                fontWeight: active ? 500 : 400,
-                color: active ? '#c7d2fe' : '#6b7280',
-                background: active ? 'rgba(99,102,241,0.12)' : 'transparent',
+                display: 'flex', alignItems: 'center', gap: 7,
+                padding: '7px 14px', borderRadius: 8,
+                textDecoration: 'none',
+                fontSize: 12.5, fontWeight: active ? 600 : 400,
+                color: active ? '#6366f1' : '#64748b',
+                background: active ? '#eef2ff' : '#f8fafc',
+                border: `1.5px solid ${active ? '#818cf8' : '#e2e8f0'}`,
                 letterSpacing: '-0.01em',
-                transition: 'background 0.12s, color 0.12s',
+                transition: 'all 0.12s',
+                whiteSpace: 'nowrap',
               }}>
-                <i className={`ti ${r.icon}`} style={{ fontSize: 14, color: active ? '#818cf8' : '#4b5563', flexShrink: 0 }} aria-hidden="true" />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.label}</span>
+                <i className={`ti ${r.icon}`} style={{ fontSize: 14, color: active ? '#6366f1' : '#94a3b8', flexShrink: 0 }} aria-hidden="true" />
+                {r.label}
               </Link>
             )
           })}
-        </nav>
+        </div>
       </div>
 
       {/* Área de conteúdo */}

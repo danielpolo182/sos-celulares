@@ -32,11 +32,28 @@ type OSHoje = {
   clientes: { nome: string } | null
 }
 
+type FechamentoHistorico = {
+  id: string; data_ref: string; status: string
+  caixa_abertura: number; caixa_fechamento: number
+  total_dinheiro: number; total_pix: number
+  total_credito: number; total_debito: number
+  total_os: number; total_pdv: number; total_geral: number
+  os_abertas: number; os_entregues: number; os_prontas_nao_ret: number
+  rotinas_total: number; rotinas_feitas: number
+  wa_pendentes: number; wa_enviados: number
+  observacoes: string | null; fechado_em: string | null
+  snapshot_json: any
+}
+
 export default function FechamentoPage() {
   const supabase = createClient()
   const [loading, setLoading] = useState(true)
   const [salvando, setSalvando] = useState(false)
   const [fechado, setFechado] = useState(false)
+  const [activeTab, setActiveTab] = useState<'fechar' | 'historico'>('fechar')
+  const [historico, setHistorico] = useState<FechamentoHistorico[]>([])
+  const [loadingHist, setLoadingHist] = useState(false)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
   const hoje = new Date().toISOString().split('T')[0]
 
   // Dados
@@ -151,7 +168,15 @@ export default function FechamentoPage() {
     setLoading(false)
   }, [supabase, hoje])
 
+  const fetchHistorico = useCallback(async () => {
+    setLoadingHist(true)
+    const { data } = await supabase.from('fechamento_dia').select('*').order('data_ref', { ascending: false }).limit(60)
+    setHistorico((data ?? []) as FechamentoHistorico[])
+    setLoadingHist(false)
+  }, [supabase])
+
   useEffect(() => { fetchAll() }, [fetchAll])
+  useEffect(() => { if (activeTab === 'historico') fetchHistorico() }, [activeTab, fetchHistorico])
 
   async function fecharDia() {
     setSalvando(true)
@@ -199,6 +224,101 @@ export default function FechamentoPage() {
 
   return (
     <div style={{ padding: '28px 36px', fontFamily: 'var(--font-sans)', maxWidth: 1000, margin: '0 auto' }}>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: '#f1f5f9', borderRadius: 10, padding: 4, width: 'fit-content' }}>
+        {([['fechar', '📋 Fechar o dia'], ['historico', '📜 Histórico']] as const).map(([key, label]) => (
+          <button key={key} onClick={() => setActiveTab(key)} style={{
+            padding: '7px 20px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 500, fontFamily: 'inherit',
+            background: activeTab === key ? '#fff' : 'transparent',
+            color: activeTab === key ? '#0f172a' : '#64748b',
+            boxShadow: activeTab === key ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+          }}>{label}</button>
+        ))}
+      </div>
+
+      {/* ── ABA HISTÓRICO ── */}
+      {activeTab === 'historico' && (
+        <div>
+          <h1 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>Histórico de fechamentos</h1>
+          <p style={{ fontSize: 13, color: '#94a3b8', marginBottom: 20 }}>Clique em uma linha para ver os detalhes do snapshot.</p>
+          {loadingHist ? (
+            <p style={{ color: '#94a3b8', fontSize: 13 }}>Carregando...</p>
+          ) : historico.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>
+              <div style={{ fontSize: 36, marginBottom: 12 }}>📜</div>
+              <p>Nenhum fechamento registrado ainda.</p>
+            </div>
+          ) : (
+            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                    {['Data','Status','Caixa abertura','Caixa fechamento','OS entregues','Rotinas','Observações'].map(h => (
+                      <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {historico.map(h => (
+                    <>
+                      <tr
+                        key={h.id}
+                        onClick={() => setExpandedId(expandedId === h.id ? null : h.id)}
+                        style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer', background: expandedId === h.id ? '#f8fafc' : '#fff' }}
+                        onMouseEnter={e => { if (expandedId !== h.id) (e.currentTarget as HTMLElement).style.background = '#f8fafc' }}
+                        onMouseLeave={e => { if (expandedId !== h.id) (e.currentTarget as HTMLElement).style.background = '#fff' }}
+                      >
+                        <td style={{ padding: '10px 14px', fontWeight: 600, color: '#0f172a', whiteSpace: 'nowrap' }}>
+                          {new Date(h.data_ref + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}
+                        </td>
+                        <td style={{ padding: '10px 14px' }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: h.status === 'fechado' ? '#ecfdf5' : '#fef3c7', color: h.status === 'fechado' ? '#065f46' : '#92400e' }}>
+                            {h.status === 'fechado' ? '✓ Fechado' : 'Parcial'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '10px 14px', color: '#64748b' }}>R$ {(h.caixa_abertura ?? 0).toFixed(2).replace('.', ',')}</td>
+                        <td style={{ padding: '10px 14px', fontWeight: 600, color: '#0f172a' }}>R$ {(h.total_geral ?? 0).toFixed(2).replace('.', ',')}</td>
+                        <td style={{ padding: '10px 14px' }}><span style={{ fontSize: 12, background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: 20 }}>{h.os_entregues ?? 0}</span></td>
+                        <td style={{ padding: '10px 14px', color: '#64748b' }}>{h.rotinas_feitas ?? 0}/{h.rotinas_total ?? 0}</td>
+                        <td style={{ padding: '10px 14px', fontSize: 12, color: '#94a3b8', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.observacoes ?? '—'}</td>
+                      </tr>
+                      {expandedId === h.id && (
+                        <tr key={h.id + '-exp'} style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                          <td colSpan={7} style={{ padding: '14px 20px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+                              {[
+                                { l: 'Dinheiro', v: h.total_dinheiro },
+                                { l: 'PIX', v: h.total_pix },
+                                { l: 'Crédito', v: h.total_credito },
+                                { l: 'Débito', v: h.total_debito },
+                                { l: 'OS (valor)', v: h.total_os },
+                                { l: 'PDV', v: h.total_pdv },
+                                { l: 'OS abertas', v: h.os_abertas, money: false },
+                                { l: 'OS prontas não ret.', v: h.os_prontas_nao_ret, money: false },
+                              ].map(m => (
+                                <div key={m.l} style={{ background: '#fff', borderRadius: 8, padding: '10px 14px', border: '1px solid #e2e8f0' }}>
+                                  <p style={{ fontSize: 10, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 3 }}>{m.l}</p>
+                                  <p style={{ fontSize: 15, fontWeight: 600, color: '#374151' }}>
+                                    {m.money === false ? (m.v ?? 0) : `R$ ${((m.v ?? 0) as number).toFixed(2).replace('.', ',')}`}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                            {h.fechado_em && <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 10 }}>Fechado em: {new Date(h.fechado_em).toLocaleString('pt-BR')}</p>}
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'fechar' && <>
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
@@ -394,6 +514,8 @@ export default function FechamentoPage() {
           </button>
         </div>
       )}
+
+      </> /* fim activeTab === 'fechar' */}
     </div>
   )
 }

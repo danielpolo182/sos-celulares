@@ -51,9 +51,29 @@ const ESTADOS = [
 
 const FORMAS_PGTO = ['Dinheiro','PIX','Transferência','Cartão débito','Cartão crédito']
 const STATUS_CFG: Record<string, {label:string;bg:string;color:string}> = {
-  disponivel: { label: 'Disponível', bg: '#ecfdf5', color: '#065f46' },
-  vendido:    { label: 'Vendido',    bg: '#f1f5f9', color: '#64748b' },
+  em_revisao:   { label: 'Em revisão',       bg: '#fef3c7', color: '#92400e' },
+  aguard_pecas: { label: 'Aguard. peças',    bg: '#fef2f2', color: '#991b1b' },
+  checklist:    { label: 'Checklist',        bg: '#eff6ff', color: '#1d4ed8' },
+  a_venda:      { label: 'À venda',          bg: '#ecfdf5', color: '#065f46' },
+  disponivel:   { label: 'Disponível',       bg: '#ecfdf5', color: '#065f46' },
+  vendido:      { label: 'Vendido',          bg: '#f1f5f9', color: '#64748b' },
 }
+
+const CHECKLIST_APROVACAO = [
+  { key: 'liga',       label: 'Liga normalmente' },
+  { key: 'touch',      label: 'Touch / Tela funcionando' },
+  { key: 'cam_front',  label: 'Câmera frontal OK' },
+  { key: 'cam_tras',   label: 'Câmera traseira OK' },
+  { key: 'bateria',    label: 'Bateria (saúde OK)' },
+  { key: 'wifi_bt',    label: 'Wifi / Bluetooth / GPS' },
+  { key: 'biometria',  label: 'Biometria / Face ID' },
+  { key: 'botoes',     label: 'Botões físicos (vol, power)' },
+  { key: 'falante',    label: 'Alto-falante e microfone' },
+  { key: 'conector',   label: 'Conector de carga' },
+  { key: 'imei',       label: 'IMEI verificado' },
+  { key: 'conta',      label: 'Conta Google/Apple removida' },
+  { key: 'reset',      label: 'Reset de fábrica feito' },
+]
 
 const inp: React.CSSProperties = { width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, color: '#1e293b', background: '#fff', outline: 'none', fontFamily: 'inherit' }
 const lbl: React.CSSProperties = { display: 'block', fontSize: 11, fontWeight: 500, color: '#64748b', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.04em' }
@@ -147,6 +167,79 @@ export default function AparelhoPage() {
   const [vendaSalva, setVendaSalva] = useState<{id:string;numero:number}|null>(null)
   const comprCanvasRef = useRef<HTMLCanvasElement>(null)
   const [assinaturaComprador, setAssinaturaComprador] = useState('')
+
+  // ── Detail modal ─────────────────────────────────────────
+  const [detalhes, setDetalhes] = useState<Aparelho | null>(null)
+  const [aprovacao, setAprovacao] = useState<Record<string, boolean>>({})
+  const [salvandoStatus, setSalvandoStatus] = useState(false)
+
+  async function atualizarStatus(id: string, novoStatus: string) {
+    setSalvandoStatus(true)
+    await supabase.from('aparelhos').update({ status: novoStatus }).eq('id', id)
+    setSalvandoStatus(false)
+    fetchAll()
+    if (detalhes?.id === id) setDetalhes(d => d ? { ...d, status: novoStatus } : null)
+  }
+
+  async function salvarAprovacao(aparelho: Aparelho) {
+    const aprovados = Object.values(aprovacao).filter(Boolean).length
+    const total = CHECKLIST_APROVACAO.length
+    if (aprovados < total) {
+      if (!confirm(`Apenas ${aprovados}/${total} itens aprovados. Confirmar mesmo assim?`)) return
+    }
+    setSalvandoStatus(true)
+    await supabase.from('aparelhos')
+      .update({ checklist_json: { ...aparelho.checklist_json, aprovacao }, status: 'a_venda' })
+      .eq('id', aparelho.id)
+    setSalvandoStatus(false)
+    fetchAll()
+    setDetalhes(d => d ? { ...d, status: 'a_venda' } : null)
+  }
+
+  function imprimirCard(a: Aparelho) {
+    const st = STATUS_CFG[a.status]
+    const nota = a.checklist_nota ?? notaGeral(a.checklist_json ?? {})
+    const condLabel = nota === 'Bom' ? 'Usado — Excelente' : nota === 'Regular' ? 'Usado — Bom' : 'Usado — Regular'
+    const imeiOculto = a.imei ? a.imei.slice(0, 8) + '****' + a.imei.slice(-2) : '—'
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Card ${a.marca} ${a.modelo}</title>
+<style>
+  @page { size: 148mm 105mm; margin: 0; }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
+  * { margin:0;padding:0;box-sizing:border-box; }
+  body { font-family:'Inter',sans-serif; width:148mm; height:105mm; background:linear-gradient(135deg,#0f172a 0%,#1e293b 60%,#1e3a5f 100%); color:#fff; overflow:hidden; display:flex; flex-direction:column; padding:10mm 12mm; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:5mm; }
+  .loja-nome { font-size:9pt; font-weight:600; color:#94a3b8; letter-spacing:0.08em; text-transform:uppercase; }
+  .cond-badge { font-size:7pt; font-weight:700; padding:2px 8px; border-radius:20px; background:#fbbf24; color:#000; }
+  .modelo { font-size:18pt; font-weight:900; letter-spacing:-0.02em; line-height:1.1; margin-bottom:1mm; }
+  .specs { font-size:8.5pt; color:#94a3b8; margin-bottom:5mm; }
+  .preco-row { display:flex; align-items:flex-end; gap:6mm; }
+  .preco { font-size:26pt; font-weight:900; color:#fbbf24; letter-spacing:-0.03em; line-height:1; }
+  .preco small { font-size:10pt; font-weight:600; color:#fbbf24; vertical-align:top; margin-right:1px; }
+  .garantia { font-size:8pt; color:#86efac; font-weight:600; background:rgba(16,185,129,0.12); padding:2px 8px; border-radius:20px; border:1px solid rgba(16,185,129,0.3); }
+  .bottom { display:flex; justify-content:space-between; align-items:flex-end; margin-top:auto; }
+  .imei-line { font-size:7pt; color:#475569; font-family:monospace; }
+  .status-badge { font-size:7pt; font-weight:700; padding:2px 8px; border-radius:20px; background:${st.bg}; color:${st.color}; }
+</style></head><body>
+<div class="top">
+  <div class="loja-nome">SOS Celulares</div>
+  <span class="cond-badge">${condLabel}</span>
+</div>
+<div class="modelo">${a.marca} ${a.modelo}</div>
+<div class="specs">${[a.capacidade, a.cor].filter(Boolean).join(' · ') || '—'}</div>
+<div class="preco-row">
+  <div class="preco"><small>R$</small> ${a.preco_venda ? a.preco_venda.toFixed(2).replace('.', ',') : '—'}</div>
+  <span class="garantia">✓ 90 dias de garantia</span>
+</div>
+<div class="bottom">
+  <div class="imei-line">IMEI: ${imeiOculto}</div>
+  <span class="status-badge">${st.label}</span>
+</div>
+<script>window.onload=()=>window.print()<\/script>
+</body></html>`
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const w = window.open(url, '_blank'); if (w) w.onload = () => URL.revokeObjectURL(url)
+  }
 
   // ── Carregamento ──────────────────────────────────────────
   const fetchAll = useCallback(async () => {
@@ -507,8 +600,8 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
 
       {/* Abas */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid #e2e8f0' }}>
-        {([['estoque','📱 Estoque'],['comprar','⬇ Registrar compra'],['vender','⬆ Registrar venda']] as const).map(([k,l]) => (
-          <button key={k} onClick={() => setAba(k)} style={{ padding: '10px 18px', fontSize: 13, fontWeight: aba===k?600:400, border: 'none', background: 'none', cursor: 'pointer', color: aba===k?'#6366f1':'#64748b', borderBottom: aba===k?'2px solid #6366f1':'2px solid transparent', marginBottom: -1 }}>{l}</button>
+        {([['estoque','📱 Estoque'],['checklist','✅ Checklist'],['historico','📜 Histórico'],['comprar','⬇ Registrar compra'],['vender','⬆ Registrar venda']] as const).map(([k,l]) => (
+          <button key={k} onClick={() => setAba(k as any)} style={{ padding: '10px 18px', fontSize: 13, fontWeight: aba===k?600:400, border: 'none', background: 'none', cursor: 'pointer', color: aba===k?'#6366f1':'#64748b', borderBottom: aba===k?'2px solid #6366f1':'2px solid transparent', marginBottom: -1 }}>{l}</button>
         ))}
       </div>
 
@@ -555,7 +648,11 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
                         <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,fontWeight:lucro&&lucro>0?600:400,color:lucro&&lucro>0?'#065f46':lucro&&lucro<0?'#991b1b':'#94a3b8' }}>{lucro!==null?fm(lucro):'—'}</td>
                         <td style={{ padding:'10px 14px' }}><span style={{ fontSize:11,fontWeight:500,padding:'2px 8px',borderRadius:20,background:st.bg,color:st.color }}>{st.label}</span></td>
                         <td style={{ padding:'10px 14px' }}>
-                          {a.status==='disponivel' && <button onClick={() => { setAparelhoVenda(a); setAba('vender') }} style={{ fontSize:12,padding:'5px 12px',border:'1px solid #e0e7ff',borderRadius:7,background:'#eef2ff',cursor:'pointer',color:'#4338ca',fontWeight:500 }}>Vender →</button>}
+                          <div style={{ display:'flex',gap:6 }}>
+                            <button onClick={() => { setDetalhes(a); setAprovacao((a.checklist_json?.aprovacao ?? {}) as unknown as Record<string, boolean>) }} style={{ fontSize:12,padding:'5px 10px',border:'1px solid #e2e8f0',borderRadius:7,background:'#f8fafc',cursor:'pointer',color:'#374151' }}>Ver</button>
+                            {(a.status==='a_venda'||a.status==='disponivel') && <button onClick={() => imprimirCard(a)} style={{ fontSize:12,padding:'5px 10px',border:'1px solid #e0e7ff',borderRadius:7,background:'#eef2ff',cursor:'pointer',color:'#4338ca' }}>🏷</button>}
+                            {(a.status==='a_venda'||a.status==='disponivel') && <button onClick={() => { setAparelhoVenda(a); setAba('vender' as any) }} style={{ fontSize:12,padding:'5px 10px',border:'1px solid #bbf7d0',borderRadius:7,background:'#ecfdf5',cursor:'pointer',color:'#065f46',fontWeight:500 }}>Vender →</button>}
+                          </div>
                         </td>
                       </tr>
                     )
@@ -564,6 +661,144 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ═══ CHECKLIST ═══ */}
+      {aba === ('checklist' as any) && (
+        <div>
+          <p style={{ fontSize:13,color:'#64748b',marginBottom:16 }}>Aparelhos que precisam passar pelo checklist de aprovação antes de ir à venda.</p>
+          {aparelhos.filter(a => a.status === 'checklist' || a.status === 'em_revisao').length === 0 ? (
+            <div style={{ textAlign:'center',padding:60,color:'#94a3b8' }}>
+              <div style={{ fontSize:40,marginBottom:12 }}>✅</div>
+              <p>Nenhum aparelho aguardando checklist.</p>
+            </div>
+          ) : (
+            <div style={{ display:'flex',flexDirection:'column',gap:10 }}>
+              {aparelhos.filter(a => a.status === 'checklist' || a.status === 'em_revisao').map(a => (
+                <div key={a.id} style={{ background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,padding:'16px 20px',display:'flex',alignItems:'center',gap:16 }}>
+                  <div style={{ flex:1 }}>
+                    <p style={{ fontWeight:600,color:'#0f172a' }}>{a.marca} {a.modelo} {a.capacidade?`· ${a.capacidade}`:''}</p>
+                    <p style={{ fontSize:12,color:'#94a3b8' }}>IMEI: {a.imei ?? '—'} · Compra: {fm(a.preco_compra??0)}</p>
+                  </div>
+                  <span style={{ fontSize:11,fontWeight:500,padding:'2px 8px',borderRadius:20,background:STATUS_CFG[a.status].bg,color:STATUS_CFG[a.status].color }}>{STATUS_CFG[a.status].label}</span>
+                  <button onClick={() => { setDetalhes(a); setAprovacao((a.checklist_json?.aprovacao ?? {}) as unknown as Record<string, boolean>) }} style={{ fontSize:13,padding:'7px 16px',border:'1px solid #c7d2fe',borderRadius:8,background:'#eef2ff',cursor:'pointer',color:'#4338ca',fontWeight:500 }}>Fazer checklist</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══ HISTÓRICO ═══ */}
+      {aba === ('historico' as any) && (
+        <div>
+          <p style={{ fontSize:13,color:'#64748b',marginBottom:16 }}>Aparelhos já vendidos.</p>
+          {aparelhos.filter(a => a.status === 'vendido').length === 0 ? (
+            <div style={{ textAlign:'center',padding:60,color:'#94a3b8' }}>
+              <div style={{ fontSize:40,marginBottom:12 }}>📜</div>
+              <p>Nenhum aparelho vendido ainda.</p>
+            </div>
+          ) : (
+            <div style={{ background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,overflow:'hidden' }}>
+              <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13 }}>
+                <thead><tr style={{ background:'#f8fafc',borderBottom:'1px solid #e2e8f0' }}>
+                  {['Aparelho','IMEI','Compra','Venda','Lucro','Data'].map(h=><th key={h} style={{ padding:'9px 14px',textAlign:'left',fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.04em' }}>{h}</th>)}
+                </tr></thead>
+                <tbody>
+                  {aparelhos.filter(a => a.status === 'vendido').map(a => {
+                    const lucro = a.preco_venda && a.preco_compra ? a.preco_venda - a.preco_compra : null
+                    return (
+                      <tr key={a.id} style={{ borderBottom:'1px solid #f1f5f9' }}>
+                        <td style={{ padding:'10px 14px',fontWeight:500 }}>{a.marca} {a.modelo}{a.capacidade?` · ${a.capacidade}`:''}</td>
+                        <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,color:'#64748b' }}>{a.imei??'—'}</td>
+                        <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12 }}>{a.preco_compra?fm(a.preco_compra):'—'}</td>
+                        <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12 }}>{a.preco_venda?fm(a.preco_venda):'—'}</td>
+                        <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,fontWeight:600,color:lucro&&lucro>0?'#065f46':'#991b1b' }}>{lucro!==null?fm(lucro):'—'}</td>
+                        <td style={{ padding:'10px 14px',fontSize:12,color:'#94a3b8' }}>{new Date(a.created_at).toLocaleDateString('pt-BR')}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══ MODAL DETALHES ═══ */}
+      {detalhes && (
+        <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'flex-end' }} onClick={() => setDetalhes(null)}>
+          <div style={{ width:460,height:'100vh',background:'#fff',overflow:'auto',padding:28,boxShadow:'-4px 0 24px rgba(0,0,0,0.15)' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20 }}>
+              <div>
+                <h2 style={{ fontSize:18,fontWeight:700,color:'#0f172a',marginBottom:4 }}>{detalhes.marca} {detalhes.modelo}</h2>
+                <span style={{ fontSize:12,fontWeight:600,padding:'2px 10px',borderRadius:20,background:STATUS_CFG[detalhes.status]?.bg,color:STATUS_CFG[detalhes.status]?.color }}>
+                  {STATUS_CFG[detalhes.status]?.label ?? detalhes.status}
+                </span>
+              </div>
+              <button onClick={() => setDetalhes(null)} style={{ fontSize:20,background:'none',border:'none',cursor:'pointer',color:'#94a3b8' }}>×</button>
+            </div>
+
+            {/* Infos */}
+            <div style={{ background:'#f8fafc',borderRadius:10,padding:'12px 16px',marginBottom:16 }}>
+              {[['Capacidade',detalhes.capacidade],['Cor',detalhes.cor],['IMEI',detalhes.imei],['Preço compra',detalhes.preco_compra?fm(detalhes.preco_compra):null],['Preço venda',detalhes.preco_venda?fm(detalhes.preco_venda):null]].map(([l,v]) => v ? (
+                <div key={l as string} style={{ display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'1px solid #e2e8f0',fontSize:13 }}>
+                  <span style={{ color:'#64748b' }}>{l}</span><strong style={{ color:'#0f172a' }}>{v}</strong>
+                </div>
+              ) : null)}
+            </div>
+
+            {/* Mudar status */}
+            <div style={{ marginBottom:16 }}>
+              <p style={{ fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:8 }}>Alterar status</p>
+              <div style={{ display:'flex',gap:6,flexWrap:'wrap' }}>
+                {Object.entries(STATUS_CFG).filter(([k]) => k !== 'vendido').map(([k,v]) => (
+                  <button key={k} onClick={() => atualizarStatus(detalhes.id, k)} disabled={salvandoStatus||detalhes.status===k} style={{ fontSize:12,padding:'5px 12px',border:`1px solid ${v.color}30`,borderRadius:20,background:detalhes.status===k?v.bg:'#fff',color:v.color,cursor:detalhes.status===k?'default':'pointer',fontWeight:detalhes.status===k?600:400 }}>
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Checklist de aprovação */}
+            {(detalhes.status === 'checklist' || detalhes.status === 'em_revisao') && (
+              <div style={{ marginBottom:16 }}>
+                <p style={{ fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:10 }}>Checklist de aprovação</p>
+                <div style={{ display:'flex',flexDirection:'column',gap:4 }}>
+                  {CHECKLIST_APROVACAO.map(item => (
+                    <label key={item.key} style={{ display:'flex',alignItems:'center',gap:10,padding:'7px 10px',borderRadius:7,background:aprovacao[item.key]?'#ecfdf5':'#f8fafc',cursor:'pointer',fontSize:13 }}>
+                      <input type="checkbox" checked={!!aprovacao[item.key]} onChange={e => setAprovacao(p => ({ ...p, [item.key]: e.target.checked }))} />
+                      <span style={{ color:aprovacao[item.key]?'#065f46':'#374151' }}>{item.label}</span>
+                    </label>
+                  ))}
+                </div>
+                <div style={{ marginTop:12 }}>
+                  <p style={{ fontSize:12,color:'#64748b',marginBottom:8 }}>
+                    {Object.values(aprovacao).filter(Boolean).length}/{CHECKLIST_APROVACAO.length} itens aprovados
+                    {Object.values(aprovacao).filter(Boolean).length === CHECKLIST_APROVACAO.length && ' ✅'}
+                  </p>
+                  <button onClick={() => salvarAprovacao(detalhes)} disabled={salvandoStatus} style={{ width:'100%',padding:'10px',background:'#6366f1',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer' }}>
+                    {salvandoStatus ? 'Salvando...' : '✓ Aprovar e colocar à venda'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Print card */}
+            {(detalhes.status === 'a_venda' || detalhes.status === 'disponivel') && (
+              <button onClick={() => imprimirCard(detalhes)} style={{ width:'100%',padding:'10px',background:'#0f172a',color:'#fbbf24',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',marginTop:8 }}>
+                🏷 Imprimir card de venda
+              </button>
+            )}
+
+            {detalhes.observacoes && (
+              <div style={{ marginTop:16,background:'#fef3c7',borderRadius:8,padding:'10px 14px',fontSize:13,color:'#92400e' }}>
+                <p style={{ fontWeight:600,marginBottom:4 }}>Observações</p>
+                <p>{detalhes.observacoes}</p>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
