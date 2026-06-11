@@ -2,6 +2,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatarCNPJ, formatarCPF, formatarTelefone, validarCNPJ, validarCPF, validarTelefone } from '@/lib/validators'
 
@@ -44,10 +45,14 @@ const MENU = [
   { key: 'historico',    icon: '📜', label: 'Histórico',            sub: [] },
 ]
 
-const CARGOS = ['administrador', 'gerente', 'tecnico', 'atendente', 'caixa'] as const
+const CARGOS = ['admin', 'gerente', 'tecnico', 'atendente', 'caixa'] as const
 type Cargo = typeof CARGOS[number]
 
-const CARGOS_LOCKED: Cargo[] = ['administrador', 'gerente']
+const CARGOS_LOCKED: Cargo[] = ['admin', 'gerente']
+
+const CARGO_LABEL_CFG: Record<string, string> = {
+  admin: 'Administrador', gerente: 'Gerente', tecnico: 'Técnico', atendente: 'Atendente', caixa: 'Caixa',
+}
 
 const MODULOS_PERM: { key: string; label: string; icon: string }[] = [
   { key: 'dashboard',    label: 'Dashboard',         icon: '📊' },
@@ -117,9 +122,10 @@ const WA_PREVIEW: Record<string,string> = { '{nome}':'João', '{modelo}':'Samsun
 // ─── Componente principal ─────────────────────────────────
 export default function ConfiguracoesPage() {
   const supabase = createClient()
+  const searchParams = useSearchParams()
   const [acesso, setAcesso] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [activeMenu, setActiveMenu] = useState('loja')
+  const [activeMenu, setActiveMenu] = useState(searchParams.get('menu') ?? 'loja')
 
   // Dados
   const [configs, setConfigs] = useState<Config[]>([])
@@ -231,10 +237,19 @@ export default function ConfiguracoesPage() {
 
   async function salvarFormasPgto() {
     setFormasSaving(true); setFormasSaved(false)
-    await supabase.from('sistema_config').upsert(
-      { chave: 'formas_pgto_taxas', valor: JSON.stringify(formasPgto), categoria: 'financeiro', descricao: 'Taxas por forma de pagamento' },
-      { onConflict: 'chave' }
-    )
+    // Tentar update primeiro; se não existir, insert
+    const { data: existente } = await supabase
+      .from('sistema_config').select('id').eq('chave', 'formas_pgto_taxas').maybeSingle()
+    if (existente) {
+      await supabase.from('sistema_config')
+        .update({ valor: JSON.stringify(formasPgto) })
+        .eq('id', existente.id)
+    } else {
+      await supabase.from('sistema_config').insert({
+        chave: 'formas_pgto_taxas', valor: JSON.stringify(formasPgto),
+        categoria: 'financeiro', descricao: 'Taxas por forma de pagamento', escopo: 'global',
+      })
+    }
     setFormasSaving(false); setFormasSaved(true)
     setTimeout(() => setFormasSaved(false), 2000)
   }
@@ -1062,7 +1077,7 @@ export default function ConfiguracoesPage() {
                         </div>
                       </td>
                       <td style={{ padding: '11px 16px' }}>
-                        <span style={{ fontSize: 12, padding: '2px 10px', borderRadius: 20, background: '#f1f5f9', color: '#374151', fontWeight: 500, textTransform: 'capitalize' }}>{u.papel}</span>
+                        <span style={{ fontSize: 12, padding: '2px 10px', borderRadius: 20, background: '#f1f5f9', color: '#374151', fontWeight: 500 }}>{CARGO_LABEL_CFG[u.papel] ?? u.papel}</span>
                         {CARGOS_LOCKED.includes(u.papel as Cargo) && <span style={{ fontSize: 10, marginLeft: 6, color: '#94a3b8' }}>🔒</span>}
                       </td>
                       <td style={{ padding: '11px 16px' }}>
@@ -1110,7 +1125,7 @@ export default function ConfiguracoesPage() {
                   <div style={{ marginBottom: 14 }}>
                     <label style={lbl}>Cargo</label>
                     <select style={inp} value={uPapel} onChange={e => setUPapel(e.target.value as Cargo)}>
-                      {CARGOS.map(c => <option key={c} value={c} style={{ textTransform: 'capitalize' }}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+                      {CARGOS.map(c => <option key={c} value={c}>{CARGO_LABEL_CFG[c] ?? c}</option>)}
                     </select>
                   </div>
                   {uEditId && (
@@ -1146,8 +1161,8 @@ export default function ConfiguracoesPage() {
                   <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
                     <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap', minWidth: 160 }}>Módulo</th>
                     {CARGOS.map(c => (
-                      <th key={c} style={{ padding: '10px 12px', textAlign: 'center', fontSize: 11, fontWeight: 600, color: CARGOS_LOCKED.includes(c) ? '#6366f1' : '#64748b', textTransform: 'capitalize', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
-                        {c} {CARGOS_LOCKED.includes(c) ? '🔒' : ''}
+                      <th key={c} style={{ padding: '10px 12px', textAlign: 'center', fontSize: 11, fontWeight: 600, color: CARGOS_LOCKED.includes(c) ? '#6366f1' : '#64748b', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
+                        {CARGO_LABEL_CFG[c] ?? c} {CARGOS_LOCKED.includes(c) ? '🔒' : ''}
                       </th>
                     ))}
                   </tr>

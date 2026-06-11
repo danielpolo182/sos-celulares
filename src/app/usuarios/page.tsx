@@ -11,23 +11,24 @@ type Perfil = {
 }
 
 // ADM > gerente > outros — quem pode atribuir o quê
-const HIERARQUIA = ['administrador', 'gerente', 'tecnico', 'atendente', 'caixa'] as const
+// Valores correspondem exatamente ao CHECK constraint da tabela perfis
+const HIERARQUIA = ['admin', 'gerente', 'tecnico', 'atendente', 'caixa'] as const
 type Cargo = typeof HIERARQUIA[number]
 
 const CARGO_LABEL: Record<string, string> = {
-  administrador: 'Administrador',
-  gerente:       'Gerente',
-  tecnico:       'Técnico',
-  atendente:     'Atendente',
-  caixa:         'Caixa',
+  admin:     'Administrador',
+  gerente:   'Gerente',
+  tecnico:   'Técnico',
+  atendente: 'Atendente',
+  caixa:     'Caixa',
 }
 
 const CARGO_COR: Record<string, { bg: string; color: string }> = {
-  administrador: { bg: '#e0e7ff', color: '#3730a3' },
-  gerente:       { bg: '#fef3c7', color: '#92400e' },
-  tecnico:       { bg: '#ecfdf5', color: '#065f46' },
-  atendente:     { bg: '#f0f9ff', color: '#0369a1' },
-  caixa:         { bg: '#faf5ff', color: '#7e22ce' },
+  admin:     { bg: '#e0e7ff', color: '#3730a3' },
+  gerente:   { bg: '#fef3c7', color: '#92400e' },
+  tecnico:   { bg: '#ecfdf5', color: '#065f46' },
+  atendente: { bg: '#f0f9ff', color: '#0369a1' },
+  caixa:     { bg: '#faf5ff', color: '#7e22ce' },
 }
 
 const CORES = ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#0ea5e9','#ec4899','#14b8a6']
@@ -83,18 +84,18 @@ export default function UsuariosPage() {
 
   // Cargos que o usuário atual pode atribuir
   function cargosAtribuiveis(): Cargo[] {
-    if (meuCargo === 'administrador') return [...HIERARQUIA]
-    if (meuCargo === 'gerente') return HIERARQUIA.filter(c => c !== 'administrador' && c !== 'gerente')
+    if (meuCargo === 'admin') return [...HIERARQUIA]
+    if (meuCargo === 'gerente') return HIERARQUIA.filter(c => c !== 'admin' && c !== 'gerente')
     return [] // outros não podem criar/editar
   }
 
   function podeCriar() {
-    return ['administrador', 'gerente'].includes(meuCargo)
+    return ['admin', 'gerente'].includes(meuCargo)
   }
 
   function podeEditar(perfil: Perfil) {
-    if (meuCargo === 'administrador') return true
-    if (meuCargo === 'gerente') return !['administrador', 'gerente'].includes(perfil.papel)
+    if (meuCargo === 'admin') return true
+    if (meuCargo === 'gerente') return !['admin', 'gerente'].includes(perfil.papel)
     return false
   }
 
@@ -116,10 +117,10 @@ export default function UsuariosPage() {
     if (!editId && !fEmail.trim()) { setErro('E-mail é obrigatório.'); return }
     if (!editId && fSenha.length < 6) { setErro('Senha deve ter pelo menos 6 caracteres.'); return }
 
-    // Regra: deve existir ao menos 1 administrador após a alteração
-    if (editId && fPapel !== 'administrador') {
-      const admins = perfis.filter(p => p.papel === 'administrador' && p.ativo)
-      const esteEhAdmin = perfis.find(p => p.id === editId)?.papel === 'administrador'
+    // Regra: deve existir ao menos 1 admin após a alteração
+    if (editId && fPapel !== 'admin') {
+      const admins = perfis.filter(p => p.papel === 'admin' && p.ativo)
+      const esteEhAdmin = perfis.find(p => p.id === editId)?.papel === 'admin'
       if (esteEhAdmin && admins.length <= 1) {
         setErro('Deve existir pelo menos 1 Administrador no sistema. Promova outro usuário antes de alterar este cargo.')
         return
@@ -156,8 +157,8 @@ export default function UsuariosPage() {
 
   async function toggleAtivo(p: Perfil) {
     // Não pode desativar o último admin
-    if (p.papel === 'administrador' && p.ativo) {
-      const admins = perfis.filter(u => u.papel === 'administrador' && u.ativo)
+    if (p.papel === 'admin' && p.ativo) {
+      const admins = perfis.filter(u => u.papel === 'admin' && u.ativo)
       if (admins.length <= 1) {
         alert('Deve existir pelo menos 1 Administrador ativo no sistema.')
         return
@@ -180,7 +181,7 @@ export default function UsuariosPage() {
           <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>{ativos} de {maxUsuarios} slots utilizados</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Link href="/configuracoes" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, color: '#374151', textDecoration: 'none', background: '#fff' }}>
+          <Link href="/configuracoes?menu=permissoes" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, color: '#374151', textDecoration: 'none', background: '#fff' }}>
             🔐 Permissões por cargo
           </Link>
           {podeCriar() && (
@@ -195,7 +196,7 @@ export default function UsuariosPage() {
       <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, padding: '10px 16px', marginBottom: 20, fontSize: 13, color: '#0369a1' }}>
         💡 Hierarquia: <strong>Administrador</strong> → <strong>Gerente</strong> → Técnico / Atendente / Caixa.
         Administradores gerenciam todos; gerentes gerenciam técnicos e atendentes.
-        Para alterar permissões por cargo, acesse <Link href="/configuracoes" style={{ color: '#6366f1', fontWeight: 600 }}>Configurações → Permissões</Link>.
+        Para alterar permissões por cargo, acesse <Link href="/configuracoes?menu=permissoes" style={{ color: '#6366f1', fontWeight: 600 }}>Configurações → Permissões</Link>.
       </div>
 
       {/* Slots */}
@@ -327,7 +328,7 @@ export default function UsuariosPage() {
 
               <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#0369a1' }}>
                 💡 Para ajustar as permissões deste cargo, acesse{' '}
-                <Link href="/configuracoes" style={{ color: '#6366f1', fontWeight: 600 }} onClick={() => setShowModal(false)}>Configurações → Permissões</Link>.
+                <Link href="/configuracoes?menu=permissoes" style={{ color: '#6366f1', fontWeight: 600 }} onClick={() => setShowModal(false)}>Configurações → Permissões</Link>.
               </div>
             </div>
 
