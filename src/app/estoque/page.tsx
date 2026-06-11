@@ -13,12 +13,12 @@ type EntradaHistorico = {
 type Fornecedor = { id: string; nome: string; telefone: string | null; email: string | null; ativo: boolean }
 
 type Produto = {
-  id: string; nome: string; categoria: string | null; qualidade: string
-  custo_medio: number; preco_venda: number; estoque_atual: number; estoque_minimo: number
-  modelos_compat: string[] | null; ativo: boolean; cadastro_rapido: boolean
+  id: string; nome: string; unidade: string; ativo: boolean; cadastro_rapido: boolean
+  custo_unit: number; margem_pct: number; preco_venda: number
+  modelos_compat: string[] | null
   codigo_interno: string | null; codigo_barras: string | null; descricao: string | null
-  custo_unit: number; margem_pct: number; unidade: string; movimenta_estoque: boolean
-  peso_g: number | null; altura_cm: number | null; largura_cm: number | null; comprimento_cm: number | null
+  movimenta_estoque: boolean
+  peso_g: number | null
 }
 
 type Entrada = {
@@ -31,14 +31,7 @@ type Entrada = {
   created_at: string
 }
 
-const QUALIDADE_CONFIG: Record<string, { label: string; bg: string; color: string }> = {
-  original:      { label: 'Original',      bg: '#E1F5EE', color: '#085041' },
-  premium:       { label: 'Premium',       bg: '#E6F1FB', color: '#0C447C' },
-  compativel:    { label: 'Compatível',    bg: '#FAEEDA', color: '#633806' },
-  recondicionado:{ label: 'Recon.',        bg: '#FAECE7', color: '#712B13' },
-}
 
-const CATEGORIAS = ['Display / Tela', 'Bateria', 'Conector de carga', 'Câmera', 'Alto-falante', 'Microfone', 'Placa', 'Tampa traseira', 'Botão', 'Sensor', 'Flex', 'Outros']
 
 const inp: React.CSSProperties = { width: '100%', padding: '8px 11px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, color: '#1e293b', background: '#fff', outline: 'none', fontFamily: 'inherit' }
 const lbl: React.CSSProperties = { display: 'block', fontSize: 11, fontWeight: 500, color: '#64748b', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.04em' }
@@ -46,7 +39,7 @@ const lbl: React.CSSProperties = { display: 'block', fontSize: 11, fontWeight: 5
 export default function EstoquePage() {
   const supabase = createClient()
   const router = useRouter()
-  const [aba, setAba] = useState<'produtos' | 'estoque' | 'entradas' | 'fornecedores'>('estoque')
+  const [aba, setAba] = useState<'produtos' | 'entradas' | 'fornecedores'>('produtos')
   const [entradasHistorico, setEntradasHistorico] = useState<EntradaHistorico[]>([])
   const [fornecedoresList, setFornecedoresList] = useState<Fornecedor[]>([])
   const [loadingEntradas, setLoadingEntradas] = useState(false)
@@ -57,7 +50,6 @@ export default function EstoquePage() {
   const [produtos, setProdutos] = useState<Produto[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [filtroCat, setFiltroCat] = useState('todas')
   const [produtoSel, setProdutoSel] = useState<Produto | null>(null)
   const [entradas, setEntradas] = useState<Entrada[]>([])
   const [showModalProd, setShowModalProd] = useState(false)
@@ -67,14 +59,10 @@ export default function EstoquePage() {
   const [fNome, setFNome] = useState('')
   const [fCodInterno, setFCodInterno] = useState('')
   const [fCodBarras, setFCodBarras] = useState('')
-  const [fCategoria, setFCategoria] = useState('Display / Tela')
-  const [fQualidade, setFQualidade] = useState('compativel')
   const [fUnidade, setFUnidade] = useState('un')
   const [fCusto, setFCusto] = useState('0')
   const [fMargem, setFMargem] = useState('0')
   const [fPrecoVenda, setFPrecoVenda] = useState('0')
-  const [fEstoqueMin, setFEstoqueMin] = useState('0')
-  const [fEstoqueMax, setFEstoqueMax] = useState('')
   const [fModelos, setFModelos] = useState('')
   const [fDescricao, setFDescricao] = useState('')
   const [fAtivo, setFAtivo] = useState(true)
@@ -92,13 +80,12 @@ export default function EstoquePage() {
 
   const fetchProdutos = useCallback(async () => {
     setLoading(true)
-    let q = supabase.from('produtos').select('*').is('deleted_at', null).order('nome')
+    let q = supabase.from('produtos').select('id,nome,unidade,ativo,cadastro_rapido,custo_unit,margem_pct,preco_venda,modelos_compat,codigo_interno,codigo_barras,descricao,movimenta_estoque,peso_g').is('deleted_at', null).order('nome')
     if (search) q = q.ilike('nome', `%${search}%`)
-    if (filtroCat !== 'todas') q = q.eq('categoria', filtroCat)
     const { data } = await q
     setProdutos((data ?? []) as Produto[])
     setLoading(false)
-  }, [supabase, search, filtroCat])
+  }, [supabase, search])
 
   const fetchEntradas = useCallback(async (prodId: string) => {
     const { data } = await supabase
@@ -129,10 +116,9 @@ export default function EstoquePage() {
   }
 
   function resetForm() {
-    setFNome(''); setFCodInterno(''); setFCodBarras('')
-    setFCategoria('Display / Tela'); setFQualidade('compativel'); setFUnidade('un')
+    setFNome(''); setFCodInterno(''); setFCodBarras(''); setFUnidade('un')
     setFCusto('0'); setFMargem('0'); setFPrecoVenda('0')
-    setFEstoqueMin('0'); setFEstoqueMax(''); setFModelos(''); setFDescricao('')
+    setFModelos(''); setFDescricao('')
     setFAtivo(true); setFMovEstoque(true); setFEditId(null)
   }
 
@@ -140,43 +126,37 @@ export default function EstoquePage() {
 
   function abrirEditProduto(p: Produto) {
     setFNome(p.nome); setFCodInterno(p.codigo_interno ?? '')
-    setFCodBarras(p.codigo_barras ?? ''); setFCategoria(p.categoria ?? 'Display / Tela')
-    setFQualidade(p.qualidade); setFUnidade(p.unidade ?? 'un')
-    setFCusto(String(p.custo_unit ?? p.custo_medio ?? 0))
-    setFMargem(String(p.margem_pct ?? 0)); setFPrecoVenda(String(p.preco_venda))
-    setFEstoqueMin(String(p.estoque_minimo)); setFEstoqueMax('')
+    setFCodBarras(p.codigo_barras ?? ''); setFUnidade(p.unidade ?? 'un')
+    setFCusto(String(p.custo_unit ?? 0))
+    setFMargem(String(p.margem_pct ?? 0)); setFPrecoVenda(String(p.preco_venda ?? 0))
     setFModelos(p.modelos_compat?.join(', ') ?? ''); setFDescricao(p.descricao ?? '')
-    setFAtivo(p.ativo); setFMovEstoque(p.movimenta_estoque ?? true)
+    setFAtivo(p.ativo ?? true); setFMovEstoque(p.movimenta_estoque ?? true)
     setFEditId(p.id); setShowModalProd(true)
   }
 
   async function salvarProduto() {
     if (!fNome.trim()) return
     setFSaving(true)
-    const custo = parseFloat(fCusto) || 0
-    const preco = parseFloat(fPrecoVenda) || 0
-    const margem = parseFloat(fMargem) || 0
     const payload = {
       nome: fNome.trim(),
       codigo_interno: fCodInterno || null,
       codigo_barras: fCodBarras || null,
-      categoria: fCategoria || null,
-      qualidade: fQualidade,
       unidade: fUnidade,
-      custo_unit: custo,
-      margem_pct: margem,
-      preco_venda: preco,
-      estoque_minimo: parseFloat(fEstoqueMin) || 0,
+      custo_unit: parseFloat(fCusto) || 0,
+      margem_pct: parseFloat(fMargem) || 0,
+      preco_venda: parseFloat(fPrecoVenda) || 0,
       modelos_compat: fModelos ? fModelos.split(',').map(s => s.trim()).filter(Boolean) : null,
       descricao: fDescricao || null,
       ativo: fAtivo,
       movimenta_estoque: fMovEstoque,
-      ...(fEditId ? { cadastro_rapido: false } : {}),
+      cadastro_rapido: false,
     }
     if (fEditId) {
-      await supabase.from('produtos').update(payload).eq('id', fEditId)
+      const { error } = await supabase.from('produtos').update(payload).eq('id', fEditId)
+      if (error) { console.error('Erro ao salvar produto:', error); alert(`Erro ao salvar: ${error.message}`); setFSaving(false); return }
     } else {
-      await supabase.from('produtos').insert({ ...payload, estoque_atual: 0, custo_medio: custo })
+      const { error } = await supabase.from('produtos').insert(payload)
+      if (error) { console.error('Erro ao criar produto:', error); alert(`Erro ao criar: ${error.message}`); setFSaving(false); return }
     }
     setFSaving(false); setShowModalProd(false); fetchProdutos()
   }
@@ -199,11 +179,6 @@ export default function EstoquePage() {
       data_compra: eData,
       nota_fiscal: eNF || null,
     })
-
-    // Atualiza estoque
-    await supabase.from('produtos').update({
-      estoque_atual: (produtoSel.estoque_atual ?? 0) + qtd
-    }).eq('id', produtoSel.id)
 
     setESaving(false); setShowModalEntrada(false); fetchProdutos()
   }
@@ -230,8 +205,6 @@ export default function EstoquePage() {
     if (aba === 'fornecedores') fetchFornecedoresList()
   }, [aba, fetchEntradasHistorico, fetchFornecedoresList])
 
-  const lucroMedio = (p: Produto) => p.custo_medio > 0 ? ((p.preco_venda - p.custo_medio) / p.preco_venda * 100).toFixed(0) : null
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: 'var(--font-sans)', overflow: 'hidden' }}>
 
@@ -240,29 +213,25 @@ export default function EstoquePage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div>
             <h1 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', letterSpacing: '-0.02em' }}>Produtos & Estoque</h1>
-            <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{produtos.length} itens · {produtos.filter(p => p.estoque_atual <= p.estoque_minimo).length} com estoque baixo</p>
+            <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{produtos.length} produtos cadastrados</p>
           </div>
-          {(aba === 'estoque' || aba === 'produtos') && (
+          {aba === 'produtos' && (
             <button onClick={abrirNovoProduto} style={{ padding: '8px 16px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>+ Novo produto</button>
           )}
         </div>
         <div style={{ display: 'flex', gap: 2 }}>
-          {([['produtos','📦 Produtos'],['estoque','📊 Estoque'],['entradas','📥 Entradas'],['fornecedores','🏭 Fornecedores']] as const).map(([k,l]) => (
+          {([['produtos','📦 Produtos & Estoque'],['entradas','📥 Entradas'],['fornecedores','🏭 Fornecedores']] as const).map(([k,l]) => (
             <button key={k} onClick={() => setAba(k)} style={{ padding: '9px 16px', fontSize: 13, fontWeight: aba === k ? 600 : 400, border: 'none', background: 'none', cursor: 'pointer', color: aba === k ? '#6366f1' : '#64748b', borderBottom: aba === k ? '2px solid #6366f1' : '2px solid transparent', whiteSpace: 'nowrap', marginBottom: -1 }}>{l}</button>
           ))}
         </div>
       </div>
 
-      {/* ── ABA PRODUTOS (listagem + edição) */}
+      {/* ── ABA PRODUTOS & ESTOQUE (unificada) */}
       {aba === 'produtos' && (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div style={{ padding: '12px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', gap: 8, flexWrap: 'wrap', flexShrink: 0 }}>
             <input placeholder="Buscar produto..." value={search} onChange={e => setSearch(e.target.value)}
               style={{ ...inp, flex: 1, minWidth: 160, background: '#f8fafc' }} />
-            <select value={filtroCat} onChange={e => setFiltroCat(e.target.value)} style={{ ...inp, width: 'auto' }}>
-              <option value="todas">Todas categorias</option>
-              {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
           </div>
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {loading ? (
@@ -277,41 +246,46 @@ export default function EstoquePage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                    {['Produto','Categoria','Qualidade','Preço venda','Margem','Estoque','Ações'].map(h => (
+                    {['Produto', 'Unidade', 'Custo unit.', 'Preço venda', 'Margem', 'Status', 'Ações'].map(h => (
                       <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {produtos.filter(p => !search || p.nome.toLowerCase().includes(search.toLowerCase())).filter(p => filtroCat === 'todas' || p.categoria === filtroCat).map(p => {
-                    const margem = lucroMedio(p)
-                    const baixoEstoque = p.estoque_atual <= p.estoque_minimo
-                    const qc = QUALIDADE_CONFIG[p.qualidade] ?? QUALIDADE_CONFIG.compativel
+                  {produtos.map(p => {
+                    const custo = p.custo_unit ?? 0
+                    const preco = p.preco_venda ?? 0
+                    const margem = custo > 0 && preco > 0 ? ((preco - custo) / preco * 100).toFixed(0) : null
                     return (
                       <tr key={p.id} onClick={() => abrirEditProduto(p)} style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}
                         onMouseEnter={e => { e.currentTarget.style.background = '#f5f3ff' }}
                         onMouseLeave={e => { e.currentTarget.style.background = '#fff' }}>
                         <td style={{ padding: '10px 14px', fontWeight: 500, color: '#0f172a' }}>
                           {p.nome}
+                          {p.codigo_interno && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>{p.codigo_interno}</div>}
                           {p.modelos_compat && p.modelos_compat.length > 0 && (
                             <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>{p.modelos_compat.slice(0, 2).join(', ')}{p.modelos_compat.length > 2 ? ` +${p.modelos_compat.length - 2}` : ''}</div>
                           )}
                         </td>
-                        <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{p.categoria ?? '—'}</td>
-                        <td style={{ padding: '10px 14px' }}>
-                          <span style={{ fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20, background: qc.bg, color: qc.color }}>{qc.label}</span>
+                        <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{p.unidade ?? 'un'}</td>
+                        <td style={{ padding: '10px 14px', color: '#374151', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+                          {custo > 0 ? `R$ ${custo.toFixed(2).replace('.', ',')}` : '—'}
                         </td>
-                        <td style={{ padding: '10px 14px', fontWeight: 500, color: '#0f172a', fontFamily: 'var(--font-mono)', fontSize: 12 }}>R$ {p.preco_venda.toFixed(2).replace('.', ',')}</td>
+                        <td style={{ padding: '10px 14px', fontWeight: 500, color: '#0f172a', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+                          R$ {preco.toFixed(2).replace('.', ',')}
+                        </td>
                         <td style={{ padding: '10px 14px' }}>
                           {margem ? <span style={{ fontSize: 12, fontWeight: 600, color: parseInt(margem) >= 30 ? '#065f46' : parseInt(margem) >= 15 ? '#92400e' : '#991b1b' }}>{margem}%</span> : '—'}
                         </td>
                         <td style={{ padding: '10px 14px' }}>
-                          <span style={{ fontSize: 12, fontWeight: 500, color: baixoEstoque ? '#991b1b' : '#065f46' }}>{baixoEstoque ? '⚠ ' : ''}{p.estoque_atual} un</span>
+                          <span style={{ fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20, background: p.ativo ? '#ecfdf5' : '#f1f5f9', color: p.ativo ? '#065f46' : '#94a3b8' }}>
+                            {p.ativo ? 'Ativo' : 'Inativo'}
+                          </span>
                         </td>
                         <td style={{ padding: '10px 14px' }}>
                           <div style={{ display: 'flex', gap: 6 }}>
-                            <button onClick={() => abrirEntrada(p)} style={{ fontSize: 11, padding: '4px 10px', border: '1px solid #e0e7ff', borderRadius: 6, background: '#eef2ff', color: '#4338ca', cursor: 'pointer', fontWeight: 500 }}>+ Entrada</button>
-                            <button onClick={() => abrirEditProduto(p)} style={{ fontSize: 11, padding: '4px 10px', border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', color: '#64748b', cursor: 'pointer' }}>Editar</button>
+                            <button onClick={e => { e.stopPropagation(); abrirEntrada(p) }} style={{ fontSize: 11, padding: '4px 10px', border: '1px solid #e0e7ff', borderRadius: 6, background: '#eef2ff', color: '#4338ca', cursor: 'pointer', fontWeight: 500 }}>+ Entrada</button>
+                            <button onClick={e => { e.stopPropagation(); abrirEditProduto(p) }} style={{ fontSize: 11, padding: '4px 10px', border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', color: '#64748b', cursor: 'pointer' }}>Editar</button>
                           </div>
                         </td>
                       </tr>
@@ -321,97 +295,6 @@ export default function EstoquePage() {
               </table>
             )}
           </div>
-        </div>
-      )}
-
-      {/* ── ABA ESTOQUE (saldos) */}
-      {aba === 'estoque' && (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {/* Filtros */}
-          <div style={{ padding: '12px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', gap: 8, flexWrap: 'wrap', flexShrink: 0 }}>
-            <input placeholder="Buscar produto..." value={search} onChange={e => setSearch(e.target.value)}
-              style={{ ...inp, flex: 1, minWidth: 160, background: '#f8fafc' }} />
-            <select value={filtroCat} onChange={e => setFiltroCat(e.target.value)} style={{ ...inp, width: 'auto' }}>
-              <option value="todas">Todas categorias</option>
-              {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-
-        {/* Table */}
-        <div style={{ flex: 1, overflowY: 'auto' }}>
-          {loading ? (
-            <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Carregando...</div>
-          ) : produtos.length === 0 ? (
-            <div style={{ padding: 60, textAlign: 'center' }}>
-              <div style={{ fontSize: 36, marginBottom: 12 }}>📦</div>
-              <p style={{ fontSize: 14, fontWeight: 500, color: '#374151' }}>Nenhum produto cadastrado</p>
-              <button onClick={abrirNovoProduto} style={{ marginTop: 16, padding: '8px 16px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>+ Cadastrar primeiro produto</button>
-            </div>
-          ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                  {['Produto', 'Categoria', 'Qualidade', 'Custo médio', 'Preço venda', 'Margem', 'Estoque', 'Ações'].map(h => (
-                    <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {produtos.map(p => {
-                  const margem = lucroMedio(p)
-                  const baixoEstoque = p.estoque_atual <= p.estoque_minimo
-                  const qc = QUALIDADE_CONFIG[p.qualidade] ?? QUALIDADE_CONFIG.compativel
-                  return (
-                    <tr key={p.id} style={{ borderBottom: '1px solid #f1f5f9' }}
-                      onMouseEnter={e => { e.currentTarget.style.background = '#fafafa' }}
-                      onMouseLeave={e => { e.currentTarget.style.background = '#fff' }}>
-                      <td style={{ padding: '10px 14px', fontWeight: 500, color: '#0f172a' }}>
-                        {p.nome}
-                        {p.modelos_compat && p.modelos_compat.length > 0 && (
-                          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>
-                            {p.modelos_compat.slice(0, 2).join(', ')}{p.modelos_compat.length > 2 ? ` +${p.modelos_compat.length - 2}` : ''}
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{p.categoria ?? '—'}</td>
-                      <td style={{ padding: '10px 14px' }}>
-                        <span style={{ fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20, background: qc.bg, color: qc.color }}>{qc.label}</span>
-                      </td>
-                      <td style={{ padding: '10px 14px', color: '#374151', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
-                        {p.custo_medio > 0 ? `R$ ${p.custo_medio.toFixed(2).replace('.', ',')}` : '—'}
-                      </td>
-                      <td style={{ padding: '10px 14px', fontWeight: 500, color: '#0f172a', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
-                        R$ {p.preco_venda.toFixed(2).replace('.', ',')}
-                      </td>
-                      <td style={{ padding: '10px 14px' }}>
-                        {margem ? (
-                          <span style={{ fontSize: 12, fontWeight: 600, color: parseInt(margem) >= 30 ? '#065f46' : parseInt(margem) >= 15 ? '#92400e' : '#991b1b' }}>
-                            {margem}%
-                          </span>
-                        ) : '—'}
-                      </td>
-                      <td style={{ padding: '10px 14px' }}>
-                        <span style={{ fontSize: 12, fontWeight: 500, color: baixoEstoque ? '#991b1b' : '#065f46' }}>
-                          {baixoEstoque ? '⚠ ' : ''}{p.estoque_atual} un
-                        </span>
-                      </td>
-                      <td style={{ padding: '10px 14px' }}>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <button onClick={() => abrirEntrada(p)} style={{ fontSize: 11, padding: '4px 10px', border: '1px solid #e0e7ff', borderRadius: 6, background: '#eef2ff', color: '#4338ca', cursor: 'pointer', fontWeight: 500 }}>
-                            + Entrada
-                          </button>
-                          <button onClick={() => abrirEditProduto(p)} style={{ fontSize: 11, padding: '4px 10px', border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', color: '#64748b', cursor: 'pointer' }}>
-                            Editar
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
         </div>
       )}
 
@@ -516,21 +399,8 @@ export default function EstoquePage() {
               {/* ── Classificação */}
               <div>
                 <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Classificação</p>
-                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
-                  <div><label style={lbl}>Categoria</label>
-                    <select style={inp} value={fCategoria} onChange={e => setFCategoria(e.target.value)}>
-                      {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-                  <div><label style={lbl}>Qualidade</label>
-                    <select style={inp} value={fQualidade} onChange={e => setFQualidade(e.target.value)}>
-                      <option value="original">Original</option>
-                      <option value="premium">Premium</option>
-                      <option value="compativel">Compatível</option>
-                      <option value="recondicionado">Recondicionado</option>
-                    </select>
-                  </div>
-                  <div><label style={lbl}>Unidade</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+                  <div><label style={lbl}>Unidade de medida</label>
                     <select style={inp} value={fUnidade} onChange={e => setFUnidade(e.target.value)}>
                       {['un','kg','g','m','cm','l','ml','cx','pc','par'].map(u => <option key={u} value={u}>{u}</option>)}
                     </select>
@@ -582,17 +452,10 @@ export default function EstoquePage() {
                 )}
               </div>
 
-              {/* ── Estoque */}
+              {/* ── Modelos */}
               <div>
-                <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Estoque</p>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-                  <div><label style={lbl}>Estoque mínimo (alerta)</label><input style={inp} type="number" min="0" value={fEstoqueMin} onChange={e => setFEstoqueMin(e.target.value)} /></div>
-                  <div><label style={lbl}>Estoque máximo</label><input style={inp} type="number" min="0" value={fEstoqueMax} onChange={e => setFEstoqueMax(e.target.value)} placeholder="Opcional" /></div>
-                </div>
-                <div>
-                  <label style={lbl}>Modelos compatíveis (separados por vírgula)</label>
-                  <input style={inp} value={fModelos} onChange={e => setFModelos(e.target.value)} placeholder="Samsung Galaxy A32, Apple iPhone 13..." />
-                </div>
+                <label style={lbl}>Modelos compatíveis (separados por vírgula)</label>
+                <input style={inp} value={fModelos} onChange={e => setFModelos(e.target.value)} placeholder="Samsung Galaxy A32, Apple iPhone 13..." />
               </div>
 
               {/* ── Descrição */}
@@ -643,11 +506,11 @@ export default function EstoquePage() {
 
             <div style={{ padding: '18px 22px' }}>
               {/* Custo médio atual */}
-              {produtoSel.custo_medio > 0 && (
+              {(produtoSel.custo_unit ?? 0) > 0 && (
                 <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '12px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <p style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Custo médio atual</p>
-                    <p style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', fontFamily: 'var(--font-mono)' }}>R$ {produtoSel.custo_medio.toFixed(2).replace('.', ',')}</p>
+                    <p style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Custo unitário atual</p>
+                    <p style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', fontFamily: 'var(--font-mono)' }}>R$ {(produtoSel.custo_unit ?? 0).toFixed(2).replace('.', ',')}</p>
                   </div>
                   {ultimoCusto && (
                     <div style={{ textAlign: 'right' }}>
