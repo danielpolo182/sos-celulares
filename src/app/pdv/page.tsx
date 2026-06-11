@@ -63,7 +63,7 @@ export default function PDVPage() {
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([])
   const [formaPag, setFormaPag] = useState<FormaPagKey>('dinheiro')
   const [numParcelas, setNumParcelas] = useState(2)
-  const [taxasConfig, setTaxasConfig] = useState<Record<string, { taxa_pct: number; taxa_fixa: number }>>({})
+  const [taxasConfig, setTaxasConfig] = useState<Record<string, { taxa_pct: number; taxa_fixa: number; taxas_parcelas?: Record<string, number> }>>({})
   const [maxParcelasConfig, setMaxParcelasConfig] = useState(12)
   const [valorPag, setValorPag] = useState('')
   const [obs, setObs] = useState('')
@@ -125,9 +125,9 @@ export default function PDVPage() {
     supabase.from('sistema_config').select('valor').eq('chave', 'formas_pgto_taxas').maybeSingle().then(({ data }) => {
       if (data?.valor) {
         try {
-          const formas = JSON.parse(data.valor) as { key: string; taxa_pct: number; taxa_fixa: number; max_parcelas?: number }[]
-          const mapa: Record<string, { taxa_pct: number; taxa_fixa: number }> = {}
-          formas.forEach(f => { mapa[f.key] = { taxa_pct: f.taxa_pct, taxa_fixa: f.taxa_fixa } })
+          const formas = JSON.parse(data.valor) as { key: string; taxa_pct: number; taxa_fixa: number; max_parcelas?: number; taxas_parcelas?: Record<string,number> }[]
+          const mapa: Record<string, { taxa_pct: number; taxa_fixa: number; taxas_parcelas?: Record<string,number> }> = {}
+          formas.forEach(f => { mapa[f.key] = { taxa_pct: f.taxa_pct, taxa_fixa: f.taxa_fixa, taxas_parcelas: f.taxas_parcelas } })
           setTaxasConfig(mapa)
           const parcConf = formas.find(f => f.key === 'credito_parcela')
           if (parcConf?.max_parcelas) setMaxParcelasConfig(parcConf.max_parcelas)
@@ -168,23 +168,30 @@ export default function PDVPage() {
 
   function removerItem(i: number) { setItens(prev => prev.filter((_, idx) => idx !== i)) }
 
-  function calcularTotalComTaxa(valor: number, forma: FormaPagKey, parcelas: number): { total: number; taxa: number } {
+  function calcularTotalComTaxa(valor: number, forma: FormaPagKey, parcelas: number): { total: number; taxa: number; taxaEfetivaPct: number } {
     const cfg = taxasConfig[forma]
-    if (!cfg) return { total: valor, taxa: 0 }
-    const taxa = (valor * cfg.taxa_pct / 100) + cfg.taxa_fixa
-    return { total: +(valor + taxa).toFixed(2), taxa: +taxa.toFixed(2) }
+    if (!cfg) return { total: valor, taxa: 0, taxaEfetivaPct: 0 }
+    // Usa taxa específica da parcela se disponível; senão usa taxa_pct geral
+    const taxaPct = (cfg.taxas_parcelas && cfg.taxas_parcelas[String(parcelas)] !== undefined)
+      ? cfg.taxas_parcelas[String(parcelas)]
+      : cfg.taxa_pct
+    const taxa = +(valor * taxaPct / 100 + cfg.taxa_fixa).toFixed(2)
+    const total = +(valor + taxa).toFixed(2)
+    // Taxa efetiva = acréscimo real sobre o valor original
+    const taxaEfetivaPct = valor > 0 ? +((taxa / valor) * 100).toFixed(2) : 0
+    return { total, taxa, taxaEfetivaPct }
   }
 
   function adicionarPagamento() {
     const baseValor = parseFloat(valorPag) || faltaPagar
     if (!baseValor || baseValor <= 0) return
     if (formaPag === 'credito_parcela') {
-      const { total, taxa } = calcularTotalComTaxa(baseValor, formaPag, numParcelas)
+      const { total, taxa, taxaEfetivaPct } = calcularTotalComTaxa(baseValor, formaPag, numParcelas)
       const valorParcela = +(total / numParcelas).toFixed(2)
-      setPagamentos(prev => [...prev, { forma: formaPag, valor: total, parcelas: numParcelas, valor_parcela: valorParcela, taxa_aplicada: taxa }])
+      setPagamentos(prev => [...prev, { forma: formaPag, valor: total, parcelas: numParcelas, valor_parcela: valorParcela, taxa_aplicada: taxaEfetivaPct }])
     } else {
-      const { total, taxa } = calcularTotalComTaxa(baseValor, formaPag, 1)
-      setPagamentos(prev => [...prev, { forma: formaPag, valor: total, taxa_aplicada: taxa > 0 ? taxa : undefined }])
+      const { total, taxaEfetivaPct } = calcularTotalComTaxa(baseValor, formaPag, 1)
+      setPagamentos(prev => [...prev, { forma: formaPag, valor: total, taxa_aplicada: taxaEfetivaPct > 0 ? taxaEfetivaPct : undefined }])
     }
     setValorPag('')
   }
@@ -410,18 +417,29 @@ export default function PDVPage() {
                   ))}
                 </div>
                 {formaPag === 'credito_parcela' && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, padding: '8px 10px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 7 }}>
-                    <span style={{ fontSize: 12, color: '#92400e', fontWeight: 500 }}>Parcelas:</span>
-                    <select value={numParcelas} onChange={e => setNumParcelas(parseInt(e.target.value))} style={{ padding: '4px 8px', border: '1px solid #fde68a', borderRadius: 6, fontSize: 13, background: '#fff', outline: 'none', fontFamily: 'inherit' }}>
-                      {Array.from({ length: maxParcelasConfig - 1 }, (_, i) => i + 2).map(n => <option key={n} value={n}>{n}x</option>)}
-                    </select>
+                  <div style={{ marginBottom: 8, padding: '10px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 7 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <span style={{ fontSize: 12, color: '#92400e', fontWeight: 500 }}>Parcelas:</span>
+                      <select value={numParcelas} onChange={e => setNumParcelas(parseInt(e.target.value))} style={{ padding: '4px 8px', border: '1px solid #fde68a', borderRadius: 6, fontSize: 13, background: '#fff', outline: 'none', fontFamily: 'inherit' }}>
+                        {Array.from({ length: maxParcelasConfig - 1 }, (_, i) => i + 2).map(n => <option key={n} value={n}>{n}x</option>)}
+                      </select>
+                    </div>
                     {(() => {
                       const base = parseFloat(valorPag) || faltaPagar
                       if (!base) return null
-                      const { total } = calcularTotalComTaxa(base, 'credito_parcela', numParcelas)
+                      const { total, taxa, taxaEfetivaPct } = calcularTotalComTaxa(base, 'credito_parcela', numParcelas)
                       const parcela = (total / numParcelas).toFixed(2).replace('.', ',')
-                      const taxa = taxasConfig['credito_parcela']?.taxa_pct ?? 0
-                      return <span style={{ fontSize: 11, color: '#92400e' }}>{numParcelas}x de R$ {parcela}{taxa > 0 ? ` (${taxa}% juros)` : ''}</span>
+                      const cfgPct = taxasConfig['credito_parcela']?.taxas_parcelas?.[String(numParcelas)] ?? taxasConfig['credito_parcela']?.taxa_pct ?? 0
+                      return (
+                        <div style={{ fontSize: 12, color: '#92400e' }}>
+                          <span style={{ fontWeight: 600 }}>{numParcelas}x de R$ {parcela}</span>
+                          {taxa > 0 && (
+                            <span style={{ marginLeft: 8, fontSize: 11, color: '#b45309' }}>
+                              (taxa configurada {cfgPct}%{taxasConfig['credito_parcela']?.taxa_fixa ? ` + R$${taxasConfig['credito_parcela'].taxa_fixa.toFixed(2).replace('.',',')} fixo` : ''} → acréscimo real: <strong>{taxaEfetivaPct}%</strong> = +R$ {taxa.toFixed(2).replace('.',',')})
+                            </span>
+                          )}
+                        </div>
+                      )
                     })()}
                   </div>
                 )}
@@ -433,13 +451,19 @@ export default function PDVPage() {
                 {pagamentos.map((p, i) => (
                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 9px', background: '#f0f4ff', border: '1px solid #e0e7ff', borderRadius: 6, marginBottom: 5, fontSize: 12 }}>
                     <div>
-                      <span style={{ color: '#4338ca', fontWeight: 500, textTransform: 'capitalize' }}>
+                      <span style={{ color: '#4338ca', fontWeight: 500 }}>
                         {FORMAS.find(f => f.key === p.forma)?.label ?? p.forma}
                       </span>
                       {p.parcelas && p.valor_parcela && (
                         <span style={{ color: '#92400e', fontSize: 11, marginLeft: 6 }}>
                           {p.parcelas}x R$ {p.valor_parcela.toFixed(2).replace('.', ',')}
                         </span>
+                      )}
+                      {p.taxa_aplicada != null && p.taxa_aplicada > 0 && !p.parcelas && (
+                        <span style={{ color: '#64748b', fontSize: 11, marginLeft: 6 }}>+{p.taxa_aplicada}%</span>
+                      )}
+                      {p.taxa_aplicada != null && p.taxa_aplicada > 0 && p.parcelas && (
+                        <span style={{ color: '#b45309', fontSize: 11, marginLeft: 6 }}>(efetivo {p.taxa_aplicada}%)</span>
                       )}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
