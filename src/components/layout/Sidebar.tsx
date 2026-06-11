@@ -10,7 +10,27 @@ type NavItem = {
   href: string
   icon: string
   label: string
+  modulo?: string
   children?: NavItem[]
+}
+
+// mapeamento href → módulo (usado para filtrar permissões)
+const HREF_MODULO: Record<string, string> = {
+  '/dashboard':    'dashboard',
+  '/os':           'os',
+  '/garantias':    'os',
+  '/clientes':     'clientes',
+  '/crm':          'crm',
+  '/pdv':          'pdv',
+  '/estoque':      'estoque',
+  '/fornecedores': 'estoque',
+  '/contratos':    'contratos',
+  '/rotinas':      'rotinas',
+  '/fechamento':   'fechamento',
+  '/aparelhos':    'aparelhos',
+  '/relatorios':   'relatorios',
+  '/usuarios':     'configuracoes',
+  '/configuracoes':'configuracoes',
 }
 
 const NAV: NavItem[] = [
@@ -130,13 +150,34 @@ export default function Sidebar() {
   const [usuario, setUsuario] = useState({ nome: '', papel: '' })
   const [pendOS, setPendOS] = useState(0)
   const [pendWA, setPendWA] = useState(0)
+  const [modulosPermitidos, setModulosPermitidos] = useState<Set<string> | null>(null) // null = tudo permitido
 
   useEffect(() => {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
       const { data: p } = await supabase.from('perfis').select('nome,papel').eq('id', user.id).single()
-      if (p) setUsuario({ nome: p.nome, papel: p.papel })
+      if (p) {
+        setUsuario({ nome: p.nome, papel: p.papel })
+        // Admin e gerente têm acesso total
+        if (['administrador', 'gerente', 'admin'].includes(p.papel)) {
+          setModulosPermitidos(null)
+        } else {
+          // Buscar permissões do cargo — se tabela não existir, falha aberta (tudo permitido)
+          try {
+            const { data: perms } = await supabase
+              .from('permissoes_cargo')
+              .select('modulo,permitido')
+              .eq('cargo', p.papel)
+            if (perms && perms.length > 0) {
+              const negados = new Set(perms.filter((r: any) => !r.permitido).map((r: any) => r.modulo as string))
+              setModulosPermitidos(negados.size > 0 ? negados : null)
+            }
+          } catch {
+            setModulosPermitidos(null)
+          }
+        }
+      }
       const [{ count }, { data: wa }] = await Promise.all([
         supabase.from('ordens_servico').select('id', { count: 'exact', head: true }).in('status', ['aberta', 'em_andamento']).is('deleted_at', null),
         supabase.from('vw_wa_resumo_dia').select('pendentes'),
@@ -148,6 +189,13 @@ export default function Sidebar() {
     const t = setInterval(load, 60000)
     return () => clearInterval(t)
   }, [supabase])
+
+  function itemVisivel(item: NavItem): boolean {
+    if (!modulosPermitidos) return true
+    const modulo = HREF_MODULO[item.href]
+    if (!modulo) return true
+    return !modulosPermitidos.has(modulo)
+  }
 
   async function logout() {
     await supabase.auth.signOut()
@@ -204,17 +252,21 @@ export default function Sidebar() {
 
         {/* Nav */}
         <nav style={{ flex: 1, padding: '6px 8px', overflowY: 'auto', overflowX: 'hidden' }}>
-          {NAV.map((section, si) => (
-            <div key={si} style={{ marginBottom: 4 }}>
-              <div style={{ fontSize: 9.5, fontWeight: 500, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '6px 10px 3px' }}>
-                {section.label}
+          {NAV.map((section, si) => {
+            const visibleChildren = section.children!.filter(itemVisivel)
+            if (visibleChildren.length === 0) return null
+            return (
+              <div key={si} style={{ marginBottom: 4 }}>
+                <div style={{ fontSize: 9.5, fontWeight: 500, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '6px 10px 3px' }}>
+                  {section.label}
+                </div>
+                {visibleChildren.map(item => <NavItem key={item.href} item={item} />)}
+                {si < NAV.length - 1 && (
+                  <div style={{ height: 1, background: 'rgba(255,255,255,0.04)', margin: '6px 10px 2px' }} />
+                )}
               </div>
-              {section.children!.map(item => <NavItem key={item.href} item={item} />)}
-              {si < NAV.length - 1 && (
-                <div style={{ height: 1, background: 'rgba(255,255,255,0.04)', margin: '6px 10px 2px' }} />
-              )}
-            </div>
-          ))}
+            )
+          })}
         </nav>
 
         {/* Footer — usuário */}

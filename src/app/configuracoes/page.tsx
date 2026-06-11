@@ -37,8 +37,33 @@ const MENU = [
   { key: 'pix',          icon: '📱', label: 'PIX',                  sub: [] },
   { key: 'assinatura',   icon: '✍️', label: 'Assinatura digital',   sub: [] },
   { key: 'alertas',      icon: '🔔', label: 'Alertas',              sub: [] },
+  { key: 'usuarios',     icon: '👥', label: 'Usuários',             sub: [] },
+  { key: 'permissoes',   icon: '🔐', label: 'Permissões',           sub: [] },
   { key: 'historico',    icon: '📜', label: 'Histórico',            sub: [] },
 ]
+
+const CARGOS = ['administrador', 'gerente', 'tecnico', 'atendente', 'caixa'] as const
+type Cargo = typeof CARGOS[number]
+
+const CARGOS_LOCKED: Cargo[] = ['administrador', 'gerente']
+
+const MODULOS_PERM: { key: string; label: string; icon: string }[] = [
+  { key: 'dashboard',    label: 'Dashboard',         icon: '📊' },
+  { key: 'os',           label: 'Ordens de Serviço', icon: '🔧' },
+  { key: 'clientes',     label: 'Clientes',           icon: '👥' },
+  { key: 'crm',          label: 'CRM',                icon: '📣' },
+  { key: 'pdv',          label: 'PDV / Vendas',       icon: '💳' },
+  { key: 'estoque',      label: 'Estoque',            icon: '📦' },
+  { key: 'contratos',    label: 'Contratos',          icon: '📄' },
+  { key: 'aparelhos',    label: 'Compra & Venda',     icon: '📱' },
+  { key: 'relatorios',   label: 'Relatórios',         icon: '📈' },
+  { key: 'fechamento',   label: 'Fechamento',         icon: '🔒' },
+  { key: 'rotinas',      label: 'Rotinas',            icon: '✅' },
+  { key: 'configuracoes',label: 'Configurações',      icon: '⚙️' },
+]
+
+type PermissaoCargo = { id: string; cargo: string; modulo: string; permitido: boolean }
+type UsuarioPerfil = { id: string; nome: string; email: string | null; papel: string; ativo: boolean; created_at: string }
 
 // ─── Estilos base ─────────────────────────────────────────
 const inp: React.CSSProperties = {
@@ -103,6 +128,20 @@ export default function ConfiguracoesPage() {
   const [assSaving, setAssSaving] = useState(false)
   const [assSaved, setAssSaved] = useState(false)
 
+  // Usuários
+  const [usuarios, setUsuarios] = useState<UsuarioPerfil[]>([])
+  const [uModal, setUModal] = useState(false)
+  const [uEditId, setUEditId] = useState<string | null>(null)
+  const [uNome, setUNome] = useState('')
+  const [uEmail, setUEmail] = useState('')
+  const [uPapel, setUPapel] = useState<Cargo>('tecnico')
+  const [uAtivo, setUAtivo] = useState(true)
+  const [uSaving, setUSaving] = useState(false)
+
+  // Permissões
+  const [permissoes, setPermissoes] = useState<PermissaoCargo[]>([])
+  const [permSaving, setPermSaving] = useState(false)
+
   // ── Fetch ────────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -135,8 +174,66 @@ export default function ConfiguracoesPage() {
     setHistorico((data ?? []) as unknown as Historico[])
   }, [supabase])
 
+  const fetchUsuarios = useCallback(async () => {
+    const { data } = await supabase.from('perfis').select('id,nome,email,papel,ativo,created_at').order('nome')
+    setUsuarios((data ?? []) as UsuarioPerfil[])
+  }, [supabase])
+
+  const fetchPermissoes = useCallback(async () => {
+    const { data } = await supabase.from('permissoes_cargo').select('*')
+    setPermissoes((data ?? []) as PermissaoCargo[])
+  }, [supabase])
+
   useEffect(() => { fetchAll() }, [fetchAll])
   useEffect(() => { if (activeMenu === 'historico') fetchHistorico() }, [activeMenu, fetchHistorico])
+  useEffect(() => { if (activeMenu === 'usuarios') fetchUsuarios() }, [activeMenu, fetchUsuarios])
+  useEffect(() => { if (activeMenu === 'permissoes') fetchPermissoes() }, [activeMenu, fetchPermissoes])
+
+  // ── Usuários ─────────────────────────────────────────────
+  function abrirUModal(u?: UsuarioPerfil) {
+    if (u) { setUEditId(u.id); setUNome(u.nome); setUEmail(u.email ?? ''); setUPapel(u.papel as Cargo); setUAtivo(u.ativo) }
+    else { setUEditId(null); setUNome(''); setUEmail(''); setUPapel('tecnico'); setUAtivo(true) }
+    setUModal(true)
+  }
+
+  async function salvarUsuario() {
+    if (!uNome.trim()) return
+    setUSaving(true)
+    if (uEditId) {
+      await supabase.from('perfis').update({ nome: uNome, papel: uPapel, ativo: uAtivo }).eq('id', uEditId)
+    } else {
+      // Novo usuário: apenas inserir no perfis (o auth precisa ser criado via Supabase Dashboard ou invite)
+      await supabase.from('perfis').insert({ nome: uNome, email: uEmail, papel: uPapel, ativo: uAtivo })
+    }
+    setUSaving(false); setUModal(false); fetchUsuarios()
+  }
+
+  async function toggleUsuarioAtivo(u: UsuarioPerfil) {
+    if (CARGOS_LOCKED.includes(u.papel as Cargo)) return
+    await supabase.from('perfis').update({ ativo: !u.ativo }).eq('id', u.id)
+    fetchUsuarios()
+  }
+
+  // ── Permissões ───────────────────────────────────────────
+  function getPermitido(cargo: string, modulo: string): boolean {
+    if (CARGOS_LOCKED.includes(cargo as Cargo)) return true
+    const perm = permissoes.find(p => p.cargo === cargo && p.modulo === modulo)
+    return perm ? perm.permitido : true // default: permitido
+  }
+
+  async function togglePermissao(cargo: string, modulo: string) {
+    if (CARGOS_LOCKED.includes(cargo as Cargo)) return
+    setPermSaving(true)
+    const atual = getPermitido(cargo, modulo)
+    const existing = permissoes.find(p => p.cargo === cargo && p.modulo === modulo)
+    if (existing) {
+      await supabase.from('permissoes_cargo').update({ permitido: !atual }).eq('id', existing.id)
+    } else {
+      await supabase.from('permissoes_cargo').insert({ cargo, modulo, permitido: !atual })
+    }
+    setPermSaving(false)
+    fetchPermissoes()
+  }
 
   // ── Helpers de config ────────────────────────────────────
   function getConfig(chave: string) {
@@ -848,6 +945,174 @@ export default function ConfiguracoesPage() {
               <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 10, padding: '12px 16px', fontSize: 13, color: '#3730a3' }}>
                 💡 Estes valores alimentam automaticamente as rotinas, o CRM, o fechamento e os alertas de WhatsApp.
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── USUÁRIOS */}
+        {activeMenu === 'usuarios' && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+              <div>
+                <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>👥 Usuários</h2>
+                <p style={{ fontSize: 13, color: '#64748b' }}>Gerencie os usuários e seus cargos.</p>
+              </div>
+              <button onClick={() => abrirUModal()} style={{ padding: '9px 18px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
+                + Novo usuário
+              </button>
+            </div>
+
+            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                    {['Nome', 'Cargo', 'Status', 'Desde', ''].map(h => (
+                      <th key={h} style={{ padding: '9px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {usuarios.length === 0 ? (
+                    <tr><td colSpan={5} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>Nenhum usuário encontrado.</td></tr>
+                  ) : usuarios.map(u => (
+                    <tr key={u.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '11px 16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#e0e7ff', color: '#4338ca', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                            {u.nome.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <p style={{ fontWeight: 500, color: '#0f172a' }}>{u.nome}</p>
+                            {u.email && <p style={{ fontSize: 11, color: '#94a3b8' }}>{u.email}</p>}
+                          </div>
+                        </div>
+                      </td>
+                      <td style={{ padding: '11px 16px' }}>
+                        <span style={{ fontSize: 12, padding: '2px 10px', borderRadius: 20, background: '#f1f5f9', color: '#374151', fontWeight: 500, textTransform: 'capitalize' }}>{u.papel}</span>
+                        {CARGOS_LOCKED.includes(u.papel as Cargo) && <span style={{ fontSize: 10, marginLeft: 6, color: '#94a3b8' }}>🔒</span>}
+                      </td>
+                      <td style={{ padding: '11px 16px' }}>
+                        <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, fontWeight: 600, background: u.ativo ? '#ecfdf5' : '#f1f5f9', color: u.ativo ? '#065f46' : '#94a3b8' }}>
+                          {u.ativo ? 'Ativo' : 'Inativo'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '11px 16px', fontSize: 12, color: '#94a3b8' }}>
+                        {new Date(u.created_at).toLocaleDateString('pt-BR')}
+                      </td>
+                      <td style={{ padding: '11px 16px' }}>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button onClick={() => abrirUModal(u)} style={{ fontSize: 12, padding: '4px 12px', border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', cursor: 'pointer', color: '#374151' }}>
+                            Editar
+                          </button>
+                          {!CARGOS_LOCKED.includes(u.papel as Cargo) && (
+                            <button onClick={() => toggleUsuarioAtivo(u)} style={{ fontSize: 12, padding: '4px 12px', border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', cursor: 'pointer', color: u.ativo ? '#ef4444' : '#10b981' }}>
+                              {u.ativo ? 'Desativar' : 'Ativar'}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Modal usuário */}
+            {uModal && (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setUModal(false)}>
+                <div style={{ background: '#fff', borderRadius: 14, padding: 28, width: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }} onClick={e => e.stopPropagation()}>
+                  <h3 style={{ fontSize: 16, fontWeight: 600, color: '#0f172a', marginBottom: 20 }}>{uEditId ? 'Editar usuário' : 'Novo usuário'}</h3>
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={lbl}>Nome completo</label>
+                    <input style={inp} value={uNome} onChange={e => setUNome(e.target.value)} placeholder="Nome do usuário" />
+                  </div>
+                  {!uEditId && (
+                    <div style={{ marginBottom: 14 }}>
+                      <label style={lbl}>E-mail</label>
+                      <input style={inp} type="email" value={uEmail} onChange={e => setUEmail(e.target.value)} placeholder="email@exemplo.com" />
+                      <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>O usuário precisa ativar a conta via e-mail. Para definir a senha, use o painel Supabase.</p>
+                    </div>
+                  )}
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={lbl}>Cargo</label>
+                    <select style={inp} value={uPapel} onChange={e => setUPapel(e.target.value as Cargo)}>
+                      {CARGOS.map(c => <option key={c} value={c} style={{ textTransform: 'capitalize' }}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+                    </select>
+                  </div>
+                  {uEditId && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, marginBottom: 20 }}>
+                      <input type="checkbox" checked={uAtivo} onChange={e => setUAtivo(e.target.checked)} />
+                      Usuário ativo
+                    </label>
+                  )}
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
+                    <button onClick={() => setUModal(false)} style={{ padding: '8px 18px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer', color: '#374151' }}>Cancelar</button>
+                    <button onClick={salvarUsuario} disabled={uSaving || !uNome.trim()} style={{ padding: '8px 18px', background: uSaving || !uNome.trim() ? '#e2e8f0' : '#6366f1', color: uSaving || !uNome.trim() ? '#94a3b8' : '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
+                      {uSaving ? 'Salvando...' : 'Salvar'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── PERMISSÕES */}
+        {activeMenu === 'permissoes' && (
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>🔐 Permissões por cargo</h2>
+            <p style={{ fontSize: 13, color: '#64748b', marginBottom: 6 }}>Defina quais módulos cada cargo pode acessar. Alterações têm efeito imediato.</p>
+            <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 16px', marginBottom: 20, fontSize: 13, color: '#92400e' }}>
+              🔒 <strong>Administrador</strong> e <strong>Gerente</strong> têm acesso total e não podem ter permissões removidas.
+            </div>
+
+            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap', minWidth: 160 }}>Módulo</th>
+                    {CARGOS.map(c => (
+                      <th key={c} style={{ padding: '10px 12px', textAlign: 'center', fontSize: 11, fontWeight: 600, color: CARGOS_LOCKED.includes(c) ? '#6366f1' : '#64748b', textTransform: 'capitalize', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
+                        {c} {CARGOS_LOCKED.includes(c) ? '🔒' : ''}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {MODULOS_PERM.map((m, mi) => (
+                    <tr key={m.key} style={{ borderBottom: '1px solid #f1f5f9', background: mi % 2 === 0 ? '#fff' : '#fafafa' }}>
+                      <td style={{ padding: '10px 16px', fontWeight: 500, color: '#374151' }}>
+                        {m.icon} {m.label}
+                      </td>
+                      {CARGOS.map(c => {
+                        const permitido = getPermitido(c, m.key)
+                        const locked = CARGOS_LOCKED.includes(c)
+                        return (
+                          <td key={c} style={{ padding: '10px 12px', textAlign: 'center' }}>
+                            <button
+                              onClick={() => !locked && togglePermissao(c, m.key)}
+                              disabled={permSaving || locked}
+                              style={{
+                                width: 32, height: 20, borderRadius: 10, border: 'none', cursor: locked ? 'default' : 'pointer',
+                                background: permitido ? '#6366f1' : '#e2e8f0',
+                                position: 'relative', transition: 'background 0.2s',
+                                opacity: locked ? 0.7 : 1,
+                              }}
+                              title={locked ? 'Não pode ser alterado' : permitido ? 'Clique para revogar' : 'Clique para permitir'}
+                            >
+                              <span style={{
+                                position: 'absolute', top: 2, width: 16, height: 16, borderRadius: '50%', background: '#fff',
+                                transition: 'left 0.2s', left: permitido ? 14 : 2,
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                              }} />
+                            </button>
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
