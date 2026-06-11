@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { validarCPF, validarTelefone, formatarCPF, formatarTelefone } from '@/lib/validators'
 
 type Cliente = {
   id: string
@@ -45,19 +46,7 @@ const emptyForm: FormData = {
   numero: '', complemento: '', bairro: '', cidade: '', estado: '',
 }
 
-function formatCPF(v: string) {
-  return v.replace(/\D/g, '').slice(0, 11)
-    .replace(/(\d{3})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d{1,2})$/, '$1-$2')
-}
-
-function formatPhone(v: string) {
-  return v.replace(/\D/g, '').slice(0, 11)
-    .replace(/(\d{2})(\d)/, '($1) $2')
-    .replace(/(\d{4,5})(\d{4})$/, '$1-$2')
-}
-
+function formatPhone(v: string) { return formatarTelefone(v) }
 function rawCPF(v: string) { return v.replace(/\D/g, '') }
 function rawPhone(v: string) { return v.replace(/\D/g, '') }
 
@@ -65,7 +54,7 @@ function clienteToForm(c: Cliente): FormData {
   return {
     nome: c.nome ?? '',
     telefone: c.telefone ? formatPhone(c.telefone) : '',
-    cpf: c.cpf ? formatCPF(c.cpf) : '',
+    cpf: c.cpf ? formatarCPF(c.cpf) : '',
     email: c.email ?? '',
     data_nascimento: c.data_nascimento ?? '',
     cep: c.endereco?.cep ?? '',
@@ -135,7 +124,7 @@ function Dropdown({ results, query, field, onSelect, visible }: DropdownProps) {
               {field === 'nome' ? highlight(c.nome, query) : c.nome}
             </div>
             <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1, display: 'flex', gap: 8 }}>
-              {c.cpf && <span>{field === 'cpf' ? highlight(formatCPF(c.cpf), query) : formatCPF(c.cpf)}</span>}
+              {c.cpf && <span>{field === 'cpf' ? highlight(formatarCPF(c.cpf), query) : formatarCPF(c.cpf)}</span>}
               {c.telefone && <span>{field === 'telefone' ? highlight(formatPhone(c.telefone), query) : formatPhone(c.telefone)}</span>}
             </div>
           </div>
@@ -156,6 +145,8 @@ export default function ClientesPage() {
   const [saving, setSaving] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [cpfErro, setCpfErro] = useState('')
+  const [telErro, setTelErro] = useState('')
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
 
   // Dropdown state per field
@@ -220,6 +211,15 @@ export default function ClientesPage() {
   function handleFormField(field: keyof FormData, value: string) {
     setForm(f => ({ ...f, [field]: value }))
 
+    if (field === 'cpf') {
+      const raw = value.replace(/\D/g, '')
+      setCpfErro(raw.length > 0 && raw.length < 11 ? 'CPF incompleto' : raw.length === 11 && !validarCPF(raw) ? 'CPF inválido' : '')
+    }
+    if (field === 'telefone') {
+      const raw = value.replace(/\D/g, '')
+      setTelErro(raw.length > 0 && !validarTelefone(raw) ? 'Telefone inválido' : '')
+    }
+
     if (field === 'nome' || field === 'cpf' || field === 'telefone') {
       if (dropdownTimer.current) clearTimeout(dropdownTimer.current)
       dropdownTimer.current = setTimeout(() => {
@@ -253,23 +253,20 @@ export default function ClientesPage() {
   }
 
   function openNew() {
-    setForm(emptyForm)
-    setEditId(null)
-    setError('')
-    setDropdown(null)
-    setShowModal(true)
+    setForm(emptyForm); setEditId(null)
+    setError(''); setCpfErro(''); setTelErro('')
+    setDropdown(null); setShowModal(true)
   }
 
   function openEdit(c: Cliente) {
-    setForm(clienteToForm(c))
-    setEditId(c.id)
-    setError('')
-    setDropdown(null)
-    setShowModal(true)
+    setForm(clienteToForm(c)); setEditId(c.id)
+    setError(''); setCpfErro(''); setTelErro('')
+    setDropdown(null); setShowModal(true)
   }
 
   async function handleSave() {
     if (!form.nome.trim()) { setError('Nome é obrigatório.'); return }
+    if (cpfErro || telErro) return
     setSaving(true)
     setError('')
 
@@ -415,7 +412,7 @@ export default function ClientesPage() {
             <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
               {[
                 { label: 'Telefone', value: selectedCliente.telefone ? formatPhone(selectedCliente.telefone) : null },
-                { label: 'CPF', value: selectedCliente.cpf ? formatCPF(selectedCliente.cpf) : null },
+                { label: 'CPF', value: selectedCliente.cpf ? formatarCPF(selectedCliente.cpf) : null },
                 { label: 'E-mail', value: selectedCliente.email },
                 { label: 'Nascimento', value: selectedCliente.data_nascimento ? new Date(selectedCliente.data_nascimento + 'T12:00:00').toLocaleDateString('pt-BR') : null },
                 { label: 'Endereço', value: selectedCliente.endereco?.logradouro ? `${selectedCliente.endereco.logradouro}${selectedCliente.endereco.numero ? ', ' + selectedCliente.endereco.numero : ''} — ${selectedCliente.endereco.cidade}/${selectedCliente.endereco.estado}` : null },
@@ -499,14 +496,15 @@ export default function ClientesPage() {
                 <div style={{ position: 'relative' }}>
                   <label style={lbl}>Telefone</label>
                   <input
-                    style={inp}
+                    style={{ ...inp, borderColor: telErro ? '#ef4444' : '#e2e8f0' }}
                     value={form.telefone}
-                    onChange={e => handleFormField('telefone', formatPhone(e.target.value))}
+                    onChange={e => handleFormField('telefone', formatarTelefone(e.target.value))}
                     onFocus={() => setActiveField('telefone')}
                     onBlur={() => setTimeout(() => setDropdown(null), 150)}
                     placeholder="(11) 99999-9999"
                     autoComplete="off"
                   />
+                  {telErro && <p style={{ fontSize: 11, color: '#ef4444', marginTop: 3 }}>{telErro}</p>}
                   <Dropdown
                     results={dropdown?.field === 'telefone' ? dropdown.results : []}
                     query={form.telefone}
@@ -520,14 +518,15 @@ export default function ClientesPage() {
                 <div style={{ position: 'relative' }}>
                   <label style={lbl}>CPF</label>
                   <input
-                    style={inp}
+                    style={{ ...inp, borderColor: cpfErro ? '#ef4444' : '#e2e8f0' }}
                     value={form.cpf}
-                    onChange={e => handleFormField('cpf', formatCPF(e.target.value))}
+                    onChange={e => handleFormField('cpf', formatarCPF(e.target.value))}
                     onFocus={() => setActiveField('cpf')}
                     onBlur={() => setTimeout(() => setDropdown(null), 150)}
                     placeholder="000.000.000-00"
                     autoComplete="off"
                   />
+                  {cpfErro && <p style={{ fontSize: 11, color: '#ef4444', marginTop: 3 }}>{cpfErro}</p>}
                   <Dropdown
                     results={dropdown?.field === 'cpf' ? dropdown.results : []}
                     query={form.cpf}

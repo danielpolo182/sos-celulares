@@ -15,7 +15,8 @@ type ItemVenda = {
   quantidade: number; preco_unit: number; custo_unit: number; subtotal: number
 }
 
-type Pagamento = { forma: 'dinheiro' | 'pix' | 'credito' | 'debito'; valor: number }
+type FormaPagKey = 'dinheiro' | 'pix' | 'credito' | 'debito' | 'credito_avista' | 'credito_parcela' | 'transferencia'
+type Pagamento = { forma: FormaPagKey; valor: number; parcelas?: number; valor_parcela?: number; taxa_aplicada?: number }
 
 type MovimentoCaixa = {
   id: string; tipo: string; valor: number
@@ -30,11 +31,13 @@ type CaixaHoje = {
 
 type MaisVendido = { produto_id: string; total_qtd: number; produto: Produto | null }
 
-const FORMAS: { key: 'dinheiro' | 'pix' | 'credito' | 'debito'; label: string; icon: string; cor: string }[] = [
-  { key: 'dinheiro', label: 'Dinheiro', icon: '💵', cor: '#16a34a' },
-  { key: 'pix',      label: 'PIX',      icon: '📱', cor: '#6366f1' },
-  { key: 'credito',  label: 'Crédito',  icon: '💳', cor: '#0ea5e9' },
-  { key: 'debito',   label: 'Débito',   icon: '💳', cor: '#8b5cf6' },
+const FORMAS: { key: FormaPagKey; label: string; icon: string; cor: string }[] = [
+  { key: 'dinheiro',        label: 'Dinheiro',    icon: '💵', cor: '#16a34a' },
+  { key: 'pix',             label: 'PIX',         icon: '📱', cor: '#6366f1' },
+  { key: 'debito',          label: 'Débito',      icon: '💳', cor: '#8b5cf6' },
+  { key: 'credito_avista',  label: 'Créd. à vista',icon: '💳', cor: '#0ea5e9' },
+  { key: 'credito_parcela', label: 'Créd. Parc.', icon: '💳', cor: '#f59e0b' },
+  { key: 'transferencia',   label: 'Transfer.',   icon: '🏦', cor: '#64748b' },
 ]
 
 const CATEGORIA_ICONES: Record<string, string> = {
@@ -58,7 +61,10 @@ export default function PDVPage() {
   const [itens, setItens] = useState<ItemVenda[]>([])
   const [desconto, setDesconto] = useState(0)
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([])
-  const [formaPag, setFormaPag] = useState<'dinheiro' | 'pix' | 'credito' | 'debito'>('dinheiro')
+  const [formaPag, setFormaPag] = useState<FormaPagKey>('dinheiro')
+  const [numParcelas, setNumParcelas] = useState(2)
+  const [taxasConfig, setTaxasConfig] = useState<Record<string, { taxa_pct: number; taxa_fixa: number }>>({})
+  const [maxParcelasConfig, setMaxParcelasConfig] = useState(12)
   const [valorPag, setValorPag] = useState('')
   const [obs, setObs] = useState('')
   const [salvando, setSalvando] = useState(false)
@@ -115,7 +121,20 @@ export default function PDVPage() {
   useEffect(() => {
     fetchProdutos()
     fetchCaixa()
-  }, [fetchProdutos, fetchCaixa])
+    // Carregar taxas das formas de pagamento
+    supabase.from('sistema_config').select('valor').eq('chave', 'formas_pgto_taxas').maybeSingle().then(({ data }) => {
+      if (data?.valor) {
+        try {
+          const formas = JSON.parse(data.valor) as { key: string; taxa_pct: number; taxa_fixa: number; max_parcelas?: number }[]
+          const mapa: Record<string, { taxa_pct: number; taxa_fixa: number }> = {}
+          formas.forEach(f => { mapa[f.key] = { taxa_pct: f.taxa_pct, taxa_fixa: f.taxa_fixa } })
+          setTaxasConfig(mapa)
+          const parcConf = formas.find(f => f.key === 'credito_parcela')
+          if (parcConf?.max_parcelas) setMaxParcelasConfig(parcConf.max_parcelas)
+        } catch {}
+      }
+    })
+  }, [fetchProdutos, fetchCaixa, supabase])
 
   function buscarProduto(q: string) {
     setSearchProd(q)
@@ -149,9 +168,25 @@ export default function PDVPage() {
 
   function removerItem(i: number) { setItens(prev => prev.filter((_, idx) => idx !== i)) }
 
+  function calcularTotalComTaxa(valor: number, forma: FormaPagKey, parcelas: number): { total: number; taxa: number } {
+    const cfg = taxasConfig[forma]
+    if (!cfg) return { total: valor, taxa: 0 }
+    const taxa = (valor * cfg.taxa_pct / 100) + cfg.taxa_fixa
+    return { total: +(valor + taxa).toFixed(2), taxa: +taxa.toFixed(2) }
+  }
+
   function adicionarPagamento() {
-    const v = parseFloat(valorPag); if (!v || v <= 0) return
-    setPagamentos(prev => [...prev, { forma: formaPag, valor: v }]); setValorPag('')
+    const baseValor = parseFloat(valorPag) || faltaPagar
+    if (!baseValor || baseValor <= 0) return
+    if (formaPag === 'credito_parcela') {
+      const { total, taxa } = calcularTotalComTaxa(baseValor, formaPag, numParcelas)
+      const valorParcela = +(total / numParcelas).toFixed(2)
+      setPagamentos(prev => [...prev, { forma: formaPag, valor: total, parcelas: numParcelas, valor_parcela: valorParcela, taxa_aplicada: taxa }])
+    } else {
+      const { total, taxa } = calcularTotalComTaxa(baseValor, formaPag, 1)
+      setPagamentos(prev => [...prev, { forma: formaPag, valor: total, taxa_aplicada: taxa > 0 ? taxa : undefined }])
+    }
+    setValorPag('')
   }
 
   async function finalizarVenda() {
@@ -366,7 +401,7 @@ export default function PDVPage() {
                 </div>
 
                 {/* Formas de pagamento */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 5, marginBottom: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 5, marginBottom: 8 }}>
                   {FORMAS.map(f => (
                     <button key={f.key} onClick={() => setFormaPag(f.key)} style={{ padding: '7px 2px', borderRadius: 7, border: '1px solid', cursor: 'pointer', fontSize: 10, fontWeight: 500, textAlign: 'center', background: formaPag === f.key ? f.cor + '15' : '#f8fafc', color: formaPag === f.key ? f.cor : '#64748b', borderColor: formaPag === f.key ? f.cor + '80' : '#e2e8f0' }}>
                       <div style={{ fontSize: 15, marginBottom: 1 }}>{f.icon}</div>
@@ -374,6 +409,22 @@ export default function PDVPage() {
                     </button>
                   ))}
                 </div>
+                {formaPag === 'credito_parcela' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, padding: '8px 10px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 7 }}>
+                    <span style={{ fontSize: 12, color: '#92400e', fontWeight: 500 }}>Parcelas:</span>
+                    <select value={numParcelas} onChange={e => setNumParcelas(parseInt(e.target.value))} style={{ padding: '4px 8px', border: '1px solid #fde68a', borderRadius: 6, fontSize: 13, background: '#fff', outline: 'none', fontFamily: 'inherit' }}>
+                      {Array.from({ length: maxParcelasConfig - 1 }, (_, i) => i + 2).map(n => <option key={n} value={n}>{n}x</option>)}
+                    </select>
+                    {(() => {
+                      const base = parseFloat(valorPag) || faltaPagar
+                      if (!base) return null
+                      const { total } = calcularTotalComTaxa(base, 'credito_parcela', numParcelas)
+                      const parcela = (total / numParcelas).toFixed(2).replace('.', ',')
+                      const taxa = taxasConfig['credito_parcela']?.taxa_pct ?? 0
+                      return <span style={{ fontSize: 11, color: '#92400e' }}>{numParcelas}x de R$ {parcela}{taxa > 0 ? ` (${taxa}% juros)` : ''}</span>
+                    })()}
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: 7, marginBottom: 8 }}>
                   <input type="number" step="0.01" value={valorPag} onChange={e => setValorPag(e.target.value)} onKeyDown={e => e.key === 'Enter' && adicionarPagamento()}
                     placeholder={faltaPagar > 0 ? faltaPagar.toFixed(2) : '0,00'} style={{ ...inp, flex: 1, padding: '7px 10px', fontSize: 13 }} />
@@ -381,7 +432,16 @@ export default function PDVPage() {
                 </div>
                 {pagamentos.map((p, i) => (
                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 9px', background: '#f0f4ff', border: '1px solid #e0e7ff', borderRadius: 6, marginBottom: 5, fontSize: 12 }}>
-                    <span style={{ color: '#4338ca', fontWeight: 500, textTransform: 'capitalize' }}>{p.forma}</span>
+                    <div>
+                      <span style={{ color: '#4338ca', fontWeight: 500, textTransform: 'capitalize' }}>
+                        {FORMAS.find(f => f.key === p.forma)?.label ?? p.forma}
+                      </span>
+                      {p.parcelas && p.valor_parcela && (
+                        <span style={{ color: '#92400e', fontSize: 11, marginLeft: 6 }}>
+                          {p.parcelas}x R$ {p.valor_parcela.toFixed(2).replace('.', ',')}
+                        </span>
+                      )}
+                    </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span style={{ fontWeight: 600 }}>{formatMoeda(p.valor)}</span>
                       <button onClick={() => setPagamentos(prev => prev.filter((_, idx) => idx !== i))} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 15, lineHeight: 1 }}>×</button>

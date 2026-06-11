@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { validarCPF, formatarCPF } from '@/lib/validators'
 
 // ─── Tipos ────────────────────────────────────────────────
 type Aparelho = {
@@ -49,7 +50,7 @@ const ESTADOS = [
   { v: 'N/A',     bg: '#f8fafc', color: '#94a3b8', border: '#e2e8f0' },
 ]
 
-const FORMAS_PGTO = ['Dinheiro','PIX','Transferência','Cartão débito','Cartão crédito']
+const FORMAS_PGTO = ['Dinheiro','PIX','Transferência','Cartão débito','Cartão crédito à vista','Cartão crédito parcelado']
 const STATUS_CFG: Record<string, {label:string;bg:string;color:string}> = {
   em_revisao:   { label: 'Em revisão',       bg: '#fef3c7', color: '#92400e' },
   aguard_pecas: { label: 'Aguard. peças',    bg: '#fef2f2', color: '#991b1b' },
@@ -80,7 +81,7 @@ const lbl: React.CSSProperties = { display: 'block', fontSize: 11, fontWeight: 5
 const card: React.CSSProperties = { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '18px 22px', marginBottom: 14 }
 const sec: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 12, paddingBottom: 8, borderBottom: '1px solid #f1f5f9', textTransform: 'uppercase', letterSpacing: '0.05em' }
 
-function formatCPF(v: string) { return v.replace(/\D/g,'').slice(0,11).replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d{1,2})$/,'$1-$2') }
+// formatarCPF imported from @/lib/validators
 function formatPhone(v: string) { return v.replace(/\D/g,'').slice(0,11).replace(/(\d{2})(\d)/,'($1) $2').replace(/(\d{4,5})(\d{4})$/,'$1-$2') }
 function formatCEP(v: string) { return v.replace(/\D/g,'').slice(0,8).replace(/(\d{5})(\d)/,'$1-$2') }
 function fm(v: number) { return `R$ ${v.toFixed(2).replace('.',',')}` }
@@ -125,6 +126,7 @@ export default function AparelhoPage() {
   // ── Vendedor ─────────────────────────────────────────────
   const [vNome, setVNome] = useState('')
   const [vCPF, setVCPF] = useState('')
+  const [vCpfErro, setVCpfErro] = useState('')
   const [vRG, setVRG] = useState('')
   const [vTel, setVTel] = useState('')
   const [vEmail, setVEmail] = useState('')
@@ -138,6 +140,7 @@ export default function AparelhoPage() {
   // ── Pagamento ─────────────────────────────────────────────
   const [cValor, setCValor] = useState('')
   const [cForma, setCForma] = useState('Dinheiro')
+  const [cParcelas, setCParcelas] = useState(2)
   const [salvando, setSalvando] = useState(false)
   const [compraSalva, setCompraSalva] = useState<{id:string;numero:number}|null>(null)
 
@@ -158,11 +161,13 @@ export default function AparelhoPage() {
   const [aparelhoVenda, setAparelhoVenda] = useState<Aparelho|null>(null)
   const [bNome, setBNome] = useState('')
   const [bCPF, setBCPF] = useState('')
+  const [bCpfErro, setBCpfErro] = useState('')
   const [bTel, setBTel] = useState('')
   const [bEmail, setBEmail] = useState('')
   const [bEnd, setBEnd] = useState('')
   const [bValor, setBValor] = useState('')
   const [bForma, setBForma] = useState('Dinheiro')
+  const [bParcelas, setBParcelas] = useState(2)
   const [bGarantia, setBGarantia] = useState('90')
   const [vendaSalva, setVendaSalva] = useState<{id:string;numero:number}|null>(null)
   const comprCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -496,7 +501,7 @@ section { margin-bottom: 12pt; }
   ${fotoHtml}
   <div class="grid2">
     <div><div class="field-label">Nome completo</div><div class="field-value">${vNome}</div></div>
-    <div><div class="field-label">CPF</div><div class="field-value">${formatCPF(vCPF)}</div></div>
+    <div><div class="field-label">CPF</div><div class="field-value">${formatarCPF(vCPF)}</div></div>
     <div><div class="field-label">RG</div><div class="field-value">${vRG||'—'}</div></div>
     <div><div class="field-label">Telefone</div><div class="field-value">${vTel?formatPhone(vTel):'—'}</div></div>
     <div><div class="field-label">E-mail</div><div class="field-value">${vEmail||'—'}</div></div>
@@ -544,7 +549,7 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
 
 <div class="legal">
   <p><strong>DECLARAÇÃO E RESPONSABILIDADE DO VENDEDOR</strong></p>
-  <p>Eu, <strong>${vNome}</strong>, portador(a) do CPF <strong>${formatCPF(vCPF)}</strong>${vRG?`, RG <strong>${vRG}</strong>`:''}${vEnd?`, residente em <strong>${endCompleto||vEnd}</strong>`:''},  declaro para todos os fins de direito que:</p>
+  <p>Eu, <strong>${vNome}</strong>, portador(a) do CPF <strong>${formatarCPF(vCPF)}</strong>${vRG?`, RG <strong>${vRG}</strong>`:''}${vEnd?`, residente em <strong>${endCompleto||vEnd}</strong>`:''},  declaro para todos os fins de direito que:</p>
   <p><strong>I.</strong> Sou o(a) legítimo(a) proprietário(a) do aparelho <strong>${specs?.marca||''} ${specs?.modelo||modeloInput}</strong>, IMEI <strong>${cIMEI||'—'}</strong>, e tenho plena capacidade legal para alienar o bem descrito neste instrumento.</p>
   <p><strong>II.</strong> O aparelho <strong>não possui origem ilícita</strong>, não foi obtido mediante furto (art. 155 CP), roubo (art. 157 CP), estelionato (art. 171 CP) ou qualquer conduta criminosa, e está livre de bloqueios, financiamentos, penhoras ou restrições que impeçam sua comercialização.</p>
   <p><strong>III.</strong> Assumo total responsabilidade civil e criminal por eventuais irregularidades, inclusive pelo crime de receptação (art. 180 CP), respondendo pessoalmente por quaisquer prejuízos causados a terceiros em decorrência de falsidade das informações ora prestadas.</p>
@@ -556,7 +561,7 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
     ${assVendHtml}
     <div class="sig-line"></div>
     <div class="sig-name">${vNome}</div>
-    <div style="font-size:7.5pt;color:#64748b">CPF: ${formatCPF(vCPF)}</div>
+    <div style="font-size:7.5pt;color:#64748b">CPF: ${formatarCPF(vCPF)}</div>
     <div class="sig-role">Vendedor</div>
   </div>
   <div class="sig-box">
@@ -950,7 +955,7 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
 
             <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:12 }}>
               <div style={{ gridColumn:'1/-1' }}><label style={lbl}>Nome completo *</label><input style={inp} value={vNome} onChange={e => setVNome(e.target.value)} /></div>
-              <div><label style={lbl}>CPF *</label><input style={inp} value={vCPF} onChange={e => setVCPF(formatCPF(e.target.value))} placeholder="000.000.000-00" maxLength={14} /></div>
+              <div><label style={lbl}>CPF *</label><input style={{ ...inp, borderColor: vCpfErro ? '#ef4444' : '#e2e8f0' }} value={vCPF} onChange={e => { const v = formatarCPF(e.target.value); setVCPF(v); const raw = v.replace(/\D/g,''); setVCpfErro(raw.length > 0 && raw.length < 11 ? 'CPF incompleto' : raw.length === 11 && !validarCPF(raw) ? 'CPF inválido' : '') }} placeholder="000.000.000-00" maxLength={14} />{vCpfErro && <p style={{ fontSize:11,color:'#ef4444',marginTop:2 }}>{vCpfErro}</p>}</div>
               <div><label style={lbl}>RG</label><input style={inp} value={vRG} onChange={e => setVRG(e.target.value)} /></div>
               <div><label style={lbl}>Telefone</label><input style={inp} value={vTel} onChange={e => setVTel(formatPhone(e.target.value))} placeholder="(00) 00000-0000" maxLength={15} /></div>
               <div><label style={lbl}>E-mail</label><input style={inp} value={vEmail} onChange={e => setVEmail(e.target.value)} /></div>
@@ -976,7 +981,19 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
             <p style={sec}>Condições de pagamento</p>
             <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:12 }}>
               <div><label style={lbl}>Valor pago (R$) *</label><input style={{ ...inp,fontSize:18,fontWeight:600 }} type="number" step="0.01" value={cValor} onChange={e => setCValor(e.target.value)} placeholder="0,00" /></div>
-              <div><label style={lbl}>Forma de pagamento</label><select style={inp} value={cForma} onChange={e => setCForma(e.target.value)}>{FORMAS_PGTO.map(f=><option key={f}>{f}</option>)}</select></div>
+              <div>
+                <label style={lbl}>Forma de pagamento</label>
+                <select style={inp} value={cForma} onChange={e => setCForma(e.target.value)}>{FORMAS_PGTO.map(f=><option key={f}>{f}</option>)}</select>
+                {cForma === 'Cartão crédito parcelado' && (
+                  <div style={{ display:'flex',alignItems:'center',gap:8,marginTop:6 }}>
+                    <span style={{ fontSize:12,color:'#64748b' }}>Parcelas:</span>
+                    <select value={cParcelas} onChange={e => setCParcelas(parseInt(e.target.value))} style={{ padding:'4px 8px',border:'1px solid #e2e8f0',borderRadius:6,fontSize:13,outline:'none' }}>
+                      {[2,3,4,5,6,7,8,9,10,11,12].map(n=><option key={n} value={n}>{n}x</option>)}
+                    </select>
+                    {cValor && <span style={{ fontSize:11,color:'#92400e' }}>{cParcelas}x de R$ {(parseFloat(cValor)/cParcelas).toFixed(2).replace('.',',')}</span>}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1041,7 +1058,7 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
                 <p style={sec}>Dados do comprador</p>
                 <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:12 }}>
                   <div style={{ gridColumn:'1/-1' }}><label style={lbl}>Nome completo *</label><input style={inp} value={bNome} onChange={e => setBNome(e.target.value)} /></div>
-                  <div><label style={lbl}>CPF *</label><input style={inp} value={bCPF} onChange={e => setBCPF(formatCPF(e.target.value))} placeholder="000.000.000-00" maxLength={14} /></div>
+                  <div><label style={lbl}>CPF *</label><input style={{ ...inp, borderColor: bCpfErro ? '#ef4444' : '#e2e8f0' }} value={bCPF} onChange={e => { const v = formatarCPF(e.target.value); setBCPF(v); const raw = v.replace(/\D/g,''); setBCpfErro(raw.length > 0 && raw.length < 11 ? 'CPF incompleto' : raw.length === 11 && !validarCPF(raw) ? 'CPF inválido' : '') }} placeholder="000.000.000-00" maxLength={14} />{bCpfErro && <p style={{ fontSize:11,color:'#ef4444',marginTop:2 }}>{bCpfErro}</p>}</div>
                   <div><label style={lbl}>Telefone</label><input style={inp} value={bTel} onChange={e => setBTel(formatPhone(e.target.value))} placeholder="(00) 00000-0000" maxLength={15} /></div>
                   <div><label style={lbl}>E-mail</label><input style={inp} value={bEmail} onChange={e => setBEmail(e.target.value)} /></div>
                   <div><label style={lbl}>Endereço</label><input style={inp} value={bEnd} onChange={e => setBEnd(e.target.value)} /></div>
@@ -1054,7 +1071,19 @@ ${cTipo==='usado'&&Object.keys(cChecklist).length>0?`<section>
                     <input style={{ ...inp,fontSize:18,fontWeight:600 }} type="number" step="0.01" value={bValor} onChange={e => setBValor(e.target.value)} placeholder="0,00" />
                     {bValor && aparelhoVenda.preco_compra && <p style={{ fontSize:11,marginTop:4,fontWeight:500,color:parseFloat(bValor)>aparelhoVenda.preco_compra?'#065f46':'#991b1b' }}>{parseFloat(bValor)>aparelhoVenda.preco_compra?`✓ Lucro: ${fm(parseFloat(bValor)-aparelhoVenda.preco_compra)}`:`⚠ Prejuízo: ${fm(aparelhoVenda.preco_compra-parseFloat(bValor))}`}</p>}
                   </div>
-                  <div><label style={lbl}>Forma de pagamento</label><select style={inp} value={bForma} onChange={e => setBForma(e.target.value)}>{FORMAS_PGTO.map(f=><option key={f}>{f}</option>)}</select></div>
+                  <div>
+                    <label style={lbl}>Forma de pagamento</label>
+                    <select style={inp} value={bForma} onChange={e => setBForma(e.target.value)}>{FORMAS_PGTO.map(f=><option key={f}>{f}</option>)}</select>
+                    {bForma === 'Cartão crédito parcelado' && (
+                      <div style={{ display:'flex',alignItems:'center',gap:6,marginTop:6 }}>
+                        <span style={{ fontSize:12,color:'#64748b' }}>Parcelas:</span>
+                        <select value={bParcelas} onChange={e => setBParcelas(parseInt(e.target.value))} style={{ padding:'4px 8px',border:'1px solid #e2e8f0',borderRadius:6,fontSize:13,outline:'none' }}>
+                          {[2,3,4,5,6,7,8,9,10,11,12].map(n=><option key={n} value={n}>{n}x</option>)}
+                        </select>
+                        {bValor && <span style={{ fontSize:11,color:'#92400e' }}>{bParcelas}x R$ {(parseFloat(bValor)/bParcelas).toFixed(2).replace('.',',')}</span>}
+                      </div>
+                    )}
+                  </div>
                   <div><label style={lbl}>Garantia (dias)</label><input style={inp} type="number" value={bGarantia} onChange={e => setBGarantia(e.target.value)} /></div>
                 </div>
               </div>

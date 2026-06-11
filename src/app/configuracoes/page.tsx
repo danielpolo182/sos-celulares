@@ -38,6 +38,7 @@ const MENU = [
   { key: 'pix',          icon: '📱', label: 'PIX',                  sub: [] },
   { key: 'assinatura',   icon: '✍️', label: 'Assinatura digital',   sub: [] },
   { key: 'alertas',      icon: '🔔', label: 'Alertas',              sub: [] },
+  { key: 'formas_pgto',  icon: '💳', label: 'Formas de pagamento',  sub: [] },
   { key: 'usuarios',     icon: '👥', label: 'Usuários',             sub: [] },
   { key: 'permissoes',   icon: '🔐', label: 'Permissões',           sub: [] },
   { key: 'historico',    icon: '📜', label: 'Histórico',            sub: [] },
@@ -65,6 +66,23 @@ const MODULOS_PERM: { key: string; label: string; icon: string }[] = [
 
 type PermissaoCargo = { id: string; cargo: string; modulo: string; permitido: boolean }
 type UsuarioPerfil = { id: string; nome: string; email: string | null; papel: string; ativo: boolean; created_at: string }
+
+type FormaPgto = {
+  key: string; label: string; icone: string
+  taxa_pct: number; taxa_fixa: number; ativo: boolean
+  parcelavel: boolean; max_parcelas: number
+}
+
+const FORMAS_PADRAO: FormaPgto[] = [
+  { key: 'dinheiro',        label: 'Dinheiro',             icone: '💵', taxa_pct: 0,    taxa_fixa: 0, ativo: true,  parcelavel: false, max_parcelas: 1 },
+  { key: 'pix',             label: 'PIX',                  icone: '📱', taxa_pct: 0,    taxa_fixa: 0, ativo: true,  parcelavel: false, max_parcelas: 1 },
+  { key: 'debito',          label: 'Cartão Débito',        icone: '💳', taxa_pct: 1.5,  taxa_fixa: 0, ativo: true,  parcelavel: false, max_parcelas: 1 },
+  { key: 'credito_avista',  label: 'Cartão Crédito à vista',icone: '💳',taxa_pct: 2.5,  taxa_fixa: 0, ativo: true,  parcelavel: false, max_parcelas: 1 },
+  { key: 'credito_parcela', label: 'Cartão Crédito Parc.', icone: '💳', taxa_pct: 4.0,  taxa_fixa: 0, ativo: true,  parcelavel: true,  max_parcelas: 12 },
+  { key: 'transferencia',   label: 'Transferência',        icone: '🏦', taxa_pct: 0,    taxa_fixa: 0, ativo: true,  parcelavel: false, max_parcelas: 1 },
+  { key: 'cheque',          label: 'Cheque',               icone: '📝', taxa_pct: 0,    taxa_fixa: 0, ativo: false, parcelavel: false, max_parcelas: 1 },
+  { key: 'crediario',       label: 'Crediário próprio',    icone: '📋', taxa_pct: 5.0,  taxa_fixa: 0, ativo: false, parcelavel: true,  max_parcelas: 6  },
+]
 
 // ─── Estilos base ─────────────────────────────────────────
 const inp: React.CSSProperties = {
@@ -143,6 +161,11 @@ export default function ConfiguracoesPage() {
   const [permissoes, setPermissoes] = useState<PermissaoCargo[]>([])
   const [permSaving, setPermSaving] = useState(false)
 
+  // Formas de pagamento
+  const [formasPgto, setFormasPgto] = useState<FormaPgto[]>(FORMAS_PADRAO)
+  const [formasSaving, setFormasSaving] = useState(false)
+  const [formasSaved, setFormasSaved] = useState(false)
+
   // ── Fetch ────────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -189,12 +212,35 @@ export default function ConfiguracoesPage() {
   useEffect(() => { if (activeMenu === 'historico') fetchHistorico() }, [activeMenu, fetchHistorico])
   useEffect(() => { if (activeMenu === 'usuarios') fetchUsuarios() }, [activeMenu, fetchUsuarios])
   useEffect(() => { if (activeMenu === 'permissoes') fetchPermissoes() }, [activeMenu, fetchPermissoes])
+  useEffect(() => {
+    if (activeMenu === 'formas_pgto') {
+      supabase.from('sistema_config').select('valor').eq('chave', 'formas_pgto_taxas').maybeSingle().then(({ data }) => {
+        if (data?.valor) {
+          try { setFormasPgto(JSON.parse(data.valor)) } catch {}
+        }
+      })
+    }
+  }, [activeMenu, supabase])
 
   // ── Usuários ─────────────────────────────────────────────
   function abrirUModal(u?: UsuarioPerfil) {
     if (u) { setUEditId(u.id); setUNome(u.nome); setUEmail(u.email ?? ''); setUPapel(u.papel as Cargo); setUAtivo(u.ativo) }
     else { setUEditId(null); setUNome(''); setUEmail(''); setUPapel('tecnico'); setUAtivo(true) }
     setUModal(true)
+  }
+
+  async function salvarFormasPgto() {
+    setFormasSaving(true); setFormasSaved(false)
+    await supabase.from('sistema_config').upsert(
+      { chave: 'formas_pgto_taxas', valor: JSON.stringify(formasPgto), categoria: 'financeiro', descricao: 'Taxas por forma de pagamento' },
+      { onConflict: 'chave' }
+    )
+    setFormasSaving(false); setFormasSaved(true)
+    setTimeout(() => setFormasSaved(false), 2000)
+  }
+
+  function updateForma(key: string, field: keyof FormaPgto, value: unknown) {
+    setFormasPgto(prev => prev.map(f => f.key === key ? { ...f, [field]: value } : f))
   }
 
   async function salvarUsuario() {
@@ -1146,6 +1192,78 @@ export default function ConfiguracoesPage() {
         )}
 
         {/* ── HISTÓRICO */}
+        {activeMenu === 'formas_pgto' && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+              <div>
+                <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>💳 Formas de pagamento</h2>
+                <p style={{ fontSize: 13, color: '#64748b' }}>Configure taxas, parcelamento e disponibilidade de cada forma.</p>
+              </div>
+              <button onClick={salvarFormasPgto} disabled={formasSaving} style={{ padding: '9px 20px', background: formasSaved ? '#10b981' : formasSaving ? '#a5b4fc' : '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
+                {formasSaved ? '✓ Salvo' : formasSaving ? 'Salvando...' : 'Salvar alterações'}
+              </button>
+            </div>
+
+            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                    {['Forma de pagamento', 'Taxa %', 'Taxa fixa R$', 'Parcelável', 'Máx. parcelas', 'Ativo'].map(h => (
+                      <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {formasPgto.map(f => (
+                    <tr key={f.key} style={{ borderBottom: '1px solid #f1f5f9', opacity: f.ativo ? 1 : 0.5 }}>
+                      <td style={{ padding: '10px 14px' }}>
+                        <span style={{ fontSize: 16, marginRight: 8 }}>{f.icone}</span>
+                        <span style={{ fontWeight: 500, color: '#0f172a' }}>{f.label}</span>
+                      </td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <input type="number" min="0" max="30" step="0.1" value={f.taxa_pct} onChange={e => updateForma(f.key, 'taxa_pct', parseFloat(e.target.value) || 0)}
+                            style={{ width: 70, padding: '5px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, outline: 'none' }} />
+                          <span style={{ fontSize: 12, color: '#64748b' }}>%</span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ fontSize: 12, color: '#64748b' }}>R$</span>
+                          <input type="number" min="0" step="0.01" value={f.taxa_fixa} onChange={e => updateForma(f.key, 'taxa_fixa', parseFloat(e.target.value) || 0)}
+                            style={{ width: 80, padding: '5px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, outline: 'none' }} />
+                        </div>
+                      </td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                          <input type="checkbox" checked={f.parcelavel} onChange={e => updateForma(f.key, 'parcelavel', e.target.checked)} />
+                          <span style={{ fontSize: 12, color: '#64748b' }}>Sim</span>
+                        </label>
+                      </td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <input type="number" min="1" max="24" value={f.max_parcelas} disabled={!f.parcelavel} onChange={e => updateForma(f.key, 'max_parcelas', parseInt(e.target.value) || 1)}
+                          style={{ width: 60, padding: '5px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, outline: 'none', opacity: f.parcelavel ? 1 : 0.4 }} />
+                        <span style={{ fontSize: 12, color: '#64748b', marginLeft: 4 }}>x</span>
+                      </td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                          <input type="checkbox" checked={f.ativo} onChange={e => updateForma(f.key, 'ativo', e.target.checked)} />
+                          <span style={{ fontSize: 12, color: f.ativo ? '#065f46' : '#94a3b8' }}>{f.ativo ? 'Ativo' : 'Inativo'}</span>
+                        </label>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, padding: '12px 16px', marginTop: 16, fontSize: 12, color: '#0369a1' }}>
+              💡 As taxas configuradas serão aplicadas automaticamente ao selecionar a forma de pagamento no PDV, OS e Compra/Venda de aparelhos.
+              Taxa % é calculada sobre o total; taxa fixa R$ é adicionada ao valor.
+            </div>
+          </div>
+        )}
+
         {activeMenu === 'historico' && (
           <div>
             <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>📜 Histórico de alterações</h2>
