@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 type Produto = {
-  id: string; nome: string; categoria: string | null
+  id: string; nome: string; categoria?: string | null
   preco_venda: number; custo_unit: number; estoque_atual?: number
 }
 
@@ -192,7 +192,7 @@ export default function PDVPage() {
     const { data: prod, error } = await supabase.from('produtos').insert({
       nome, preco_venda: preco, custo_unit: 0,
       ativo: true, unidade: 'un', movimenta_estoque: true, cadastro_rapido: true,
-    }).select('id, nome, categoria, preco_venda, custo_unit').single()
+    }).select('id, nome, preco_venda, custo_unit').single()
     if (prod && !error) {
       const p = prod as Produto
       setItens(prev => [...prev, { produto_id: p.id, descricao: p.nome, quantidade: 1, preco_unit: p.preco_venda, custo_unit: 0, subtotal: p.preco_venda }])
