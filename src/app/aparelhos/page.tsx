@@ -448,41 +448,41 @@ export default function AparelhoPage() {
 <title>Termo de Compra #${p.numero}</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-@page { size: A4 portrait; margin: 18mm 20mm; }
+@page { size: A4 portrait; margin: 9mm 12mm; }
 * { margin:0;padding:0;box-sizing:border-box; }
-body { font-family:'Inter',Arial,sans-serif;font-size:9pt;color:#1e293b;line-height:1.6; }
-.header { display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:12pt;border-bottom:2pt solid #0f172a;margin-bottom:14pt; }
-.brand h1 { font-size:18pt;font-weight:700;color:#0f172a; }
-.brand p { font-size:8pt;color:#64748b; }
-.doc-title { font-size:14pt;font-weight:700;text-align:right; }
-.doc-num { font-size:9pt;color:#6366f1;font-weight:600;text-align:right; }
-.doc-date { font-size:8pt;color:#94a3b8;text-align:right; }
-section { margin-bottom:12pt; }
-.stitle { font-size:7.5pt;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#6366f1;border-bottom:1pt solid #e0e7ff;padding-bottom:3pt;margin-bottom:8pt; }
-.grid2 { display:grid;grid-template-columns:1fr 1fr;gap:5pt 16pt; }
-.grid3 { display:grid;grid-template-columns:1fr 1fr 1fr;gap:5pt 12pt; }
-.field-label { font-size:7.5pt;color:#94a3b8;font-weight:500; }
-.field-value { font-size:9pt;font-weight:600;border-bottom:0.5pt solid #e2e8f0;padding-bottom:1pt;min-height:13pt; }
-.specs-box { background:#f8fafc;padding:7pt 9pt;border-radius:4pt; }
-.checklist-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:3pt; }
-.ci { display:flex;justify-content:space-between;padding:2.5pt 5pt;border-radius:3pt;font-size:7.5pt; }
+body { font-family:'Inter',Arial,sans-serif;font-size:8pt;color:#1e293b;line-height:1.35; }
+.header { display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:7pt;border-bottom:2pt solid #0f172a;margin-bottom:8pt; }
+.brand h1 { font-size:15pt;font-weight:700;color:#0f172a; }
+.brand p { font-size:7pt;color:#64748b; }
+.doc-title { font-size:12pt;font-weight:700;text-align:right; }
+.doc-num { font-size:8pt;color:#6366f1;font-weight:600;text-align:right; }
+.doc-date { font-size:7pt;color:#94a3b8;text-align:right; }
+section { margin-bottom:7pt; }
+.stitle { font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#6366f1;border-bottom:1pt solid #e0e7ff;padding-bottom:2pt;margin-bottom:5pt; }
+.grid2 { display:grid;grid-template-columns:1fr 1fr;gap:4pt 14pt; }
+.grid3 { display:grid;grid-template-columns:1fr 1fr 1fr;gap:4pt 10pt; }
+.field-label { font-size:6.5pt;color:#94a3b8;font-weight:500; }
+.field-value { font-size:8pt;font-weight:600;border-bottom:0.5pt solid #e2e8f0;padding-bottom:1pt;min-height:11pt; }
+.specs-box { background:#f8fafc;padding:4pt 7pt;border-radius:3pt; }
+.checklist-grid { display:grid;grid-template-columns:repeat(4,1fr);gap:2pt; }
+.ci { display:flex;justify-content:space-between;padding:2pt 4pt;border-radius:3pt;font-size:7pt; }
 .ci-bom { background:#ecfdf5;color:#065f46; }
 .ci-regular { background:#fef3c7;color:#92400e; }
 .ci-ruim { background:#fef2f2;color:#991b1b; }
 .ci-na { background:#f8fafc;color:#94a3b8; }
-.senha-box { background:#fef3c7;border:1pt solid #fde68a;padding:6pt 10pt;border-radius:4pt;font-size:9pt; }
-.legal { background:#f8fafc;border-left:3pt solid #0f172a;padding:9pt 12pt;font-size:8pt;line-height:1.8; }
-.legal p { margin-bottom:5pt; }
-.legal .art { font-size:7.5pt;color:#6366f1;font-weight:500; }
-.sig-row { display:grid;grid-template-columns:1fr 1fr;gap:14pt;margin-top:12pt; }
-.sig-img { max-height:45pt;max-width:150pt;display:block;margin-bottom:3pt; }
-.sig-line { border-top:1pt solid #0f172a;margin-bottom:3pt;margin-top:20pt; }
-.sig-name { font-size:8.5pt;font-weight:600; }
-.sig-role { font-size:7pt;color:#94a3b8;text-transform:uppercase;letter-spacing:1px; }
-.footer-doc { border-top:0.5pt solid #e2e8f0;padding-top:7pt;font-size:6.5pt;color:#94a3b8;text-align:center;margin-top:12pt; }
-.foto-vend { width:60pt;height:60pt;object-fit:cover;border-radius:4pt;border:1pt solid #e2e8f0;float:right;margin:0 0 6pt 12pt; }
-.nota-badge { display:inline-block;padding:2pt 8pt;border-radius:20pt;font-size:8pt;font-weight:700;${nota==='Bom'?'background:#ecfdf5;color:#065f46':nota==='Regular'?'background:#fef3c7;color:#92400e':'background:#fef2f2;color:#991b1b'}; }
-.valor-d { font-size:14pt;font-weight:700;color:#065f46; }
+.senha-box { background:#fef3c7;border:1pt solid #fde68a;padding:4pt 8pt;border-radius:3pt;font-size:8pt; }
+.legal { background:#f8fafc;border-left:3pt solid #0f172a;padding:6pt 10pt;font-size:7pt;line-height:1.5; }
+.legal p { margin-bottom:3pt; }
+.legal .art { font-size:6.5pt;color:#6366f1;font-weight:500; }
+.sig-row { display:grid;grid-template-columns:1fr 1fr;gap:12pt;margin-top:8pt; }
+.sig-img { max-height:38pt;max-width:130pt;display:block;margin-bottom:2pt; }
+.sig-line { border-top:1pt solid #0f172a;margin-bottom:2pt;margin-top:14pt; }
+.sig-name { font-size:8pt;font-weight:600; }
+.sig-role { font-size:6.5pt;color:#94a3b8;text-transform:uppercase;letter-spacing:1px; }
+.footer-doc { border-top:0.5pt solid #e2e8f0;padding-top:5pt;font-size:6pt;color:#94a3b8;text-align:center;margin-top:7pt; }
+.foto-vend { width:50pt;height:50pt;object-fit:cover;border-radius:4pt;border:1pt solid #e2e8f0;float:right;margin:0 0 5pt 10pt; }
+.nota-badge { display:inline-block;padding:1pt 6pt;border-radius:20pt;font-size:7pt;font-weight:700;${nota==='Bom'?'background:#ecfdf5;color:#065f46':nota==='Regular'?'background:#fef3c7;color:#92400e':'background:#fef2f2;color:#991b1b'}; }
+.valor-d { font-size:12pt;font-weight:700;color:#065f46; }
 </style></head><body>
 
 <div class="header">
@@ -500,7 +500,7 @@ section { margin-bottom:12pt; }
     <div><div class="field-label">Telefone</div><div class="field-value">${p.vTelP?formatPhone(p.vTelP):'—'}</div></div>
     <div><div class="field-label">CEP</div><div class="field-value">${p.vCEPP||'—'}</div></div>
   </div>
-  <div style="margin-top:5pt"><div class="field-label">Endereço</div><div class="field-value">${p.vEndP||'—'}</div></div>
+  <div style="margin-top:3pt"><div class="field-label">Endereço</div><div class="field-value">${p.vEndP||'—'}</div></div>
 </section>
 
 <section>
@@ -513,7 +513,7 @@ section { margin-bottom:12pt; }
     <div><div class="field-label">IMEI 2</div><div class="field-value">${p.ap.imei2||'—'}</div></div>
     <div><div class="field-label">Estado geral</div><div class="field-value"><span class="nota-badge">${nota}</span></div></div>
   </div>
-  ${p.ap.imei?`<div style="margin-top:5pt;font-size:8pt">🔍 <a href="https://www.aparelhoslegais.com.br/consulta?imei=${p.ap.imei}" style="color:#6366f1">Consultar Aparelhos Legais</a></div>`:''}
+  ${p.ap.imei?`<div style="margin-top:3pt;font-size:7pt">🔍 <a href="https://www.aparelhoslegais.com.br/consulta?imei=${p.ap.imei}" style="color:#6366f1">Consultar Aparelhos Legais</a></div>`:''}
 </section>
 
 ${specs?`<section>
