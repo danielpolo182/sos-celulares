@@ -591,19 +591,19 @@ ${itensOrc.length > 0 ? `<table><thead><tr><th>Item</th><th>Qtd</th><th>Unit.</t
 <meta charset="utf-8">
 <title>OS #${os.numero} — ${nomeLoja}</title>
 <style>
-  @page { size: A4 portrait; margin: 5mm 8mm; }
+  @page { size: A4 landscape; margin: 5mm 6mm; }
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Inter', Arial, sans-serif; font-size: 8pt; color: #1e293b; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .page { width: 100%; display: flex; flex-direction: column; gap: 0; }
+  body { font-family: 'Inter', Arial, sans-serif; font-size: 8pt; color: #1e293b; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; height: 100vh; overflow: hidden; }
+  .page { width: 100%; height: 100vh; display: flex; flex-direction: row; gap: 0; align-items: stretch; }
 
   /* Separador */
-  .sep { display: flex; align-items: center; gap: 6pt; padding: 3pt 0; }
-  .sep-line { flex: 1; border-top: 1.5px dashed #cbd5e1; }
-  .sep-text { font-size: 5.5pt; color: #94a3b8; letter-spacing: 3px; text-transform: uppercase; white-space: nowrap; }
+  .sep { display: flex; flex-direction: column; align-items: center; gap: 4pt; padding: 0 4pt; flex-shrink: 0; }
+  .sep-line { flex: 1; border-left: 1.5px dashed #cbd5e1; }
+  .sep-text { writing-mode: vertical-rl; font-size: 5.5pt; color: #94a3b8; letter-spacing: 3px; text-transform: uppercase; white-space: nowrap; }
 
-  /* Via — cada uma ocupa exatamente metade da página */
-  .via { height: 136mm; display: flex; flex-direction: column; gap: 4pt; border: 1px solid #e2e8f0; border-radius: 4pt; overflow: hidden; page-break-inside: avoid; }
+  /* Via — cada uma ocupa exatamente metade da folha landscape */
+  .via { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4pt; border: 1px solid #e2e8f0; border-radius: 4pt; overflow: hidden; }
 
   /* Header */
   .via-header { background: #0f172a; padding: 7pt 9pt; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
