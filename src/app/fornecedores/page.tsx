@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 export const dynamic = 'force-dynamic'
 
 import { useState, useEffect, useCallback } from 'react'
@@ -80,12 +80,12 @@ export default function FornecedoresPage() {
           <h1 style={{ fontSize: 20, fontWeight: 600, color: '#0f172a', letterSpacing: '-0.02em' }}>Fornecedores</h1>
           <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>{fornecedores.length} cadastrados</p>
         </div>
-        <button onClick={abrirNovo} style={{ padding: '9px 18px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>+ Novo fornecedor</button>
+        <button onClick={abrirNovo} style={{ padding: '9px 18px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>+ Novo fornecedor</button>
       </div>
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid #e2e8f0' }}>
-        {([['lista', '📋 Lista'], ['ranking', '🏆 Ranking']] as const).map(([k, l]) => (
-          <button key={k} onClick={() => setAba(k)} style={{ padding: '10px 18px', fontSize: 13, fontWeight: aba === k ? 600 : 400, border: 'none', background: 'none', cursor: 'pointer', color: aba === k ? '#6366f1' : '#64748b', borderBottom: aba === k ? '2px solid #6366f1' : '2px solid transparent', marginBottom: -1 }}>{l}</button>
+        {([['lista', 'ðŸ“‹ Lista'], ['ranking', 'ðŸ† Ranking']] as const).map(([k, l]) => (
+          <button key={k} onClick={() => setAba(k)} style={{ padding: '10px 18px', fontSize: 13, fontWeight: aba === k ? 600 : 400, border: 'none', background: 'none', cursor: 'pointer', color: aba === k ? '#2563eb' : '#64748b', borderBottom: aba === k ? '2px solid #2563eb' : '2px solid transparent', marginBottom: -1 }}>{l}</button>
         ))}
       </div>
 
@@ -93,9 +93,9 @@ export default function FornecedoresPage() {
         loading ? <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Carregando...</div> :
         fornecedores.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 60 }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>🏭</div>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>ðŸ­</div>
             <p style={{ fontSize: 14, fontWeight: 500, color: '#374151' }}>Nenhum fornecedor cadastrado</p>
-            <button onClick={abrirNovo} style={{ marginTop: 16, padding: '9px 18px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>+ Cadastrar</button>
+            <button onClick={abrirNovo} style={{ marginTop: 16, padding: '9px 18px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>+ Cadastrar</button>
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
@@ -108,14 +108,14 @@ export default function FornecedoresPage() {
                     <span style={{ fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20, background: f.ativo ? '#ecfdf5' : '#f1f5f9', color: f.ativo ? '#065f46' : '#94a3b8' }}>{f.ativo ? 'Ativo' : 'Inativo'}</span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 10 }}>
-                    {f.telefone && <p style={{ fontSize: 12, color: '#64748b' }}>📞 {f.telefone}</p>}
-                    {f.email && <p style={{ fontSize: 12, color: '#64748b' }}>✉ {f.email}</p>}
-                    <p style={{ fontSize: 12, color: '#64748b' }}>⏱ Prazo: {f.prazo_entrega} dia{f.prazo_entrega > 1 ? 's' : ''}</p>
+                    {f.telefone && <p style={{ fontSize: 12, color: '#64748b' }}>ðŸ“ž {f.telefone}</p>}
+                    {f.email && <p style={{ fontSize: 12, color: '#64748b' }}>âœ‰ {f.email}</p>}
+                    <p style={{ fontSize: 12, color: '#64748b' }}>â± Prazo: {f.prazo_entrega} dia{f.prazo_entrega > 1 ? 's' : ''}</p>
                   </div>
                   {r && r.total_os > 0 && (
                     <div style={{ background: taxaBg(r.taxa_garantia_pct), border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', marginBottom: 10, display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
                       <span style={{ color: '#64748b' }}>Taxa de garantia</span>
-                      <span style={{ fontWeight: 600, color: taxaColor(r.taxa_garantia_pct) }}>{r.taxa_garantia_pct !== null ? `${r.taxa_garantia_pct}%` : '—'} <span style={{ color: '#94a3b8', fontWeight: 400 }}>({r.total_os} OS)</span></span>
+                      <span style={{ fontWeight: 600, color: taxaColor(r.taxa_garantia_pct) }}>{r.taxa_garantia_pct !== null ? `${r.taxa_garantia_pct}%` : 'â€”'} <span style={{ color: '#94a3b8', fontWeight: 400 }}>({r.total_os} OS)</span></span>
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: 6 }}>
@@ -132,10 +132,10 @@ export default function FornecedoresPage() {
       {aba === 'ranking' && (
         <div>
           <div style={{ background: '#fef3c7', border: '1px solid #fef08a', borderRadius: 8, padding: '10px 16px', marginBottom: 16, fontSize: 13, color: '#92400e' }}>
-            📊 Ranking automático baseado em OS e garantias. Menor taxa de garantia = maior confiabilidade.
+            ðŸ“Š Ranking automÃ¡tico baseado em OS e garantias. Menor taxa de garantia = maior confiabilidade.
           </div>
           {ranking.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Nenhum dado ainda. O ranking cresce conforme OS e garantias são registradas.</div>
+            <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Nenhum dado ainda. O ranking cresce conforme OS e garantias sÃ£o registradas.</div>
           ) : (
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -151,7 +151,7 @@ export default function FornecedoresPage() {
                     const score = r.total_os === 0 ? null : Math.max(0, 100 - (r.taxa_garantia_pct ?? 0) * 3)
                     return (
                       <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '12px 16px', fontSize: 16 }}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}</td>
+                        <td style={{ padding: '12px 16px', fontSize: 16 }}>{i === 0 ? 'ðŸ¥‡' : i === 1 ? 'ðŸ¥ˆ' : i === 2 ? 'ðŸ¥‰' : `#${i + 1}`}</td>
                         <td style={{ padding: '12px 16px', fontWeight: 500, color: '#0f172a' }}>{r.nome}</td>
                         <td style={{ padding: '12px 16px', color: '#374151' }}>{r.total_os}</td>
                         <td style={{ padding: '12px 16px', color: '#374151' }}>{r.total_garantias}</td>
@@ -185,7 +185,7 @@ export default function FornecedoresPage() {
           <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 480 }}>
             <div style={{ padding: '18px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>{editId ? 'Editar fornecedor' : 'Novo fornecedor'}</h2>
-              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#94a3b8' }}>×</button>
+              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#94a3b8' }}>Ã—</button>
             </div>
             <div style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div><label style={lbl}>Nome *</label><input style={inp} value={fNome} onChange={e => setFNome(e.target.value)} placeholder="Nome do fornecedor" /></div>
@@ -193,13 +193,13 @@ export default function FornecedoresPage() {
                 <div><label style={lbl}>Contato</label><input style={inp} value={fContato} onChange={e => setFContato(e.target.value)} placeholder="Nome da pessoa" /></div>
                 <div><label style={lbl}>Telefone / WhatsApp</label><input style={inp} value={fTelefone} onChange={e => setFTelefone(e.target.value)} placeholder="(11) 99999-9999" /></div>
                 <div><label style={lbl}>E-mail</label><input style={inp} value={fEmail} onChange={e => setFEmail(e.target.value)} placeholder="email@fornecedor.com" /></div>
-                <div><label style={lbl}>Prazo médio (dias)</label><input style={inp} type="number" value={fPrazo} onChange={e => setFPrazo(e.target.value)} min="1" /></div>
+                <div><label style={lbl}>Prazo mÃ©dio (dias)</label><input style={inp} type="number" value={fPrazo} onChange={e => setFPrazo(e.target.value)} min="1" /></div>
               </div>
-              <div><label style={lbl}>Observações</label><textarea style={{ ...inp, minHeight: 70, resize: 'vertical' }} value={fObs} onChange={e => setFObs(e.target.value)} placeholder="Condições de pagamento, política de troca..." /></div>
+              <div><label style={lbl}>ObservaÃ§Ãµes</label><textarea style={{ ...inp, minHeight: 70, resize: 'vertical' }} value={fObs} onChange={e => setFObs(e.target.value)} placeholder="CondiÃ§Ãµes de pagamento, polÃ­tica de troca..." /></div>
             </div>
             <div style={{ padding: '12px 22px', borderTop: '1px solid #f1f5f9', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button onClick={() => setShowModal(false)} style={{ padding: '8px 16px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer', color: '#374151' }}>Cancelar</button>
-              <button onClick={salvar} disabled={saving} style={{ padding: '8px 18px', background: saving ? '#a5b4fc' : '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer' }}>{saving ? 'Salvando...' : editId ? 'Salvar' : 'Cadastrar'}</button>
+              <button onClick={salvar} disabled={saving} style={{ padding: '8px 18px', background: saving ? '#93c5fd' : '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer' }}>{saving ? 'Salvando...' : editId ? 'Salvar' : 'Cadastrar'}</button>
             </div>
           </div>
         </div>
