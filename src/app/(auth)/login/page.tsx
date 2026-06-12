@@ -1,10 +1,21 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+
+function VerifiedBanner() {
+  const searchParams = useSearchParams()
+  if (searchParams.get('verified') !== '1') return null
+  return (
+    <div className="verified-banner">
+      <span style={{ fontSize: 18 }}>✅</span>
+      E-mail verificado! Faça login para acessar o sistema.
+    </div>
+  )
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -12,8 +23,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const verified = searchParams.get('verified') === '1'
   const supabase = createClient()
 
   async function handleLogin(e: React.FormEvent) {
@@ -202,12 +211,9 @@ export default function LoginPage() {
           <h2 className="login-h">Bem-vindo de volta</h2>
           <p className="login-sub">Entre com suas credenciais para acessar o sistema</p>
 
-          {verified && (
-            <div className="verified-banner">
-              <span style={{ fontSize: 18 }}>✅</span>
-              E-mail verificado! Faça login para acessar o sistema.
-            </div>
-          )}
+          <Suspense>
+            <VerifiedBanner />
+          </Suspense>
 
           <form onSubmit={handleLogin}>
             <div className="field">
