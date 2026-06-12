@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 export const dynamic = 'force-dynamic'
 
 import { useState, useEffect, useCallback } from 'react'
@@ -10,29 +10,29 @@ type Perfil = {
   papel: string; ativo: boolean; avatar_cor: string
 }
 
-// Cargo 'admin' é imutável — definido no banco, nunca alterável pelo app
-// Apenas gerente e abaixo podem ser atribuídos/alterados pela UI
+// Cargo 'admin' Ã© imutÃ¡vel â€” definido no banco, nunca alterÃ¡vel pelo app
+// Apenas gerente e abaixo podem ser atribuÃ­dos/alterados pela UI
 const HIERARQUIA = ['admin', 'gerente', 'tecnico', 'atendente', 'caixa'] as const
 type Cargo = typeof HIERARQUIA[number]
-const CARGOS_UI = ['gerente', 'tecnico', 'atendente', 'caixa'] as const // admin excluído da UI
+const CARGOS_UI = ['gerente', 'tecnico', 'atendente', 'caixa'] as const // admin excluÃ­do da UI
 
 const CARGO_LABEL: Record<string, string> = {
   admin:     'Administrador',
   gerente:   'Gerente',
-  tecnico:   'Técnico',
+  tecnico:   'TÃ©cnico',
   atendente: 'Atendente',
   caixa:     'Caixa',
 }
 
 const CARGO_COR: Record<string, { bg: string; color: string }> = {
-  admin:     { bg: '#e0e7ff', color: '#3730a3' },
+  admin:     { bg: '#dbeafe', color: '#1d4ed8' },
   gerente:   { bg: '#fef3c7', color: '#92400e' },
   tecnico:   { bg: '#ecfdf5', color: '#065f46' },
   atendente: { bg: '#f0f9ff', color: '#0369a1' },
-  caixa:     { bg: '#faf5ff', color: '#7e22ce' },
+  caixa:     { bg: '#eff6ff', color: '#7e22ce' },
 }
 
-const CORES = ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#0ea5e9','#ec4899','#14b8a6']
+const CORES = ['#2563eb','#10b981','#f59e0b','#ef4444','#8b5cf6','#0ea5e9','#ec4899','#14b8a6']
 
 const inp: React.CSSProperties = {
   width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0',
@@ -61,7 +61,7 @@ export default function UsuariosPage() {
   const [fEmail, setFEmail] = useState('')
   const [fSenha, setFSenha] = useState('')
   const [fPapel, setFPapel] = useState<Cargo>('tecnico')
-  const [fCor, setFCor] = useState('#6366f1')
+  const [fCor, setFCor] = useState('#2563eb')
   const [fAtivo, setFAtivo] = useState(true)
 
   const fetchAll = useCallback(async () => {
@@ -83,7 +83,7 @@ export default function UsuariosPage() {
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
-  // Cargos que o usuário atual pode atribuir — 'admin' NUNCA aparece na UI
+  // Cargos que o usuÃ¡rio atual pode atribuir â€” 'admin' NUNCA aparece na UI
   function cargosAtribuiveis(): typeof CARGOS_UI[number][] {
     if (meuCargo === 'admin') return [...CARGOS_UI]
     if (meuCargo === 'gerente') return CARGOS_UI.filter(c => c !== 'gerente')
@@ -95,7 +95,7 @@ export default function UsuariosPage() {
   }
 
   function podeEditar(perfil: Perfil) {
-    // Admin nunca pode ser editado — cargo imutável pelo app
+    // Admin nunca pode ser editado â€” cargo imutÃ¡vel pelo app
     if (perfil.papel === 'admin') return false
     if (meuCargo === 'admin') return true
     if (meuCargo === 'gerente') return !['admin', 'gerente'].includes(perfil.papel)
@@ -105,22 +105,22 @@ export default function UsuariosPage() {
   function abrirNovo() {
     const cargos = cargosAtribuiveis()
     setFNome(''); setFEmail(''); setFSenha('')
-    setFPapel(cargos[0] ?? 'tecnico'); setFCor('#6366f1'); setFAtivo(true)
+    setFPapel(cargos[0] ?? 'tecnico'); setFCor('#2563eb'); setFAtivo(true)
     setEditId(null); setErro(''); setSucesso(''); setShowModal(true)
   }
 
   function abrirEdit(p: Perfil) {
     setFNome(p.nome); setFEmail(p.email ?? ''); setFSenha('')
     setFPapel((p.papel === 'admin' ? 'gerente' : p.papel) as Cargo)
-    setFCor(p.avatar_cor ?? '#6366f1'); setFAtivo(p.ativo)
+    setFCor(p.avatar_cor ?? '#2563eb'); setFAtivo(p.ativo)
     setEditId(p.id); setErro(''); setSucesso(''); setShowModal(true)
   }
 
   async function salvar() {
-    if (!fNome.trim()) { setErro('Nome é obrigatório.'); return }
-    if (!editId && !fEmail.trim()) { setErro('E-mail é obrigatório.'); return }
+    if (!fNome.trim()) { setErro('Nome Ã© obrigatÃ³rio.'); return }
+    if (!editId && !fEmail.trim()) { setErro('E-mail Ã© obrigatÃ³rio.'); return }
     if (!editId && fSenha.length < 6) { setErro('Senha deve ter pelo menos 6 caracteres.'); return }
-    // 'admin' nunca pode ser atribuído pelo app — imutável
+    // 'admin' nunca pode ser atribuÃ­do pelo app â€” imutÃ¡vel
 
     setSaving(true); setErro(''); setSucesso('')
 
@@ -129,7 +129,7 @@ export default function UsuariosPage() {
         .update({ nome: fNome.trim(), papel: fPapel, avatar_cor: fCor, ativo: fAtivo })
         .eq('id', editId)
       if (error) { setErro('Erro ao salvar: ' + error.message); setSaving(false); return }
-      setSucesso('Usuário atualizado com sucesso!')
+      setSucesso('UsuÃ¡rio atualizado com sucesso!')
     } else {
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: fEmail.trim(), password: fSenha,
@@ -141,8 +141,8 @@ export default function UsuariosPage() {
           id: authData.user.id, nome: fNome.trim(), email: fEmail.trim(),
           papel: fPapel, avatar_cor: fCor, ativo: true,
         })
-        if (perfilError) { setErro('Usuário criado mas erro no perfil: ' + perfilError.message); setSaving(false); return }
-        setSucesso(`Usuário ${fNome} criado! E-mail de confirmação enviado para ${fEmail}.`)
+        if (perfilError) { setErro('UsuÃ¡rio criado mas erro no perfil: ' + perfilError.message); setSaving(false); return }
+        setSucesso(`UsuÃ¡rio ${fNome} criado! E-mail de confirmaÃ§Ã£o enviado para ${fEmail}.`)
       }
     }
 
@@ -153,7 +153,7 @@ export default function UsuariosPage() {
   async function toggleAtivo(p: Perfil) {
     // Admin nunca pode ser desativado pelo app
     if (p.papel === 'admin') {
-      alert('O Administrador fundador não pode ser desativado pelo app.')
+      alert('O Administrador fundador nÃ£o pode ser desativado pelo app.')
       return
     }
     await supabase.from('perfis').update({ ativo: !p.ativo }).eq('id', p.id)
@@ -169,16 +169,16 @@ export default function UsuariosPage() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 600, color: '#0f172a', letterSpacing: '-0.02em' }}>Usuários</h1>
+          <h1 style={{ fontSize: 20, fontWeight: 600, color: '#0f172a', letterSpacing: '-0.02em' }}>UsuÃ¡rios</h1>
           <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>{ativos} de {maxUsuarios} slots utilizados</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <Link href="/configuracoes?menu=permissoes" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, color: '#374151', textDecoration: 'none', background: '#fff' }}>
-            🔐 Permissões por cargo
+            ðŸ” PermissÃµes por cargo
           </Link>
           {podeCriar() && (
-            <button onClick={abrirNovo} disabled={slots <= 0} style={{ padding: '9px 18px', background: slots <= 0 ? '#e2e8f0' : '#6366f1', color: slots <= 0 ? '#94a3b8' : '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: slots <= 0 ? 'not-allowed' : 'pointer' }}>
-              {slots <= 0 ? 'Limite atingido' : '+ Novo usuário'}
+            <button onClick={abrirNovo} disabled={slots <= 0} style={{ padding: '9px 18px', background: slots <= 0 ? '#e2e8f0' : '#2563eb', color: slots <= 0 ? '#94a3b8' : '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: slots <= 0 ? 'not-allowed' : 'pointer' }}>
+              {slots <= 0 ? 'Limite atingido' : '+ Novo usuÃ¡rio'}
             </button>
           )}
         </div>
@@ -186,9 +186,9 @@ export default function UsuariosPage() {
 
       {/* Info hierarquia */}
       <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, padding: '10px 16px', marginBottom: 20, fontSize: 13, color: '#0369a1' }}>
-        🔐 O <strong>Administrador Fundador</strong> é imutável e não pode ser alterado pelo app.
-        Gerentes podem criar e editar técnicos, atendentes e caixas.
-        Para alterar permissões por cargo, acesse <Link href="/configuracoes?menu=permissoes" style={{ color: '#6366f1', fontWeight: 600 }}>Configurações → Permissões</Link>.
+        ðŸ” O <strong>Administrador Fundador</strong> Ã© imutÃ¡vel e nÃ£o pode ser alterado pelo app.
+        Gerentes podem criar e editar tÃ©cnicos, atendentes e caixas.
+        Para alterar permissÃµes por cargo, acesse <Link href="/configuracoes?menu=permissoes" style={{ color: '#2563eb', fontWeight: 600 }}>ConfiguraÃ§Ãµes â†’ PermissÃµes</Link>.
       </div>
 
       {/* Slots */}
@@ -198,7 +198,7 @@ export default function UsuariosPage() {
           <span style={{ fontWeight: 600, color: slots <= 2 ? '#ef4444' : '#374151' }}>{ativos}/{maxUsuarios}</span>
         </div>
         <div style={{ height: 6, background: '#f1f5f9', borderRadius: 4, overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${(ativos / maxUsuarios) * 100}%`, background: slots <= 2 ? '#ef4444' : '#6366f1', borderRadius: 4 }} />
+          <div style={{ height: '100%', width: `${(ativos / maxUsuarios) * 100}%`, background: slots <= 2 ? '#ef4444' : '#2563eb', borderRadius: 4 }} />
         </div>
       </div>
 
@@ -210,7 +210,7 @@ export default function UsuariosPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                {['Usuário', 'Cargo', 'Status', ''].map(h => (
+                {['UsuÃ¡rio', 'Cargo', 'Status', ''].map(h => (
                   <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
                 ))}
               </tr>
@@ -222,13 +222,13 @@ export default function UsuariosPage() {
                   <tr key={p.id} style={{ borderBottom: '1px solid #f1f5f9', opacity: p.ativo ? 1 : 0.5 }}>
                     <td style={{ padding: '12px 16px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{ width: 34, height: 34, borderRadius: '50%', background: p.avatar_cor ?? '#6366f1', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
+                        <div style={{ width: 34, height: 34, borderRadius: '50%', background: p.avatar_cor ?? '#2563eb', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
                           {p.nome.charAt(0).toUpperCase()}
                         </div>
                         <div>
                           <p style={{ fontWeight: 500, color: '#0f172a' }}>
                             {p.nome}
-                            {p.id === meuId && <span style={{ fontSize: 11, color: '#6366f1', marginLeft: 6 }}>(você)</span>}
+                            {p.id === meuId && <span style={{ fontSize: 11, color: '#2563eb', marginLeft: 6 }}>(vocÃª)</span>}
                           </p>
                           {p.email && <p style={{ fontSize: 11, color: '#94a3b8' }}>{p.email}</p>}
                         </div>
@@ -240,8 +240,8 @@ export default function UsuariosPage() {
                           {CARGO_LABEL[p.papel] ?? p.papel}
                         </span>
                         {p.papel === 'admin' && (
-                          <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, background: '#1e1b4b', color: '#a5b4fc', fontWeight: 600 }}>
-                            🔐 Fundador
+                          <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, background: '#1e1b4b', color: '#93c5fd', fontWeight: 600 }}>
+                            ðŸ” Fundador
                           </span>
                         )}
                       </div>
@@ -276,8 +276,8 @@ export default function UsuariosPage() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }} onClick={() => setShowModal(false)}>
           <div style={{ background: '#fff', borderRadius: 14, width: 440, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }} onClick={e => e.stopPropagation()}>
             <div style={{ padding: '18px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>{editId ? 'Editar usuário' : 'Novo usuário'}</h2>
-              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#94a3b8' }}>×</button>
+              <h2 style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>{editId ? 'Editar usuÃ¡rio' : 'Novo usuÃ¡rio'}</h2>
+              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#94a3b8' }}>Ã—</button>
             </div>
 
             <div style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -286,7 +286,7 @@ export default function UsuariosPage() {
 
               <div>
                 <label style={lbl}>Nome completo *</label>
-                <input style={inp} value={fNome} onChange={e => setFNome(e.target.value)} placeholder="Nome do funcionário" />
+                <input style={inp} value={fNome} onChange={e => setFNome(e.target.value)} placeholder="Nome do funcionÃ¡rio" />
               </div>
 
               {!editId && (
@@ -297,7 +297,7 @@ export default function UsuariosPage() {
                   </div>
                   <div>
                     <label style={lbl}>Senha inicial *</label>
-                    <input style={inp} type="password" value={fSenha} onChange={e => setFSenha(e.target.value)} placeholder="Mínimo 6 caracteres" />
+                    <input style={inp} type="password" value={fSenha} onChange={e => setFSenha(e.target.value)} placeholder="MÃ­nimo 6 caracteres" />
                   </div>
                 </>
               )}
@@ -323,13 +323,13 @@ export default function UsuariosPage() {
               {editId && (
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
                   <input type="checkbox" checked={fAtivo} onChange={e => setFAtivo(e.target.checked)} />
-                  Usuário ativo
+                  UsuÃ¡rio ativo
                 </label>
               )}
 
               <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#0369a1' }}>
-                💡 Para ajustar as permissões deste cargo, acesse{' '}
-                <Link href="/configuracoes?menu=permissoes" style={{ color: '#6366f1', fontWeight: 600 }} onClick={() => setShowModal(false)}>Configurações → Permissões</Link>.
+                ðŸ’¡ Para ajustar as permissÃµes deste cargo, acesse{' '}
+                <Link href="/configuracoes?menu=permissoes" style={{ color: '#2563eb', fontWeight: 600 }} onClick={() => setShowModal(false)}>ConfiguraÃ§Ãµes â†’ PermissÃµes</Link>.
               </div>
             </div>
 
@@ -338,8 +338,8 @@ export default function UsuariosPage() {
                 {sucesso ? 'Fechar' : 'Cancelar'}
               </button>
               {!sucesso && (
-                <button onClick={salvar} disabled={saving} style={{ padding: '8px 18px', background: saving ? '#a5b4fc' : '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer' }}>
-                  {saving ? 'Salvando...' : editId ? 'Salvar' : 'Criar usuário'}
+                <button onClick={salvar} disabled={saving} style={{ padding: '8px 18px', background: saving ? '#93c5fd' : '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer' }}>
+                  {saving ? 'Salvando...' : editId ? 'Salvar' : 'Criar usuÃ¡rio'}
                 </button>
               )}
             </div>
@@ -349,3 +349,4 @@ export default function UsuariosPage() {
     </div>
   )
 }
+
