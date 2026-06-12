@@ -74,7 +74,7 @@ function highlight(text: string, query: string) {
   return (
     <span>
       {text.slice(0, idx)}
-      <strong style={{ color: '#4338ca', fontWeight: 600 }}>{text.slice(idx, idx + query.length)}</strong>
+      <strong style={{ color: '#2563eb', fontWeight: 600 }}>{text.slice(idx, idx + query.length)}</strong>
       {text.slice(idx + query.length)}
     </span>
   )
@@ -110,12 +110,12 @@ function Dropdown({ results, query, field, onSelect, visible }: DropdownProps) {
             background: '#fff',
             transition: 'background 0.1s',
           }}
-          onMouseEnter={e => (e.currentTarget.style.background = '#f5f3ff')}
+          onMouseEnter={e => (e.currentTarget.style.background = '#eff6ff')}
           onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
         >
           <div style={{
             width: 32, height: 32, borderRadius: '50%',
-            background: '#e0e7ff', color: '#4338ca',
+            background: '#dbeafe', color: '#2563eb',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 13, fontWeight: 600, flexShrink: 0,
           }}>{c.nome.charAt(0).toUpperCase()}</div>
@@ -128,7 +128,7 @@ function Dropdown({ results, query, field, onSelect, visible }: DropdownProps) {
               {c.telefone && <span>{field === 'telefone' ? highlight(formatPhone(c.telefone), query) : formatPhone(c.telefone)}</span>}
             </div>
           </div>
-          <span style={{ fontSize: 11, color: '#a5b4fc', fontWeight: 500 }}>usar →</span>
+          <span style={{ fontSize: 11, color: '#93c5fd', fontWeight: 500 }}>usar →</span>
         </div>
       ))}
     </div>
@@ -330,7 +330,7 @@ export default function ClientesPage() {
               <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>{clientes.length} cadastrados</p>
             </div>
             <button onClick={openNew} style={{
-              padding: '9px 18px', background: '#6366f1', color: '#fff',
+              padding: '9px 18px', background: '#2563eb', color: '#fff',
               border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer',
             }}>+ Novo cliente</button>
           </div>
@@ -354,14 +354,14 @@ export default function ClientesPage() {
           ) : clientes.map(c => (
             <div key={c.id} onClick={() => setSelectedCliente(c)} style={{
               padding: '14px 28px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer',
-              background: selectedCliente?.id === c.id ? '#f5f3ff' : '#fff',
-              borderLeft: selectedCliente?.id === c.id ? '3px solid #6366f1' : '3px solid transparent',
+              background: selectedCliente?.id === c.id ? '#eff6ff' : '#fff',
+              borderLeft: selectedCliente?.id === c.id ? '3px solid #2563eb' : '3px solid transparent',
               transition: 'all 0.1s',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{
                   width: 38, height: 38, borderRadius: '50%',
-                  background: '#e0e7ff', color: '#4338ca',
+                  background: '#dbeafe', color: '#2563eb',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 14, fontWeight: 600, flexShrink: 0,
                 }}>{c.nome.charAt(0).toUpperCase()}</div>
@@ -388,7 +388,7 @@ export default function ClientesPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
               <div style={{
                 width: 52, height: 52, borderRadius: '50%',
-                background: '#e0e7ff', color: '#4338ca',
+                background: '#dbeafe', color: '#2563eb',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 20, fontWeight: 600,
               }}>{selectedCliente.nome.charAt(0).toUpperCase()}</div>
@@ -428,7 +428,7 @@ export default function ClientesPage() {
                 Cadastrado em {new Date(selectedCliente.created_at).toLocaleDateString('pt-BR')}
               </p>
               <button style={{
-                width: '100%', padding: '10px', background: '#6366f1', color: '#fff',
+                width: '100%', padding: '10px', background: '#2563eb', color: '#fff',
                 border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer',
               }}>+ Nova OS para este cliente</button>
             </div>
@@ -594,7 +594,7 @@ export default function ClientesPage() {
                 fontSize: 13, fontWeight: 500, background: '#fff', cursor: 'pointer', color: '#374151',
               }}>Cancelar</button>
               <button onClick={handleSave} disabled={saving} style={{
-                padding: '9px 20px', background: saving ? '#a5b4fc' : '#6366f1',
+                padding: '9px 20px', background: saving ? '#93c5fd' : '#2563eb',
                 color: '#fff', border: 'none', borderRadius: 8,
                 fontSize: 13, fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer',
               }}>{saving ? 'Salvando...' : editId ? 'Salvar alterações' : 'Cadastrar cliente'}</button>
