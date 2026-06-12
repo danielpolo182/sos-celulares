@@ -28,9 +28,10 @@ export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname
   const isLoginPage = path === '/login'
   const isRoot = path === '/'
+  const isCadastro = path === '/cadastro'
 
   // Não autenticado — redireciona para login
-  if (!user && !isLoginPage && !isRoot) {
+  if (!user && !isLoginPage && !isRoot && !isCadastro) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)

@@ -13,6 +13,7 @@ export default function CadastroPage() {
   const [confirma, setConfirma] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [sucesso, setSucesso] = useState(false)
   const router = useRouter()
   const supabase = createClient()
 
@@ -23,11 +24,13 @@ export default function CadastroPage() {
     if (senha.length < 6) { setError('A senha deve ter pelo menos 6 caracteres.'); return }
     if (senha !== confirma) { setError('As senhas não coincidem.'); return }
     setLoading(true)
-    const { error: err } = await supabase.auth.signUp({
+
+    const { data, error: err } = await supabase.auth.signUp({
       email: email.trim(),
       password: senha,
       options: { data: { nome: nome.trim() } },
     })
+
     if (err) {
       setError(
         err.message === 'User already registered'
@@ -37,8 +40,18 @@ export default function CadastroPage() {
       setLoading(false)
       return
     }
-    router.push('/dashboard')
-    router.refresh()
+
+    // Se a sessão já foi criada (confirmação de e-mail desabilitada no Supabase),
+    // redireciona direto para o dashboard.
+    if (data.session) {
+      router.push('/dashboard')
+      router.refresh()
+      return
+    }
+
+    // Confirmação de e-mail habilitada — mostrar tela de sucesso.
+    setSucesso(true)
+    setLoading(false)
   }
 
   return (
@@ -64,44 +77,69 @@ export default function CadastroPage() {
         .submit-btn:disabled { opacity: 0.55; cursor: not-allowed; }
         .cad-footer { margin-top: 24px; text-align: center; font-size: 13px; color: #64748b; }
         .cad-footer a { color: #2563eb; font-weight: 500; text-decoration: none; }
+        .sucesso-icon { font-size: 48px; margin-bottom: 20px; }
+        .sucesso-h { font-size: 22px; font-weight: 700; color: #0f172a; margin-bottom: 10px; }
+        .sucesso-txt { font-size: 14px; color: #475569; line-height: 1.6; margin-bottom: 8px; }
+        .sucesso-email { font-weight: 600; color: #1d4ed8; }
+        .sucesso-nota { font-size: 12px; color: #94a3b8; margin-top: 16px; }
         @media (max-width: 500px) { .cad-card { padding: 36px 24px; } }
       `}</style>
 
       <div className="cad-root">
         <div className="cad-card">
           <Link href="/" className="cad-logo">Octa<em>OS</em></Link>
-          <h2 className="cad-h">Crie sua conta</h2>
-          <p className="cad-sub">Comece agora, grátis por 7 dias.</p>
-          <div className="cad-trial">🎉 7 dias grátis · Sem cartão de crédito · Cancele quando quiser</div>
 
-          <form onSubmit={handleCadastro}>
-            <div className="field">
-              <label className="field-label">Nome completo</label>
-              <input className="field-input" type="text" value={nome} onChange={e => setNome(e.target.value)} placeholder="Seu nome" required autoComplete="name" />
-            </div>
-            <div className="field">
-              <label className="field-label">E-mail</label>
-              <input className="field-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="seu@email.com" required autoComplete="email" />
-            </div>
-            <div className="field">
-              <label className="field-label">Senha</label>
-              <input className="field-input" type="password" value={senha} onChange={e => setSenha(e.target.value)} placeholder="Mínimo 6 caracteres" required autoComplete="new-password" />
-            </div>
-            <div className="field">
-              <label className="field-label">Confirmar senha</label>
-              <input className="field-input" type="password" value={confirma} onChange={e => setConfirma(e.target.value)} placeholder="Repita a senha" required autoComplete="new-password" />
-            </div>
+          {sucesso ? (
+            <>
+              <div className="sucesso-icon">📬</div>
+              <h2 className="sucesso-h">Verifique seu e-mail</h2>
+              <p className="sucesso-txt">
+                Enviamos um link de confirmação para{' '}
+                <span className="sucesso-email">{email}</span>.
+                Clique no link para ativar sua conta e acessar o sistema.
+              </p>
+              <p className="sucesso-txt">O link expira em 24 horas.</p>
+              <p className="sucesso-nota">
+                Não recebeu? Verifique a pasta de spam ou{' '}
+                <a href="/cadastro" style={{ color: '#2563eb' }}>tente novamente</a>.
+              </p>
+            </>
+          ) : (
+            <>
+              <h2 className="cad-h">Crie sua conta</h2>
+              <p className="cad-sub">Comece agora, grátis por 7 dias.</p>
+              <div className="cad-trial">🎉 7 dias grátis · Sem cartão de crédito · Cancele quando quiser</div>
 
-            {error && <div className="error-box">{error}</div>}
+              <form onSubmit={handleCadastro}>
+                <div className="field">
+                  <label className="field-label">Nome completo</label>
+                  <input className="field-input" type="text" value={nome} onChange={e => setNome(e.target.value)} placeholder="Seu nome" required autoComplete="name" />
+                </div>
+                <div className="field">
+                  <label className="field-label">E-mail</label>
+                  <input className="field-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="seu@email.com" required autoComplete="email" />
+                </div>
+                <div className="field">
+                  <label className="field-label">Senha</label>
+                  <input className="field-input" type="password" value={senha} onChange={e => setSenha(e.target.value)} placeholder="Mínimo 6 caracteres" required autoComplete="new-password" />
+                </div>
+                <div className="field">
+                  <label className="field-label">Confirmar senha</label>
+                  <input className="field-input" type="password" value={confirma} onChange={e => setConfirma(e.target.value)} placeholder="Repita a senha" required autoComplete="new-password" />
+                </div>
 
-            <button type="submit" className="submit-btn" disabled={loading}>
-              {loading ? 'Criando conta...' : 'Criar conta gratuita →'}
-            </button>
-          </form>
+                {error && <div className="error-box">{error}</div>}
 
-          <div className="cad-footer">
-            Já tem conta? <Link href="/login">Entrar no sistema</Link>
-          </div>
+                <button type="submit" className="submit-btn" disabled={loading}>
+                  {loading ? 'Criando conta...' : 'Criar conta gratuita →'}
+                </button>
+              </form>
+
+              <div className="cad-footer">
+                Já tem conta? <Link href="/login">Entrar no sistema</Link>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </>
