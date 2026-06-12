@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'SOS Celulares — Sistema de Gestão',
+  title: 'OctaOS — Sistema de Gestão',
   description: 'ERP para assistência técnica de celulares',
   manifest: '/manifest.json',
 }

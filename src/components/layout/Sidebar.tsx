@@ -221,14 +221,29 @@ export default function Sidebar() {
 
         {/* Logo */}
         <div style={{ padding: '16px 14px 12px', borderBottom: '1px solid rgba(255,255,255,0.05)', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <i className="ti ti-device-mobile" style={{ color: '#fff', fontSize: 15 }} aria-hidden="true" />
-            </div>
-            <div style={{ overflow: 'hidden' }}>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: '#f1f5f9', letterSpacing: '-0.025em', whiteSpace: 'nowrap' }}>SOS Celulares</div>
-              <div style={{ fontSize: 10, color: '#4b5563', marginTop: 1 }}>gestão · assistência</div>
-            </div>
+          <link rel="preconnect" href="https://fonts.googleapis.com" />
+          <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" />
+          <div style={{
+            fontFamily: "'Bebas Neue', sans-serif",
+            fontWeight: 400,
+            fontSize: 24,
+            letterSpacing: '0.03em',
+            lineHeight: 1,
+            color: '#dff0ff',
+            display: 'inline-flex',
+            alignItems: 'center',
+          }}>
+            Octa
+            <span style={{
+              color: '#020c12',
+              background: '#0df5d8',
+              padding: '0.04em 0.18em 0.06em',
+              borderRadius: '0.12em',
+              marginLeft: '0.1em',
+              display: 'inline-block',
+              letterSpacing: '0.01em',
+              fontWeight: 900,
+            }}>OS</span>
           </div>
         </div>
 
