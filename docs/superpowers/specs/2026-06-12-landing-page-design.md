@@ -19,7 +19,7 @@ Página de vendas e entrada do sistema OctaOS. Serve dois propósitos:
 | Rota | Arquivo | Descrição |
 |------|---------|-----------|
 | `/` | `src/app/page.tsx` | Landing page (substitui redirect atual) |
-| `/cadastro` | `src/app/cadastro/page.tsx` | Página de cadastro do trial (nova) |
+| `/cadastro` | `src/app/(auth)/cadastro/page.tsx` | Página de cadastro do trial (nova, mesmo route group do login) |
 | `/login` | `src/app/(auth)/login/page.tsx` | Já existe — sem alterações |
 
 A landing page usa o layout raiz `src/app/layout.tsx` (sem sidebar nem topbar — esses ficam apenas no `(app)/layout.tsx`). Nenhuma alteração de layout é necessária.
@@ -150,7 +150,7 @@ Página simples de registro de trial. Mesmo estilo visual do `/login`.
 
 **Nota:** O controle de trial (7 dias) será gerenciado via campo `trial_expira_em` na tabela `perfis` ou via metadata do usuário no Supabase. Fora do escopo desta landing — a página de cadastro apenas cria a conta e redireciona.
 
-**Visual:** card centralizado, mesmo padrão do login (420px, fundo `#f1f5f9`, card branco com sombra).
+**Visual:** card centralizado, mesmo padrão do login (420px, fundo `#f1f5f9`, card branco com sombra). Usa o mesmo `src/app/(auth)/layout.tsx` do login — sem sidebar, fundo cinza claro.
 
 ---
 
