@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 export const dynamic = 'force-dynamic'
 
 import { useState, useEffect, useCallback } from 'react'
@@ -227,7 +227,7 @@ export default function FechamentoPage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: '#f1f5f9', borderRadius: 10, padding: 4, width: 'fit-content' }}>
-        {([['fechar', '📋 Fechar o dia'], ['historico', '📜 Histórico']] as const).map(([key, label]) => (
+        {([['fechar', 'ðŸ“‹ Fechar o dia'], ['historico', 'ðŸ“œ HistÃ³rico']] as const).map(([key, label]) => (
           <button key={key} onClick={() => setActiveTab(key)} style={{
             padding: '7px 20px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 500, fontFamily: 'inherit',
             background: activeTab === key ? '#fff' : 'transparent',
@@ -237,16 +237,16 @@ export default function FechamentoPage() {
         ))}
       </div>
 
-      {/* ── ABA HISTÓRICO ── */}
+      {/* â”€â”€ ABA HISTÃ“RICO â”€â”€ */}
       {activeTab === 'historico' && (
         <div>
-          <h1 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>Histórico de fechamentos</h1>
+          <h1 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>HistÃ³rico de fechamentos</h1>
           <p style={{ fontSize: 13, color: '#94a3b8', marginBottom: 20 }}>Clique em uma linha para ver os detalhes do snapshot.</p>
           {loadingHist ? (
             <p style={{ color: '#94a3b8', fontSize: 13 }}>Carregando...</p>
           ) : historico.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>
-              <div style={{ fontSize: 36, marginBottom: 12 }}>📜</div>
+              <div style={{ fontSize: 36, marginBottom: 12 }}>ðŸ“œ</div>
               <p>Nenhum fechamento registrado ainda.</p>
             </div>
           ) : (
@@ -254,7 +254,7 @@ export default function FechamentoPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                    {['Data','Status','Caixa abertura','Caixa fechamento','OS entregues','Rotinas','Observações'].map(h => (
+                    {['Data','Status','Caixa abertura','Caixa fechamento','OS entregues','Rotinas','ObservaÃ§Ãµes'].map(h => (
                       <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
@@ -274,14 +274,14 @@ export default function FechamentoPage() {
                         </td>
                         <td style={{ padding: '10px 14px' }}>
                           <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: h.status === 'fechado' ? '#ecfdf5' : '#fef3c7', color: h.status === 'fechado' ? '#065f46' : '#92400e' }}>
-                            {h.status === 'fechado' ? '✓ Fechado' : 'Parcial'}
+                            {h.status === 'fechado' ? 'âœ“ Fechado' : 'Parcial'}
                           </span>
                         </td>
                         <td style={{ padding: '10px 14px', color: '#64748b' }}>R$ {(h.caixa_abertura ?? 0).toFixed(2).replace('.', ',')}</td>
                         <td style={{ padding: '10px 14px', fontWeight: 600, color: '#0f172a' }}>R$ {(h.total_geral ?? 0).toFixed(2).replace('.', ',')}</td>
                         <td style={{ padding: '10px 14px' }}><span style={{ fontSize: 12, background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: 20 }}>{h.os_entregues ?? 0}</span></td>
                         <td style={{ padding: '10px 14px', color: '#64748b' }}>{h.rotinas_feitas ?? 0}/{h.rotinas_total ?? 0}</td>
-                        <td style={{ padding: '10px 14px', fontSize: 12, color: '#94a3b8', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.observacoes ?? '—'}</td>
+                        <td style={{ padding: '10px 14px', fontSize: 12, color: '#94a3b8', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.observacoes ?? 'â€”'}</td>
                       </tr>
                       {expandedId === h.id && (
                         <tr key={h.id + '-exp'} style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
@@ -290,12 +290,12 @@ export default function FechamentoPage() {
                               {[
                                 { l: 'Dinheiro', v: h.total_dinheiro },
                                 { l: 'PIX', v: h.total_pix },
-                                { l: 'Crédito', v: h.total_credito },
-                                { l: 'Débito', v: h.total_debito },
+                                { l: 'CrÃ©dito', v: h.total_credito },
+                                { l: 'DÃ©bito', v: h.total_debito },
                                 { l: 'OS (valor)', v: h.total_os },
                                 { l: 'PDV', v: h.total_pdv },
                                 { l: 'OS abertas', v: h.os_abertas, money: false },
-                                { l: 'OS prontas não ret.', v: h.os_prontas_nao_ret, money: false },
+                                { l: 'OS prontas nÃ£o ret.', v: h.os_prontas_nao_ret, money: false },
                               ].map(m => (
                                 <div key={m.l} style={{ background: '#fff', borderRadius: 8, padding: '10px 14px', border: '1px solid #e2e8f0' }}>
                                   <p style={{ fontSize: 10, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 3 }}>{m.l}</p>
@@ -329,11 +329,11 @@ export default function FechamentoPage() {
           </p>
         </div>
         {!fechado ? (
-          <button onClick={fecharDia} disabled={salvando} style={{ padding: '10px 22px', background: salvando ? '#a5b4fc' : '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-            {salvando ? 'Fechando...' : '🔐 Fechar o dia'}
+          <button onClick={fecharDia} disabled={salvando} style={{ padding: '10px 22px', background: salvando ? '#93c5fd' : '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+            {salvando ? 'Fechando...' : 'ðŸ” Fechar o dia'}
           </button>
         ) : (
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#065f46', background: '#ecfdf5', border: '1px solid #bbf7d0', padding: '8px 16px', borderRadius: 8 }}>✅ Dia fechado</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#065f46', background: '#ecfdf5', border: '1px solid #bbf7d0', padding: '8px 16px', borderRadius: 8 }}>âœ… Dia fechado</span>
         )}
       </div>
 
@@ -344,16 +344,16 @@ export default function FechamentoPage() {
         </div>
         <div style={{ flex: 1 }}>
           <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>
-            {score === 3 ? '✅ Tudo em ordem — pode fechar o dia!' : score === 2 ? '⚠ Quase lá — verifique os pendentes abaixo' : '🔴 Atenção — há itens importantes pendentes'}
+            {score === 3 ? 'âœ… Tudo em ordem â€” pode fechar o dia!' : score === 2 ? 'âš  Quase lÃ¡ â€” verifique os pendentes abaixo' : 'ðŸ”´ AtenÃ§Ã£o â€” hÃ¡ itens importantes pendentes'}
           </p>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             {[
               { ok: waTudo, label: `WhatsApp ${waTudo ? 'enviados' : `(${waPendencias.filter(p => !p.enviado_hoje).length} pendentes)`}` },
-              { ok: rotinasTudo, label: `Rotinas ${rotinasTudo ? 'concluídas' : 'com pendências'}` },
+              { ok: rotinasTudo, label: `Rotinas ${rotinasTudo ? 'concluÃ­das' : 'com pendÃªncias'}` },
               { ok: prodTudo, label: `Produtos ${prodTudo ? 'completos' : `(${produtosIncompletos.length} incompletos)`}` },
             ].map((s, i) => (
               <span key={i} style={{ fontSize: 12, fontWeight: 500, padding: '3px 10px', borderRadius: 20, background: s.ok ? '#ecfdf5' : '#fef2f2', color: s.ok ? '#065f46' : '#991b1b' }}>
-                {s.ok ? '✓' : '✗'} {s.label}
+                {s.ok ? 'âœ“' : 'âœ—'} {s.label}
               </span>
             ))}
           </div>
@@ -364,14 +364,14 @@ export default function FechamentoPage() {
 
         {/* FINANCEIRO */}
         <div style={{ ...card, gridColumn: '1 / -1' }}>
-          <div style={cardTitle}><span>💰</span> Resumo financeiro</div>
+          <div style={cardTitle}><span>ðŸ’°</span> Resumo financeiro</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
             {[
               { label: 'Abertura de caixa', value: fm(totais.caixa_abertura), color: '#64748b' },
               { label: 'Total em dinheiro', value: fm(totais.total_dinheiro), color: '#065f46' },
-              { label: 'Total PIX',         value: fm(totais.total_pix),     color: '#3730a3' },
-              { label: 'Cartão crédito',    value: fm(totais.total_credito), color: '#0369a1' },
-              { label: 'Cartão débito',     value: fm(totais.total_debito),  color: '#075985' },
+              { label: 'Total PIX',         value: fm(totais.total_pix),     color: '#1d4ed8' },
+              { label: 'CartÃ£o crÃ©dito',    value: fm(totais.total_credito), color: '#0369a1' },
+              { label: 'CartÃ£o dÃ©bito',     value: fm(totais.total_debito),  color: '#075985' },
               { label: 'OS entregues',      value: fm(totais.total_os),      color: '#92400e' },
               { label: 'Vendas PDV',        value: fm(totais.total_pdv),     color: '#6b21a8' },
               { label: 'TOTAL GERAL',       value: fm(totalGeral),           color: '#0f172a' },
@@ -398,16 +398,16 @@ export default function FechamentoPage() {
           </div>
         </div>
 
-        {/* ROTINAS POR FUNCIONÁRIO */}
+        {/* ROTINAS POR FUNCIONÃRIO */}
         <div style={card}>
-          <div style={cardTitle}><span>✅</span> Rotinas por funcionário</div>
+          <div style={cardTitle}><span>âœ…</span> Rotinas por funcionÃ¡rio</div>
           {rotinasPorPerfil.length === 0 ? (
-            <p style={{ fontSize: 13, color: '#94a3b8' }}>Nenhum funcionário ativo.</p>
+            <p style={{ fontSize: 13, color: '#94a3b8' }}>Nenhum funcionÃ¡rio ativo.</p>
           ) : rotinasPorPerfil.map(r => (
             <div key={r.perfil.id} style={{ marginBottom: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#e0e7ff', color: '#4338ca', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#dbeafe', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>
                     {r.perfil.nome.charAt(0).toUpperCase()}
                   </div>
                   <span style={{ fontSize: 13, fontWeight: 500, color: '#0f172a' }}>{r.perfil.nome}</span>
@@ -430,21 +430,21 @@ export default function FechamentoPage() {
         {/* WHATSAPP */}
         <div style={card}>
           <div style={cardTitle}>
-            <span>💬</span> WhatsApp
+            <span>ðŸ’¬</span> WhatsApp
             {waTudo
-              ? <span style={{ fontSize: 11, fontWeight: 600, background: '#ecfdf5', color: '#065f46', padding: '2px 8px', borderRadius: 20, marginLeft: 'auto' }}>✓ Todos enviados</span>
+              ? <span style={{ fontSize: 11, fontWeight: 600, background: '#ecfdf5', color: '#065f46', padding: '2px 8px', borderRadius: 20, marginLeft: 'auto' }}>âœ“ Todos enviados</span>
               : <span style={{ fontSize: 11, fontWeight: 600, background: '#fef2f2', color: '#991b1b', padding: '2px 8px', borderRadius: 20, marginLeft: 'auto' }}>{waPendencias.filter(p => !p.enviado_hoje).length} pendentes</span>
             }
           </div>
           {waPendencias.length === 0 ? (
-            <p style={{ fontSize: 13, color: '#94a3b8' }}>Nenhuma pendência de WhatsApp hoje.</p>
+            <p style={{ fontSize: 13, color: '#94a3b8' }}>Nenhuma pendÃªncia de WhatsApp hoje.</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {waPendencias.slice(0, 8).map((p, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', background: p.enviado_hoje ? '#f8fffe' : '#fff', border: '1px solid #f1f5f9', borderRadius: 7, fontSize: 12 }}>
                   <span style={{ color: '#374151' }}>{p.nome}</span>
                   <span style={{ fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20, background: p.enviado_hoje ? '#ecfdf5' : '#fef2f2', color: p.enviado_hoje ? '#065f46' : '#991b1b' }}>
-                    {p.enviado_hoje ? '✓ Enviado' : '⏳ Pendente'}
+                    {p.enviado_hoje ? 'âœ“ Enviado' : 'â³ Pendente'}
                   </span>
                 </div>
               ))}
@@ -456,9 +456,9 @@ export default function FechamentoPage() {
         {/* PRODUTOS INCOMPLETOS */}
         <div style={card}>
           <div style={cardTitle}>
-            <span>🏷</span> Produtos para completar
+            <span>ðŸ·</span> Produtos para completar
             {prodTudo
-              ? <span style={{ fontSize: 11, fontWeight: 600, background: '#ecfdf5', color: '#065f46', padding: '2px 8px', borderRadius: 20, marginLeft: 'auto' }}>✓ Todos completos</span>
+              ? <span style={{ fontSize: 11, fontWeight: 600, background: '#ecfdf5', color: '#065f46', padding: '2px 8px', borderRadius: 20, marginLeft: 'auto' }}>âœ“ Todos completos</span>
               : <span style={{ fontSize: 11, fontWeight: 600, background: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: 20, marginLeft: 'auto' }}>{produtosIncompletos.length} incompletos</span>
             }
           </div>
@@ -469,7 +469,7 @@ export default function FechamentoPage() {
               {produtosIncompletos.map(p => (
                 <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, fontSize: 13 }}>
                   <span style={{ fontWeight: 500, color: '#0f172a' }}>{p.nome}</span>
-                  <a href={`/produtos`} style={{ fontSize: 12, color: '#6366f1', textDecoration: 'none', fontWeight: 500 }}>Completar →</a>
+                  <a href={`/produtos`} style={{ fontSize: 12, color: '#2563eb', textDecoration: 'none', fontWeight: 500 }}>Completar â†’</a>
                 </div>
               ))}
             </div>
@@ -478,7 +478,7 @@ export default function FechamentoPage() {
 
         {/* OS DO DIA */}
         <div style={{ ...card, gridColumn: '1 / -1' }}>
-          <div style={cardTitle}><span>🔧</span> OS abertas hoje ({osHoje.filter(o => ['aberta','em_andamento'].includes(o.status)).length})</div>
+          <div style={cardTitle}><span>ðŸ”§</span> OS abertas hoje ({osHoje.filter(o => ['aberta','em_andamento'].includes(o.status)).length})</div>
           {osHoje.filter(o => ['aberta','em_andamento'].includes(o.status)).length === 0 ? (
             <p style={{ fontSize: 13, color: '#94a3b8' }}>Nenhuma OS aberta hoje.</p>
           ) : (
@@ -486,31 +486,31 @@ export default function FechamentoPage() {
               {osHoje.filter(o => ['aberta','em_andamento'].includes(o.status)).map(os => (
                 <div key={os.id} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 14px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <span style={{ fontWeight: 700, color: '#6366f1', fontSize: 13 }}>#{os.numero}</span>
+                    <span style={{ fontWeight: 700, color: '#2563eb', fontSize: 13 }}>#{os.numero}</span>
                     <span style={{ fontSize: 11, fontWeight: 500, padding: '1px 8px', borderRadius: 20, background: os.status === 'aberta' ? '#eff6ff' : '#fef3c7', color: os.status === 'aberta' ? '#1d4ed8' : '#92400e' }}>
                       {os.status === 'aberta' ? 'Aberta' : 'Em andamento'}
                     </span>
                   </div>
-                  <p style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>{(os.clientes as any)?.nome ?? '—'}</p>
-                  <p style={{ fontSize: 11, color: '#94a3b8' }}>{os.modelo ?? '—'}</p>
+                  <p style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>{(os.clientes as any)?.nome ?? 'â€”'}</p>
+                  <p style={{ fontSize: 11, color: '#94a3b8' }}>{os.modelo ?? 'â€”'}</p>
                 </div>
               ))}
             </div>
           )}
         </div>
 
-        {/* OBSERVAÇÕES */}
+        {/* OBSERVAÃ‡Ã•ES */}
         <div style={{ ...card, gridColumn: '1 / -1' }}>
-          <div style={cardTitle}><span>📝</span> Observações do fechamento</div>
-          <textarea style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, color: '#1e293b', background: '#fff', outline: 'none', fontFamily: 'inherit', minHeight: 80, resize: 'vertical' }} value={obs} onChange={e => setObs(e.target.value)} placeholder="Anotações do dia, ocorrências, observações para o próximo turno..." disabled={fechado} />
+          <div style={cardTitle}><span>ðŸ“</span> ObservaÃ§Ãµes do fechamento</div>
+          <textarea style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, color: '#1e293b', background: '#fff', outline: 'none', fontFamily: 'inherit', minHeight: 80, resize: 'vertical' }} value={obs} onChange={e => setObs(e.target.value)} placeholder="AnotaÃ§Ãµes do dia, ocorrÃªncias, observaÃ§Ãµes para o prÃ³ximo turno..." disabled={fechado} />
         </div>
       </div>
 
-      {/* Botão fechar no final */}
+      {/* BotÃ£o fechar no final */}
       {!fechado && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
-          <button onClick={fecharDia} disabled={salvando} style={{ padding: '12px 32px', background: salvando ? '#a5b4fc' : '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-            {salvando ? 'Fechando...' : '🔐 Confirmar fechamento do dia'}
+          <button onClick={fecharDia} disabled={salvando} style={{ padding: '12px 32px', background: salvando ? '#93c5fd' : '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+            {salvando ? 'Fechando...' : 'ðŸ” Confirmar fechamento do dia'}
           </button>
         </div>
       )}

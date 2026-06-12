@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 export const dynamic = 'force-dynamic'
 
 import { useState, useCallback, useEffect, useRef } from 'react'
@@ -40,14 +40,14 @@ type GarantiaTimeline = {
 type Fornecedor = { id: string; nome: string; telefone: string | null }
 
 const STATUS_CFG: Record<string, { label: string; bg: string; color: string; icon: string }> = {
-  aberta:                { label: 'Aberta',               bg: '#eff6ff', color: '#1d4ed8', icon: '🔵' },
-  aprovada:              { label: 'Aprovada',             bg: '#ecfdf5', color: '#065f46', icon: '✅' },
-  negada:                { label: 'Negada',               bg: '#fef2f2', color: '#991b1b', icon: '❌' },
-  parcial:               { label: 'Parcial',              bg: '#fef3c7', color: '#92400e', icon: '🔄' },
-  acionando_fornecedor:  { label: 'Acionando fornec.',    bg: '#faf5ff', color: '#6b21a8', icon: '🏭' },
-  aguardando_fornecedor: { label: 'Aguard. fornecedor',   bg: '#fef3c7', color: '#92400e', icon: '⏳' },
-  peca_enviada:          { label: 'Peça enviada',         bg: '#f0f9ff', color: '#0369a1', icon: '📦' },
-  concluida:             { label: 'Concluída',            bg: '#ecfdf5', color: '#065f46', icon: '✓'  },
+  aberta:                { label: 'Aberta',               bg: '#eff6ff', color: '#1d4ed8', icon: 'ðŸ”µ' },
+  aprovada:              { label: 'Aprovada',             bg: '#ecfdf5', color: '#065f46', icon: 'âœ…' },
+  negada:                { label: 'Negada',               bg: '#fef2f2', color: '#991b1b', icon: 'âŒ' },
+  parcial:               { label: 'Parcial',              bg: '#fef3c7', color: '#92400e', icon: 'ðŸ”„' },
+  acionando_fornecedor:  { label: 'Acionando fornec.',    bg: '#eff6ff', color: '#6b21a8', icon: 'ðŸ­' },
+  aguardando_fornecedor: { label: 'Aguard. fornecedor',   bg: '#fef3c7', color: '#92400e', icon: 'â³' },
+  peca_enviada:          { label: 'PeÃ§a enviada',         bg: '#f0f9ff', color: '#0369a1', icon: 'ðŸ“¦' },
+  concluida:             { label: 'ConcluÃ­da',            bg: '#ecfdf5', color: '#065f46', icon: 'âœ“'  },
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -65,8 +65,8 @@ const PROXIMOS_STATUS: Record<string, string[]> = {
 }
 
 const TIMELINE_ICON: Record<string, string> = {
-  criada: '✦', status_alterado: '↻', fornecedor_acionado: '📤',
-  fornecedor_respondeu: '📥', peca_enviada: '📦', concluida: '✓', observacao: '📝',
+  criada: 'âœ¦', status_alterado: 'â†»', fornecedor_acionado: 'ðŸ“¤',
+  fornecedor_respondeu: 'ðŸ“¥', peca_enviada: 'ðŸ“¦', concluida: 'âœ“', observacao: 'ðŸ“',
 }
 
 const inp: React.CSSProperties = { width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, color: '#1e293b', background: '#fff', outline: 'none', fontFamily: 'inherit' }
@@ -99,7 +99,7 @@ export default function GarantiasPage() {
   const [waTemplate, setWaTemplate] = useState('')
   const [cfgLoja, setCfgLoja] = useState<Record<string, string>>({})
 
-  // Histórico
+  // HistÃ³rico
   const [garantias, setGarantias] = useState<Garantia[]>([])
   const [loadingHist, setLoadingHist] = useState(false)
   const [filtroStatus, setFiltroStatus] = useState('todos')
@@ -189,7 +189,7 @@ export default function GarantiasPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  // Autocomplete: busca sugestões ao digitar
+  // Autocomplete: busca sugestÃµes ao digitar
   function handleBuscaChange(val: string) {
     setBusca(val)
     setOsEncontrada(null)
@@ -226,7 +226,7 @@ export default function GarantiasPage() {
     setBuscando(true); setErroBusca(''); setOsEncontrada(null); setOsBloqueada(null); setGarantiaSalva(null)
     const { data } = await supabase.from('ordens_servico')
       .select('*,clientes(nome,telefone)').eq('numero', parseInt(num)).is('deleted_at', null).single()
-    if (!data) { setErroBusca(`OS #${num} não encontrada.`); setBuscando(false); return }
+    if (!data) { setErroBusca(`OS #${num} nÃ£o encontrada.`); setBuscando(false); return }
     aplicarResultadoOS(data as unknown as OSResult)
     setBuscando(false)
   }
@@ -235,12 +235,12 @@ export default function GarantiasPage() {
     setBuscando(true); setErroBusca(''); setOsEncontrada(null); setOsBloqueada(null); setGarantiaSalva(null)
     const { data } = await supabase.from('ordens_servico')
       .select('*,clientes(nome,telefone)').eq('id', id).single()
-    if (!data) { setErroBusca(`OS #${numero} não encontrada.`); setBuscando(false); return }
+    if (!data) { setErroBusca(`OS #${numero} nÃ£o encontrada.`); setBuscando(false); return }
     aplicarResultadoOS(data as unknown as OSResult)
     setBuscando(false)
   }
 
-  // Tarefa 02: bloquear OS não entregue
+  // Tarefa 02: bloquear OS nÃ£o entregue
   function aplicarResultadoOS(data: OSResult) {
     if (data.status !== 'entregue') {
       setOsBloqueada({ id: data.id, numero: data.numero, status: data.status })
@@ -271,7 +271,7 @@ export default function GarantiasPage() {
     if (g) {
       await supabase.from('garantia_timeline').insert({
         garantia_id: g.id, tipo: 'criada',
-        descricao: `Garantia registrada — ${acao}. Motivo: ${motivo}`,
+        descricao: `Garantia registrada â€” ${acao}. Motivo: ${motivo}`,
         status_novo: acao, usuario_id: user?.id,
       })
       if (acao === 'aprovada' || acao === 'parcial') {
@@ -337,7 +337,7 @@ export default function GarantiasPage() {
     setNovaObs(''); fetchTimeline(g.id)
   }
 
-  // Tarefa 03: templates de impressão por tamanho de papel
+  // Tarefa 03: templates de impressÃ£o por tamanho de papel
   function imprimirRecibo(g: Garantia) {
     const formato = cfgLoja.recibo_os_formato || 'a4'
     const nomeLoja = cfgLoja.loja_nome || 'SOS Celulares'
@@ -348,11 +348,11 @@ export default function GarantiasPage() {
     const garantiaDias = cfgLoja.garantia_dias || '90'
 
     const dataHoje = new Date().toLocaleDateString('pt-BR')
-    const osNum = g.os_origem?.numero ?? '—'
-    const modelo = g.os_origem?.modelo ?? '—'
-    const defeito = g.os_origem?.defeito_relatado ?? '—'
-    const cliente = g.clientes_origem ? (g.clientes_origem as any)?.clientes?.nome ?? (g.clientes_origem as any)?.nome ?? '—' : '—'
-    const fornecedor = g.fornecedores_destino?.nome ?? '—'
+    const osNum = g.os_origem?.numero ?? 'â€”'
+    const modelo = g.os_origem?.modelo ?? 'â€”'
+    const defeito = g.os_origem?.defeito_relatado ?? 'â€”'
+    const cliente = g.clientes_origem ? (g.clientes_origem as any)?.clientes?.nome ?? (g.clientes_origem as any)?.nome ?? 'â€”' : 'â€”'
+    const fornecedor = g.fornecedores_destino?.nome ?? 'â€”'
     const statusLabel = STATUS_CFG[g.status]?.label ?? g.status
 
     let html = ''
@@ -385,12 +385,12 @@ ${cnpjLoja ? `<div class="sub">CNPJ: ${cnpjLoja}</div>` : ''}
   <div class="sub">${dataHoje}</div>
 </div>
 <div class="dashed"></div>
-<div class="titulo">▸ OS de Origem</div>
-<div class="row"><span>Nº da OS</span><span>#${osNum}</span></div>
+<div class="titulo">â–¸ OS de Origem</div>
+<div class="row"><span>NÂº da OS</span><span>#${osNum}</span></div>
 <div class="row"><span>Modelo</span><span>${modelo}</span></div>
 <div class="row"><span>Cliente</span><span>${cliente}</span></div>
 <div class="dashed"></div>
-<div class="titulo">▸ Garantia</div>
+<div class="titulo">â–¸ Garantia</div>
 <div class="row"><span>Status</span><span>${statusLabel}</span></div>
 <div class="row"><span>Fornecedor</span><span>${fornecedor}</span></div>
 <div style="margin-top:1mm;font-size:8pt"><span style="color:#555">Motivo: </span>${g.motivo_retorno}</div>
@@ -423,7 +423,7 @@ ${cnpjLoja ? `<div class="sub">CNPJ: ${cnpjLoja}</div>` : ''}
   .footer { font-size: 6.5pt; text-align: center; color: #777; margin-top: 3mm; border-top: 1px dashed #ccc; padding-top: 1.5mm; }
 </style></head><body>
 <div class="nome">${nomeLoja}</div>
-<div class="sub">${endLoja ? endLoja + '<br>' : ''}${telLoja}${emailLoja ? ' · ' + emailLoja : ''}${cnpjLoja ? '<br>CNPJ: ' + cnpjLoja : ''}</div>
+<div class="sub">${endLoja ? endLoja + '<br>' : ''}${telLoja}${emailLoja ? ' Â· ' + emailLoja : ''}${cnpjLoja ? '<br>CNPJ: ' + cnpjLoja : ''}</div>
 <div class="solid"></div>
 <div class="badge">
   <div style="font-size:7.5pt;text-transform:uppercase;color:#555">Recibo de Garantia</div>
@@ -431,7 +431,7 @@ ${cnpjLoja ? `<div class="sub">CNPJ: ${cnpjLoja}</div>` : ''}
   <div class="sub">${dataHoje}</div>
 </div>
 <div class="titulo">OS de Origem</div>
-<div class="row"><span class="l">Nº da OS</span><span class="v">#${osNum}</span></div>
+<div class="row"><span class="l">NÂº da OS</span><span class="v">#${osNum}</span></div>
 <div class="row"><span class="l">Modelo</span><span class="v">${modelo}</span></div>
 <div class="row"><span class="l">Cliente</span><span class="v">${cliente}</span></div>
 <div class="dashed"></div>
@@ -439,21 +439,21 @@ ${cnpjLoja ? `<div class="sub">CNPJ: ${cnpjLoja}</div>` : ''}
 <div style="font-size:8.5pt;line-height:1.6;background:#f5f5f5;padding:1.5mm 2mm;border-left:2px solid #000;margin-bottom:1mm">${defeito}</div>
 <div class="dashed"></div>
 <div class="titulo">Garantia</div>
-<div class="row"><span class="l">Nº Garantia</span><span class="v">#${g.numero}</span></div>
+<div class="row"><span class="l">NÂº Garantia</span><span class="v">#${g.numero}</span></div>
 <div class="row"><span class="l">Status</span><span class="v">${statusLabel}</span></div>
 <div class="row"><span class="l">Fornecedor</span><span class="v">${fornecedor}</span></div>
 <div style="font-size:8.5pt;line-height:1.5;margin:1mm 0"><b>Motivo:</b> ${g.motivo_retorno}</div>
 ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g.justificativa}</div>` : ''}
-<div class="aviso"><b>Garantia:</b> ${garantiaDias} dias · Guarde este recibo.</div>
+<div class="aviso"><b>Garantia:</b> ${garantiaDias} dias Â· Guarde este recibo.</div>
 <div class="ass-line">
   <div class="ass-box"><div style="height:18mm"></div><div class="ass-l"></div><div class="ass-label">Assinatura do recebedor</div></div>
-  <div class="ass-box"><div style="height:18mm"></div><div class="ass-l"></div><div class="ass-label">Técnico responsável</div></div>
+  <div class="ass-box"><div style="height:18mm"></div><div class="ass-l"></div><div class="ass-label">TÃ©cnico responsÃ¡vel</div></div>
 </div>
-<div class="footer">${nomeLoja}${cnpjLoja ? ' · CNPJ ' + cnpjLoja : ''}</div>
+<div class="footer">${nomeLoja}${cnpjLoja ? ' Â· CNPJ ' + cnpjLoja : ''}</div>
 <script>window.onload = () => { window.print(); }<\/script>
 </body></html>`
     } else {
-      // A4 (padrão)
+      // A4 (padrÃ£o)
       html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Recibo Garantia</title>
 <style>
   @page { size: A4; margin: 20mm; }
@@ -485,13 +485,13 @@ ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g
     <div class="loja-nome">${nomeLoja}</div>
     <div class="loja-sub">
       ${endLoja ? endLoja + '<br>' : ''}
-      ${telLoja ? 'Tel: ' + telLoja : ''}${emailLoja ? ' · ' + emailLoja : ''}
+      ${telLoja ? 'Tel: ' + telLoja : ''}${emailLoja ? ' Â· ' + emailLoja : ''}
       ${cnpjLoja ? '<br>CNPJ: ' + cnpjLoja : ''}
     </div>
   </div>
   <div class="doc-titulo">
     <h2>Recibo de Garantia</h2>
-    <p>Nº <strong>#${g.numero}</strong></p>
+    <p>NÂº <strong>#${g.numero}</strong></p>
     <p>Data: ${dataHoje}</p>
   </div>
 </div>
@@ -499,9 +499,9 @@ ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g
 <div class="section">
   <h3>OS de Origem</h3>
   <div class="grid3">
-    <div class="field"><label>Nº da OS</label><p>#${osNum}</p></div>
+    <div class="field"><label>NÂº da OS</label><p>#${osNum}</p></div>
     <div class="field"><label>Modelo do Aparelho</label><p>${modelo}</p></div>
-    <div class="field"><label>Data da OS</label><p>${g.os_origem?.created_at ? new Date(g.os_origem.created_at).toLocaleDateString('pt-BR') : '—'}</p></div>
+    <div class="field"><label>Data da OS</label><p>${g.os_origem?.created_at ? new Date(g.os_origem.created_at).toLocaleDateString('pt-BR') : 'â€”'}</p></div>
   </div>
   <div style="margin-top:8px" class="field"><label>Defeito Relatado</label><div class="motivo-box">${defeito}</div></div>
 </div>
@@ -517,7 +517,7 @@ ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g
 <div class="section">
   <h3>Detalhes da Garantia</h3>
   <div class="grid2" style="margin-bottom:10px">
-    <div class="field"><label>Nº da Garantia</label><p>#${g.numero}</p></div>
+    <div class="field"><label>NÂº da Garantia</label><p>#${g.numero}</p></div>
     <div class="field"><label>Status</label><p><span class="status-badge">${statusLabel}</span></p></div>
   </div>
   <div class="field"><label>Motivo do Retorno</label><div class="motivo-box">${g.motivo_retorno}</div></div>
@@ -527,9 +527,9 @@ ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g
 <div class="section">
   <h3>Termos de Garantia</h3>
   <div class="termos">
-    A garantia cobre exclusivamente o serviço realizado e as peças substituídas, pelo prazo de <strong>${garantiaDias} dias</strong> a partir da data de entrega.
-    Não estão cobertos danos causados por mau uso, quedas, líquidos, ou qualquer dano físico externo.
-    A garantia é válida apenas mediante apresentação deste recibo.
+    A garantia cobre exclusivamente o serviÃ§o realizado e as peÃ§as substituÃ­das, pelo prazo de <strong>${garantiaDias} dias</strong> a partir da data de entrega.
+    NÃ£o estÃ£o cobertos danos causados por mau uso, quedas, lÃ­quidos, ou qualquer dano fÃ­sico externo.
+    A garantia Ã© vÃ¡lida apenas mediante apresentaÃ§Ã£o deste recibo.
     Em caso de necessidade, entre em contato com ${nomeLoja}${telLoja ? ' pelo telefone ' + telLoja : ''}.
   </div>
 </div>
@@ -540,19 +540,19 @@ ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g
     <div class="ass-box">
       <div style="height:40px"></div>
       <div class="ass-line"></div>
-      <div class="ass-label">Assinatura do Cliente / Responsável</div>
+      <div class="ass-label">Assinatura do Cliente / ResponsÃ¡vel</div>
       <div class="ass-label" style="margin-top:4px">${cliente}</div>
     </div>
     <div class="ass-box">
       <div style="height:40px"></div>
       <div class="ass-line"></div>
-      <div class="ass-label">Técnico Responsável</div>
+      <div class="ass-label">TÃ©cnico ResponsÃ¡vel</div>
       <div class="ass-label" style="margin-top:4px">${nomeLoja}</div>
     </div>
   </div>
 </div>
 
-<div class="footer">${nomeLoja}${cnpjLoja ? ' · CNPJ ' + cnpjLoja : ''} · Documento gerado em ${dataHoje}</div>
+<div class="footer">${nomeLoja}${cnpjLoja ? ' Â· CNPJ ' + cnpjLoja : ''} Â· Documento gerado em ${dataHoje}</div>
 <script>window.onload = () => { window.print(); }<\/script>
 </body></html>`
     }
@@ -564,8 +564,8 @@ ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g
   }
 
   function exportCSV() {
-    const rows = [['Nº','OS Origem','Status','Motivo','Fornecedor','Data']]
-    garantias.forEach(g => rows.push([String(g.numero), String(g.os_origem?.numero ?? ''), g.status, g.motivo_retorno, g.fornecedores_destino?.nome ?? '—', new Date(g.created_at).toLocaleDateString('pt-BR')]))
+    const rows = [['NÂº','OS Origem','Status','Motivo','Fornecedor','Data']]
+    garantias.forEach(g => rows.push([String(g.numero), String(g.os_origem?.numero ?? ''), g.status, g.motivo_retorno, g.fornecedores_destino?.nome ?? 'â€”', new Date(g.created_at).toLocaleDateString('pt-BR')]))
     const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'garantias.csv'; a.click()
   }
@@ -583,25 +583,25 @@ ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g
       </div>
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid #e2e8f0' }}>
-        {([['registrar','🔍 Registrar garantia'], ['historico','📋 Histórico'], ['ranking','📊 Ranking fornecedores']] as const).map(([k, l]) => (
-          <button key={k} onClick={() => setAba(k)} style={{ padding: '10px 18px', fontSize: 13, fontWeight: aba === k ? 600 : 400, border: 'none', background: 'none', cursor: 'pointer', color: aba === k ? '#6366f1' : '#64748b', borderBottom: aba === k ? '2px solid #6366f1' : '2px solid transparent', marginBottom: -1 }}>{l}</button>
+        {([['registrar','ðŸ” Registrar garantia'], ['historico','ðŸ“‹ HistÃ³rico'], ['ranking','ðŸ“Š Ranking fornecedores']] as const).map(([k, l]) => (
+          <button key={k} onClick={() => setAba(k)} style={{ padding: '10px 18px', fontSize: 13, fontWeight: aba === k ? 600 : 400, border: 'none', background: 'none', cursor: 'pointer', color: aba === k ? '#2563eb' : '#64748b', borderBottom: aba === k ? '2px solid #2563eb' : '2px solid transparent', marginBottom: -1 }}>{l}</button>
         ))}
       </div>
 
-      {/* ═══ REGISTRAR ═══ */}
+      {/* â•â•â• REGISTRAR â•â•â• */}
       {aba === 'registrar' && (
         <div>
           {garantiaSalva && (
             <div style={{ background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: 10, padding: '16px 20px', marginBottom: 16 }}>
-              <p style={{ fontSize: 14, fontWeight: 600, color: '#065f46', marginBottom: 8 }}>✅ Garantia #{garantiaSalva.numero} registrada!</p>
+              <p style={{ fontSize: 14, fontWeight: 600, color: '#065f46', marginBottom: 8 }}>âœ… Garantia #{garantiaSalva.numero} registrada!</p>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {garantiaSalva.fornecedores_destino && (
                   <button onClick={() => acionarFornecedor(garantiaSalva)} style={{ padding: '7px 14px', border: '1px solid #86efac', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer', color: '#065f46', fontWeight: 500 }}>
-                    💬 Enviar WhatsApp ao fornecedor
+                    ðŸ’¬ Enviar WhatsApp ao fornecedor
                   </button>
                 )}
                 <button onClick={() => imprimirRecibo(garantiaSalva)} style={{ padding: '7px 14px', border: '1px solid #86efac', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer', color: '#065f46' }}>
-                  🖨 Imprimir recibo
+                  ðŸ–¨ Imprimir recibo
                 </button>
                 <button onClick={() => setGarantiaSalva(null)} style={{ padding: '7px 14px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer', color: '#374151' }}>
                   Nova garantia
@@ -611,7 +611,7 @@ ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g
           )}
 
           <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '20px 24px', marginBottom: 14 }}>
-            <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 12 }}>🔍 Buscar OS pelo número</p>
+            <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 12 }}>ðŸ” Buscar OS pelo nÃºmero</p>
             {/* Tarefa 01: campo com autocomplete */}
             <div ref={buscaRef} style={{ position: 'relative' }}>
               <div style={{ display: 'flex', gap: 10 }}>
@@ -621,16 +621,16 @@ ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g
                   onChange={e => handleBuscaChange(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') buscarOS(); if (e.key === 'Escape') setShowSugestoes(false) }}
                   onFocus={() => sugestoes.length > 0 && setShowSugestoes(true)}
-                  placeholder="Digite o número da OS"
+                  placeholder="Digite o nÃºmero da OS"
                   type="number"
                   autoComplete="off"
                 />
-                <button onClick={buscarOS} disabled={buscando} style={{ padding: '9px 20px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                <button onClick={buscarOS} disabled={buscando} style={{ padding: '9px 20px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                   {buscando ? 'Buscando...' : 'Buscar'}
                 </button>
               </div>
 
-              {/* Dropdown de sugestões */}
+              {/* Dropdown de sugestÃµes */}
               {showSugestoes && sugestoes.length > 0 && (
                 <div style={{ position: 'absolute', top: '100%', left: 0, right: 60, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', zIndex: 50, overflow: 'hidden', marginTop: 4 }}>
                   {sugestoes.map(s => (
@@ -641,9 +641,9 @@ ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g
                       onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
                       onMouseLeave={e => (e.currentTarget.style.background = 'none')}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: '#6366f1', minWidth: 48 }}>OS #{s.numero}</span>
-                      <span style={{ fontSize: 13, color: '#1e293b', fontWeight: 500 }}>{s.clientes?.nome ?? '—'}</span>
-                      {s.modelo && <span style={{ fontSize: 12, color: '#94a3b8' }}>· {s.modelo}</span>}
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#2563eb', minWidth: 48 }}>OS #{s.numero}</span>
+                      <span style={{ fontSize: 13, color: '#1e293b', fontWeight: 500 }}>{s.clientes?.nome ?? 'â€”'}</span>
+                      {s.modelo && <span style={{ fontSize: 12, color: '#94a3b8' }}>Â· {s.modelo}</span>}
                     </button>
                   ))}
                 </div>
@@ -652,20 +652,20 @@ ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g
 
             {erroBusca && <p style={{ fontSize: 13, color: '#ef4444', marginTop: 8 }}>{erroBusca}</p>}
 
-            {/* Tarefa 02: aviso de OS não entregue */}
+            {/* Tarefa 02: aviso de OS nÃ£o entregue */}
             {osBloqueada && (
               <div style={{ marginTop: 12, background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 10, padding: '14px 16px' }}>
                 <p style={{ fontSize: 14, fontWeight: 600, color: '#92400e', marginBottom: 6 }}>
-                  ⚠ OS #{osBloqueada.numero} ainda não foi finalizada
+                  âš  OS #{osBloqueada.numero} ainda nÃ£o foi finalizada
                 </p>
                 <p style={{ fontSize: 13, color: '#78350f', marginBottom: 12 }}>
-                  Esta OS está com status <strong>{STATUS_LABEL[osBloqueada.status] ?? osBloqueada.status}</strong>. Só é possível abrir uma garantia após a OS ser entregue ao cliente.
+                  Esta OS estÃ¡ com status <strong>{STATUS_LABEL[osBloqueada.status] ?? osBloqueada.status}</strong>. SÃ³ Ã© possÃ­vel abrir uma garantia apÃ³s a OS ser entregue ao cliente.
                 </p>
                 <button
                   onClick={() => router.push(`/os/${osBloqueada.id}`)}
                   style={{ padding: '8px 16px', background: '#d97706', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
                 >
-                  Ir para a OS →
+                  Ir para a OS â†’
                 </button>
               </div>
             )}
@@ -679,14 +679,14 @@ ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
                       <h2 style={{ fontSize: 18, fontWeight: 700, color: '#0f172a' }}>OS #{osEncontrada.numero}</h2>
                       <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 12px', borderRadius: 20, background: prazoOk ? '#ecfdf5' : '#fef2f2', color: prazoOk ? '#065f46' : '#991b1b' }}>
-                        {prazoOk ? `✓ No prazo (${prazo} dias)` : `⚠ Fora do prazo (${prazo} dias)`}
+                        {prazoOk ? `âœ“ No prazo (${prazo} dias)` : `âš  Fora do prazo (${prazo} dias)`}
                       </span>
                     </div>
-                    <p style={{ fontSize: 13, color: '#64748b' }}>{osEncontrada.clientes?.nome ?? '—'} · {osEncontrada.modelo ?? '—'}</p>
+                    <p style={{ fontSize: 13, color: '#64748b' }}>{osEncontrada.clientes?.nome ?? 'â€”'} Â· {osEncontrada.modelo ?? 'â€”'}</p>
                   </div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-                  {[{ label: 'Defeito original', value: osEncontrada.defeito_relatado }, { label: 'Solução aplicada', value: osEncontrada.solucao ?? 'Não registrada' }, { label: 'Valor cobrado', value: osEncontrada.valor_final ? `R$ ${osEncontrada.valor_final.toFixed(2).replace('.', ',')}` : '—' }].map(r => (
+                  {[{ label: 'Defeito original', value: osEncontrada.defeito_relatado }, { label: 'SoluÃ§Ã£o aplicada', value: osEncontrada.solucao ?? 'NÃ£o registrada' }, { label: 'Valor cobrado', value: osEncontrada.valor_final ? `R$ ${osEncontrada.valor_final.toFixed(2).replace('.', ',')}` : 'â€”' }].map(r => (
                     <div key={r.label} style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 14px' }}>
                       <p style={{ fontSize: 11, color: '#64748b', marginBottom: 2 }}>{r.label}</p>
                       <p style={{ fontSize: 13, color: '#1e293b', fontWeight: 500 }}>{r.value}</p>
@@ -696,17 +696,17 @@ ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g
               </div>
 
               <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '20px 24px' }}>
-                <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 16 }}>📝 Registrar retorno em garantia</p>
+                <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 16 }}>ðŸ“ Registrar retorno em garantia</p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                   <div><label style={lbl}>Motivo do retorno *</label><textarea style={{ ...inp, minHeight: 80, resize: 'vertical' }} value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="O que o cliente relatou..." /></div>
                   <div>
-                    <label style={lbl}>Ação *</label>
+                    <label style={lbl}>AÃ§Ã£o *</label>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
                       {[
-                        { v: 'aprovada',            icon: '✅', label: 'Aprovar garantia',   sub: 'Refazer sem custo',          color: '#065f46', bg: '#ecfdf5', border: '#bbf7d0' },
-                        { v: 'parcial',             icon: '🔄', label: 'Garantia parcial',   sub: 'Cliente paga mão de obra',   color: '#92400e', bg: '#fef3c7', border: '#fde68a' },
-                        { v: 'negada',              icon: '❌', label: 'Negar garantia',     sub: 'Mal uso / dano externo',     color: '#991b1b', bg: '#fef2f2', border: '#fecaca' },
-                        { v: 'acionando_fornecedor',icon: '🏭', label: 'Acionar fornecedor', sub: 'Defeito de fábrica da peça', color: '#6b21a8', bg: '#faf5ff', border: '#e9d5ff' },
+                        { v: 'aprovada',            icon: 'âœ…', label: 'Aprovar garantia',   sub: 'Refazer sem custo',          color: '#065f46', bg: '#ecfdf5', border: '#bbf7d0' },
+                        { v: 'parcial',             icon: 'ðŸ”„', label: 'Garantia parcial',   sub: 'Cliente paga mÃ£o de obra',   color: '#92400e', bg: '#fef3c7', border: '#fde68a' },
+                        { v: 'negada',              icon: 'âŒ', label: 'Negar garantia',     sub: 'Mal uso / dano externo',     color: '#991b1b', bg: '#fef2f2', border: '#fecaca' },
+                        { v: 'acionando_fornecedor',icon: 'ðŸ­', label: 'Acionar fornecedor', sub: 'Defeito de fÃ¡brica da peÃ§a', color: '#6b21a8', bg: '#eff6ff', border: '#bfdbfe' },
                       ].map(opt => (
                         <button key={opt.v} onClick={() => setAcao(opt.v as typeof acao)} style={{ padding: '12px 14px', borderRadius: 10, cursor: 'pointer', textAlign: 'left', border: `1.5px solid ${acao === opt.v ? opt.border : '#e2e8f0'}`, background: acao === opt.v ? opt.bg : '#fff' }}>
                           <div style={{ fontSize: 16, marginBottom: 3 }}>{opt.icon}</div>
@@ -722,24 +722,24 @@ ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g
                   )}
 
                   {acao === 'acionando_fornecedor' && (
-                    <div style={{ background: '#faf5ff', border: '1px solid #e9d5ff', borderRadius: 10, padding: '14px 16px' }}>
-                      <p style={{ fontSize: 13, fontWeight: 600, color: '#6b21a8', marginBottom: 12 }}>🏭 Destinar ao fornecedor</p>
+                    <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '14px 16px' }}>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: '#6b21a8', marginBottom: 12 }}>ðŸ­ Destinar ao fornecedor</p>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         <div>
-                          <label style={lbl}>Fornecedor da peça *</label>
+                          <label style={lbl}>Fornecedor da peÃ§a *</label>
                           <select style={inp} value={fornecedorId} onChange={e => setFornecedorId(e.target.value)}>
                             <option value="">Selecione...</option>
-                            {fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}{f.telefone ? ` — ${f.telefone}` : ''}</option>)}
+                            {fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}{f.telefone ? ` â€” ${f.telefone}` : ''}</option>)}
                           </select>
                           <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Este registro impacta o ranking de confiabilidade do fornecedor.</p>
                         </div>
-                        <div><label style={lbl}>Observações para o fornecedor</label><textarea style={{ ...inp, minHeight: 60, resize: 'vertical' }} value={obsForncedor} onChange={e => setObsFornecedor(e.target.value)} placeholder="Ex: Display apresentou defeito após 15 dias..." /></div>
-                        {fornecedorId && <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#374151' }}>💬 Após salvar, você poderá enviar mensagem WhatsApp ao fornecedor com os detalhes da peça e do defeito.</div>}
+                        <div><label style={lbl}>ObservaÃ§Ãµes para o fornecedor</label><textarea style={{ ...inp, minHeight: 60, resize: 'vertical' }} value={obsForncedor} onChange={e => setObsFornecedor(e.target.value)} placeholder="Ex: Display apresentou defeito apÃ³s 15 dias..." /></div>
+                        {fornecedorId && <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#374151' }}>ðŸ’¬ ApÃ³s salvar, vocÃª poderÃ¡ enviar mensagem WhatsApp ao fornecedor com os detalhes da peÃ§a e do defeito.</div>}
                       </div>
                     </div>
                   )}
 
-                  <button onClick={registrarGarantia} disabled={salvando || !motivo.trim() || !acao || (acao === 'acionando_fornecedor' && !fornecedorId)} style={{ padding: '12px', background: !motivo.trim() || !acao || (acao === 'acionando_fornecedor' && !fornecedorId) ? '#e2e8f0' : salvando ? '#a5b4fc' : '#6366f1', color: !motivo.trim() || !acao ? '#94a3b8' : '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                  <button onClick={registrarGarantia} disabled={salvando || !motivo.trim() || !acao || (acao === 'acionando_fornecedor' && !fornecedorId)} style={{ padding: '12px', background: !motivo.trim() || !acao || (acao === 'acionando_fornecedor' && !fornecedorId) ? '#e2e8f0' : salvando ? '#93c5fd' : '#2563eb', color: !motivo.trim() || !acao ? '#94a3b8' : '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
                     {salvando ? 'Registrando...' : 'Registrar garantia'}
                   </button>
                 </div>
@@ -749,7 +749,7 @@ ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g
         </div>
       )}
 
-      {/* ═══ HISTÓRICO ═══ */}
+      {/* â•â•â• HISTÃ“RICO â•â•â• */}
       {aba === 'historico' && (
         <div style={{ display: 'grid', gridTemplateColumns: garantiaSel ? '1fr 380px' : '1fr', gap: 16 }}>
           <div>
@@ -759,33 +759,33 @@ ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g
                 <option value="todos">Todos os status</option>
                 {Object.entries(STATUS_CFG).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
               </select>
-              <button onClick={exportCSV} style={{ padding: '8px 14px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 12, background: '#fff', cursor: 'pointer', color: '#374151' }}>⬇ CSV</button>
+              <button onClick={exportCSV} style={{ padding: '8px 14px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 12, background: '#fff', cursor: 'pointer', color: '#374151' }}>â¬‡ CSV</button>
             </div>
 
             {loadingHist ? <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Carregando...</div> :
               garantias.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 60 }}><div style={{ fontSize: 40, marginBottom: 12 }}>🛡</div><p style={{ fontSize: 14, fontWeight: 500, color: '#374151' }}>Nenhuma garantia registrada</p></div>
+                <div style={{ textAlign: 'center', padding: 60 }}><div style={{ fontSize: 40, marginBottom: 12 }}>ðŸ›¡</div><p style={{ fontSize: 14, fontWeight: 500, color: '#374151' }}>Nenhuma garantia registrada</p></div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {garantias.map(g => {
                     const st = STATUS_CFG[g.status] ?? STATUS_CFG.aberta
                     const atrasada = g.status === 'aguardando_fornecedor' && g.fornecedor_notificado_em && diasDesde(g.fornecedor_notificado_em) > (g.prazo_resposta_dias ?? 5)
                     return (
-                      <div key={g.id} onClick={() => setGarantiaSel(garantiaSel?.id === g.id ? null : g)} style={{ background: garantiaSel?.id === g.id ? '#f5f3ff' : '#fff', border: `1px solid ${garantiaSel?.id === g.id ? '#c4b5fd' : atrasada ? '#fecaca' : '#e2e8f0'}`, borderRadius: 10, padding: '14px 16px', cursor: 'pointer', transition: 'all 0.15s' }}>
+                      <div key={g.id} onClick={() => setGarantiaSel(garantiaSel?.id === g.id ? null : g)} style={{ background: garantiaSel?.id === g.id ? '#eff6ff' : '#fff', border: `1px solid ${garantiaSel?.id === g.id ? '#bfdbfe' : atrasada ? '#fecaca' : '#e2e8f0'}`, borderRadius: 10, padding: '14px 16px', cursor: 'pointer', transition: 'all 0.15s' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                              <span style={{ fontWeight: 700, color: '#6366f1', fontSize: 13 }}>#{g.numero}</span>
+                              <span style={{ fontWeight: 700, color: '#2563eb', fontSize: 13 }}>#{g.numero}</span>
                               {g.os_origem && <span style={{ fontWeight: 500, color: '#374151', fontSize: 13 }}>OS #{g.os_origem.numero}</span>}
                               <span style={{ fontSize: 11, fontWeight: 500, padding: '1px 8px', borderRadius: 20, background: st.bg, color: st.color }}>{st.icon} {st.label}</span>
-                              {atrasada && <span style={{ fontSize: 11, fontWeight: 500, background: '#fef2f2', color: '#991b1b', padding: '1px 8px', borderRadius: 20 }}>⚠ Fornecedor atrasado</span>}
+                              {atrasada && <span style={{ fontSize: 11, fontWeight: 500, background: '#fef2f2', color: '#991b1b', padding: '1px 8px', borderRadius: 20 }}>âš  Fornecedor atrasado</span>}
                             </div>
-                            <p style={{ fontSize: 12, color: '#64748b', marginBottom: 2 }}>{g.os_origem?.modelo ?? '—'} · {g.motivo_retorno.slice(0, 60)}{g.motivo_retorno.length > 60 ? '...' : ''}</p>
-                            {g.fornecedores_destino && <p style={{ fontSize: 11, color: '#94a3b8' }}>🏭 {g.fornecedores_destino.nome}</p>}
+                            <p style={{ fontSize: 12, color: '#64748b', marginBottom: 2 }}>{g.os_origem?.modelo ?? 'â€”'} Â· {g.motivo_retorno.slice(0, 60)}{g.motivo_retorno.length > 60 ? '...' : ''}</p>
+                            {g.fornecedores_destino && <p style={{ fontSize: 11, color: '#94a3b8' }}>ðŸ­ {g.fornecedores_destino.nome}</p>}
                           </div>
                           <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
                             <p style={{ fontSize: 11, color: '#94a3b8' }}>{new Date(g.created_at).toLocaleDateString('pt-BR')}</p>
-                            <p style={{ fontSize: 11, color: '#6366f1', marginTop: 4 }}>ver detalhes →</p>
+                            <p style={{ fontSize: 11, color: '#2563eb', marginTop: 4 }}>ver detalhes â†’</p>
                           </div>
                         </div>
                       </div>
@@ -800,7 +800,7 @@ ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', height: 'fit-content', position: 'sticky', top: 16 }}>
               <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Garantia #{garantiaSel.numero}</p>
-                <button onClick={() => setGarantiaSel(null)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#94a3b8' }}>×</button>
+                <button onClick={() => setGarantiaSel(null)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#94a3b8' }}>Ã—</button>
               </div>
 
               <div style={{ padding: '14px 18px', maxHeight: '80vh', overflowY: 'auto' }}>
@@ -813,19 +813,19 @@ ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g
 
                 {PROXIMOS_STATUS[garantiaSel.status] && PROXIMOS_STATUS[garantiaSel.status].length > 0 && (
                   <div style={{ marginBottom: 14 }}>
-                    <p style={{ fontSize: 11, fontWeight: 500, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Ações</p>
+                    <p style={{ fontSize: 11, fontWeight: 500, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>AÃ§Ãµes</p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {garantiaSel.fornecedores_destino?.telefone && (garantiaSel.status === 'acionando_fornecedor' || garantiaSel.status === 'aberta') && (
-                        <button onClick={() => acionarFornecedor(garantiaSel)} style={{ padding: '9px 14px', border: '1px solid #e9d5ff', borderRadius: 8, fontSize: 13, background: '#faf5ff', cursor: 'pointer', color: '#6b21a8', fontWeight: 500, textAlign: 'left' }}>
-                          💬 Enviar WhatsApp ao fornecedor
+                        <button onClick={() => acionarFornecedor(garantiaSel)} style={{ padding: '9px 14px', border: '1px solid #bfdbfe', borderRadius: 8, fontSize: 13, background: '#eff6ff', cursor: 'pointer', color: '#6b21a8', fontWeight: 500, textAlign: 'left' }}>
+                          ðŸ’¬ Enviar WhatsApp ao fornecedor
                         </button>
                       )}
                       <button onClick={() => imprimirRecibo(garantiaSel)} style={{ padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer', color: '#374151', textAlign: 'left' }}>
-                        🖨 Imprimir recibo de devolução
+                        ðŸ–¨ Imprimir recibo de devoluÃ§Ã£o
                       </button>
                       {PROXIMOS_STATUS[garantiaSel.status].map(novoSt => (
                         <button key={novoSt} onClick={() => mudarStatus(garantiaSel, novoSt)} disabled={mudandoStatus} style={{ padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, background: STATUS_CFG[novoSt]?.bg ?? '#fff', cursor: 'pointer', color: STATUS_CFG[novoSt]?.color ?? '#374151', fontWeight: 500, textAlign: 'left' }}>
-                          → {STATUS_CFG[novoSt]?.icon} {STATUS_CFG[novoSt]?.label}
+                          â†’ {STATUS_CFG[novoSt]?.icon} {STATUS_CFG[novoSt]?.label}
                         </button>
                       ))}
                     </div>
@@ -837,10 +837,10 @@ ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12 }}>
                     {[
                       { l: 'OS origem', v: `#${garantiaSel.os_origem?.numero}` },
-                      { l: 'Modelo', v: garantiaSel.os_origem?.modelo ?? '—' },
-                      { l: 'Defeito', v: garantiaSel.os_origem?.defeito_relatado?.slice(0, 80) ?? '—' },
+                      { l: 'Modelo', v: garantiaSel.os_origem?.modelo ?? 'â€”' },
+                      { l: 'Defeito', v: garantiaSel.os_origem?.defeito_relatado?.slice(0, 80) ?? 'â€”' },
                       { l: 'Motivo retorno', v: garantiaSel.motivo_retorno },
-                      { l: 'Fornecedor', v: garantiaSel.fornecedores_destino?.nome ?? '—' },
+                      { l: 'Fornecedor', v: garantiaSel.fornecedores_destino?.nome ?? 'â€”' },
                     ].map(d => (
                       <div key={d.l} style={{ display: 'flex', gap: 8 }}>
                         <span style={{ color: '#94a3b8', minWidth: 90 }}>{d.l}</span>
@@ -864,14 +864,14 @@ ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g
                       {timeline.map((t, i) => (
                         <div key={t.id} style={{ display: 'flex', gap: 10, paddingBottom: i < timeline.length - 1 ? 12 : 0 }}>
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
-                            <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#eef2ff', color: '#4338ca', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>
-                              {TIMELINE_ICON[t.tipo] ?? '•'}
+                            <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#dbeafe', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>
+                              {TIMELINE_ICON[t.tipo] ?? 'â€¢'}
                             </div>
                             {i < timeline.length - 1 && <div style={{ width: 1, flex: 1, background: '#e2e8f0', marginTop: 4 }} />}
                           </div>
                           <div style={{ flex: 1, paddingTop: 2, paddingBottom: 8 }}>
                             <p style={{ fontSize: 12, color: '#374151', fontWeight: 500, marginBottom: 2 }}>{t.descricao}</p>
-                            <p style={{ fontSize: 11, color: '#94a3b8' }}>{(t.perfis as any)?.nome ?? 'Sistema'} · {new Date(t.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
+                            <p style={{ fontSize: 11, color: '#94a3b8' }}>{(t.perfis as any)?.nome ?? 'Sistema'} Â· {new Date(t.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
                           </div>
                         </div>
                       ))}
@@ -880,10 +880,10 @@ ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g
                 </div>
 
                 <div>
-                  <p style={{ fontSize: 11, fontWeight: 500, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>Adicionar observação</p>
+                  <p style={{ fontSize: 11, fontWeight: 500, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>Adicionar observaÃ§Ã£o</p>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <input style={{ ...inp, flex: 1, fontSize: 12 }} value={novaObs} onChange={e => setNovaObs(e.target.value)} onKeyDown={e => e.key === 'Enter' && salvarObservacao(garantiaSel)} placeholder="Anotação interna..." />
-                    <button onClick={() => salvarObservacao(garantiaSel)} disabled={!novaObs.trim()} style={{ padding: '8px 12px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, cursor: 'pointer' }}>+</button>
+                    <input style={{ ...inp, flex: 1, fontSize: 12 }} value={novaObs} onChange={e => setNovaObs(e.target.value)} onKeyDown={e => e.key === 'Enter' && salvarObservacao(garantiaSel)} placeholder="AnotaÃ§Ã£o interna..." />
+                    <button onClick={() => salvarObservacao(garantiaSel)} disabled={!novaObs.trim()} style={{ padding: '8px 12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, cursor: 'pointer' }}>+</button>
                   </div>
                 </div>
               </div>
@@ -892,18 +892,18 @@ ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g
         </div>
       )}
 
-      {/* ═══ RANKING ═══ */}
+      {/* â•â•â• RANKING â•â•â• */}
       {aba === 'ranking' && (
         <div>
-          <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>Porcentagem de garantias acionadas por fornecedor — quanto menor, mais confiável.</p>
+          <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>Porcentagem de garantias acionadas por fornecedor â€” quanto menor, mais confiÃ¡vel.</p>
           {ranking.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 60 }}><div style={{ fontSize: 40, marginBottom: 12 }}>📊</div><p style={{ fontSize: 14, color: '#374151' }}>Nenhum dado de ranking disponível ainda.</p></div>
+            <div style={{ textAlign: 'center', padding: 60 }}><div style={{ fontSize: 40, marginBottom: 12 }}>ðŸ“Š</div><p style={{ fontSize: 14, color: '#374151' }}>Nenhum dado de ranking disponÃ­vel ainda.</p></div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {ranking.map((r, i) => (
                 <div key={r.nome} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 14 }}>
                   <div style={{ width: 32, height: 32, borderRadius: '50%', background: i === 0 ? '#fef2f2' : i === 1 ? '#fef3c7' : '#ecfdf5', color: i === 0 ? '#991b1b' : i === 1 ? '#92400e' : '#065f46', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
-                    {i + 1}º
+                    {i + 1}Âº
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
@@ -929,8 +929,8 @@ ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }}>
           <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 500 }}>
             <div style={{ padding: '18px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>💬 Mensagem ao fornecedor</h3>
-              <button onClick={() => setWaModal(null)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#94a3b8' }}>×</button>
+              <h3 style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>ðŸ’¬ Mensagem ao fornecedor</h3>
+              <button onClick={() => setWaModal(null)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#94a3b8' }}>Ã—</button>
             </div>
             <div style={{ padding: '18px 22px' }}>
               <p style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>
@@ -938,11 +938,11 @@ ${g.justificativa ? `<div style="font-size:8pt;color:#555;font-style:italic">${g
                 {waModal.garantia.fornecedores_destino?.telefone && <span style={{ marginLeft: 8, color: '#94a3b8' }}>{waModal.garantia.fornecedores_destino.telefone}</span>}
               </p>
               <textarea value={waModal.mensagem} onChange={e => setWaModal({ ...waModal, mensagem: e.target.value })} style={{ ...inp, minHeight: 200, resize: 'vertical', lineHeight: 1.7, marginBottom: 14 }} />
-              <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 14 }}>Você pode editar a mensagem antes de enviar. Ao confirmar, o WhatsApp abre e o status muda para "Aguardando resposta".</p>
+              <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 14 }}>VocÃª pode editar a mensagem antes de enviar. Ao confirmar, o WhatsApp abre e o status muda para "Aguardando resposta".</p>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={() => setWaModal(null)} style={{ flex: 1, padding: '9px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer', color: '#374151' }}>Cancelar</button>
                 <button onClick={() => confirmarWA(waModal.garantia, waModal.mensagem)} style={{ flex: 2, padding: '9px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                  💬 Enviar e registrar ✓
+                  ðŸ’¬ Enviar e registrar âœ“
                 </button>
               </div>
             </div>
