@@ -26,19 +26,19 @@ type Campanha = { id: string; nome: string; status: string; mensagem: string; se
 type Agendamento = { id: string; tipo: string; mensagem: string; agendado_para: string; status: string; clientes: { nome: string } | null }
 
 const NIVEL_CONFIG: Record<string, { label: string; bg: string; color: string; icon: string }> = {
-  vip:      { label: 'VIP',       bg: '#ecfdf5', color: '#065f46', icon: 'â­' },
-  regular:  { label: 'Regular',   bg: '#eff6ff', color: '#1d4ed8', icon: 'âœ“' },
-  em_risco: { label: 'Em risco',  bg: '#fef3c7', color: '#92400e', icon: 'âš ' },
-  perdido:  { label: 'Perdido',   bg: '#fef2f2', color: '#991b1b', icon: 'âœ—' },
-  novo:     { label: 'Novo',      bg: '#eff6ff', color: '#6b21a8', icon: 'âœ¦' },
+  vip:      { label: 'VIP',       bg: '#ecfdf5', color: '#065f46', icon: '⭐' },
+  regular:  { label: 'Regular',   bg: '#eff6ff', color: '#1d4ed8', icon: '✓' },
+  em_risco: { label: 'Em risco',  bg: '#fef3c7', color: '#92400e', icon: '⚠' },
+  perdido:  { label: 'Perdido',   bg: '#fef2f2', color: '#991b1b', icon: '✗' },
+  novo:     { label: 'Novo',      bg: '#eff6ff', color: '#6b21a8', icon: '✦' },
 }
 
 const WA_TIPO_CONFIG: Record<string, { label: string; icon: string; templateKey: string }> = {
-  aniversario:            { label: 'Aniversariantes',  icon: 'ðŸŽ‚', templateKey: 'wa_aniversario' },
-  os_pronta_nao_retirada: { label: 'OS prontas',       icon: 'â°', templateKey: 'wa_os_pronta_nao_retirada' },
-  aparelho_90dias:        { label: '+90 dias',         icon: 'ðŸ“¦', templateKey: 'wa_retirada_90dias' },
-  cliente_inativo:        { label: 'Inativos',         icon: 'ðŸ˜´', templateKey: 'wa_cliente_inativo' },
-  nunca_retornou:         { label: 'NÃ£o retornaram',   icon: 'ðŸ‘‹', templateKey: 'wa_nunca_retornou' },
+  aniversario:            { label: 'Aniversariantes',  icon: '🎂', templateKey: 'wa_aniversario' },
+  os_pronta_nao_retirada: { label: 'OS prontas',       icon: '⏰', templateKey: 'wa_os_pronta_nao_retirada' },
+  aparelho_90dias:        { label: '+90 dias',         icon: '📦', templateKey: 'wa_retirada_90dias' },
+  cliente_inativo:        { label: 'Inativos',         icon: '😴', templateKey: 'wa_cliente_inativo' },
+  nunca_retornou:         { label: 'Não retornaram',   icon: '👋', templateKey: 'wa_nunca_retornou' },
 }
 
 function formatPhone(v: string) {
@@ -50,13 +50,13 @@ function buildMsg(template: string, p: Pendencia) {
 }
 
 const ABAS = [
-  ['acompanhamento','ðŸ’¬ Acompanhamento'],
-  ['clientes','ðŸ‘¥ Clientes'],
-  ['timeline','ðŸ“‹ Linha do tempo'],
-  ['segmentos','ðŸ· Segmentos'],
-  ['campanhas','ðŸ“£ Campanhas'],
-  ['agendamentos','â± Agendamentos'],
-  ['avaliacoes','â­ NPS / AvaliaÃ§Ãµes'],
+  ['acompanhamento','💬 Acompanhamento'],
+  ['clientes','👥 Clientes'],
+  ['timeline','📋 Linha do tempo'],
+  ['segmentos','🏷 Segmentos'],
+  ['campanhas','📣 Campanhas'],
+  ['agendamentos','⏱ Agendamentos'],
+  ['avaliacoes','⭐ NPS / Avaliações'],
 ] as const
 
 const inp: React.CSSProperties = { width:'100%', padding:'9px 12px', border:'1px solid #e2e8f0', borderRadius:7, fontSize:13, color:'#1e293b', background:'#fff', outline:'none', fontFamily:'inherit' }
@@ -264,7 +264,7 @@ export default function CRMPage() {
       <div style={{ marginBottom:20 }}>
         <h1 style={{ fontSize:20, fontWeight:600, color:'#0f172a', letterSpacing:'-0.02em' }}>CRM & Acompanhamento</h1>
         <p style={{ fontSize:13, color:'#94a3b8', marginTop:2 }}>
-          {loading ? 'Carregando...' : `${clientes.length} clientes Â· ${totalPendentes > 0 ? `${totalPendentes} mensagens pendentes` : 'mensagens em dia âœ“'}`}
+          {loading ? 'Carregando...' : `${clientes.length} clientes · ${totalPendentes > 0 ? `${totalPendentes} mensagens pendentes` : 'mensagens em dia ✓'}`}
         </p>
       </div>
 
@@ -275,7 +275,7 @@ export default function CRMPage() {
         ))}
       </div>
 
-      {/* â•â•â• ACOMPANHAMENTO â•â•â• */}
+      {/* ═══ ACOMPANHAMENTO ═══ */}
       {aba === 'acompanhamento' && (
         <div>
           {/* Barra de progresso */}
@@ -284,7 +284,7 @@ export default function CRMPage() {
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
                 <div>
                   <p style={{ fontSize:14, fontWeight:600, color:'#0f172a' }}>{totalEnviados}/{totalGeral} enviados hoje</p>
-                  <p style={{ fontSize:12, color:'#94a3b8', marginTop:2 }}>{tudo100 ? 'ðŸŽ‰ Todos os contatos realizados!' : `${totalPendentes} pendente(s)`}</p>
+                  <p style={{ fontSize:12, color:'#94a3b8', marginTop:2 }}>{tudo100 ? '🎉 Todos os contatos realizados!' : `${totalPendentes} pendente(s)`}</p>
                 </div>
                 <span style={{ fontSize:22, fontWeight:700, color:tudo100?'#10b981':'#2563eb' }}>{Math.round((totalEnviados/totalGeral)*100)}%</span>
               </div>
@@ -297,7 +297,7 @@ export default function CRMPage() {
                   return (
                     <button key={r.tipo} onClick={()=>setFiltroTipo(filtroTipo===r.tipo?'todos':r.tipo)} style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:8, border:'1px solid #e2e8f0', background:filtroTipo===r.tipo?'#dbeafe':'#f8fafc', cursor:'pointer', fontSize:12 }}>
                       <span>{tc.icon}</span><span style={{ color:'#374151' }}>{tc.label}</span>
-                      {r.pendentes>0 ? <span style={{ background:'#ef4444', color:'#fff', fontSize:10, fontWeight:700, padding:'1px 6px', borderRadius:20 }}>{r.pendentes}</span> : <span style={{ background:'#ecfdf5', color:'#065f46', fontSize:10, fontWeight:600, padding:'1px 6px', borderRadius:20 }}>âœ“</span>}
+                      {r.pendentes>0 ? <span style={{ background:'#ef4444', color:'#fff', fontSize:10, fontWeight:700, padding:'1px 6px', borderRadius:20 }}>{r.pendentes}</span> : <span style={{ background:'#ecfdf5', color:'#065f46', fontSize:10, fontWeight:600, padding:'1px 6px', borderRadius:20 }}>✓</span>}
                     </button>
                   )
                 })}
@@ -326,7 +326,7 @@ export default function CRMPage() {
                 <div style={{ padding:'12px 18px', background:'#f8fafc', borderBottom:'1px solid #f1f5f9', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                   <span style={{ fontSize:13, fontWeight:600, color:'#374151' }}>{tc.icon} {tc.label}</span>
                   {pendentes > 0 ? <span style={{ fontSize:11, background:'#fef3c7', color:'#92400e', padding:'2px 8px', borderRadius:20, fontWeight:500 }}>{pendentes} pendente(s)</span>
-                    : <span style={{ fontSize:11, background:'#ecfdf5', color:'#065f46', padding:'2px 8px', borderRadius:20, fontWeight:500 }}>âœ“ Todos enviados</span>}
+                    : <span style={{ fontSize:11, background:'#ecfdf5', color:'#065f46', padding:'2px 8px', borderRadius:20, fontWeight:500 }}>✓ Todos enviados</span>}
                 </div>
                 <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
                   <tbody>
@@ -338,19 +338,19 @@ export default function CRMPage() {
                         <tr key={uid} style={{ borderBottom:'1px solid #f8fafc', background:p.enviado_hoje?'#f8fffe':'#fff' }}>
                           <td style={{ padding:'10px 18px', fontWeight:500, color:'#0f172a' }}>
                             {p.nome}
-                            <button onClick={()=>{setClienteSel(clientes.find(c=>c.id===p.cliente_id)||null);setAba('timeline')}} style={{ marginLeft:8, fontSize:11, color:'#2563eb', background:'none', border:'none', cursor:'pointer' }}>ver â†’</button>
+                            <button onClick={()=>{setClienteSel(clientes.find(c=>c.id===p.cliente_id)||null);setAba('timeline')}} style={{ marginLeft:8, fontSize:11, color:'#2563eb', background:'none', border:'none', cursor:'pointer' }}>ver →</button>
                           </td>
                           <td style={{ padding:'10px 18px', color:'#64748b', fontSize:12 }}>{p.telefone?formatPhone(p.telefone):'Sem telefone'}</td>
                           {p.dias != null && <td style={{ padding:'10px 18px', fontSize:12, fontWeight:600, color:(p.dias??0)>90?'#ef4444':'#92400e' }}>{p.dias} dias</td>}
-                          {p.idade != null && <td style={{ padding:'10px 18px', fontSize:12 }}>{p.idade} anos ðŸŽ‰</td>}
+                          {p.idade != null && <td style={{ padding:'10px 18px', fontSize:12 }}>{p.idade} anos 🎉</td>}
                           <td style={{ padding:'10px 18px' }}>
-                            {p.enviado_hoje ? <span style={{ fontSize:11, fontWeight:600, background:'#ecfdf5', color:'#065f46', padding:'2px 8px', borderRadius:20 }}>âœ“ Enviado</span>
-                              : <span style={{ fontSize:11, fontWeight:500, background:'#fef3c7', color:'#92400e', padding:'2px 8px', borderRadius:20 }}>â³ Pendente</span>}
+                            {p.enviado_hoje ? <span style={{ fontSize:11, fontWeight:600, background:'#ecfdf5', color:'#065f46', padding:'2px 8px', borderRadius:20 }}>✓ Enviado</span>
+                              : <span style={{ fontSize:11, fontWeight:500, background:'#fef3c7', color:'#92400e', padding:'2px 8px', borderRadius:20 }}>⏳ Pendente</span>}
                           </td>
                           <td style={{ padding:'10px 18px' }}>
                             {p.telefone && (
                               <button onClick={()=>setWaModal({p,msg})} disabled={enviandoId===uid} style={{ padding:'5px 12px', borderRadius:7, border:'1px solid', cursor:'pointer', fontSize:12, fontWeight:500, background:p.enviado_hoje?'#f0fdf4':'#fff', color:p.enviado_hoje?'#065f46':'#374151', borderColor:p.enviado_hoje?'#86efac':'#e2e8f0' }}>
-                                ðŸ’¬ {p.enviado_hoje?'Reenviar':'Enviar'}
+                                💬 {p.enviado_hoje?'Reenviar':'Enviar'}
                               </button>
                             )}
                           </td>
@@ -365,25 +365,25 @@ export default function CRMPage() {
 
           {pendenciasFiltradas.length === 0 && (
             <div style={{ textAlign:'center', padding:80 }}>
-              <div style={{ fontSize:48, marginBottom:16 }}>ðŸŽ‰</div>
+              <div style={{ fontSize:48, marginBottom:16 }}>🎉</div>
               <p style={{ fontSize:16, fontWeight:600, color:'#0f172a' }}>{totalPendentes===0?'Tudo enviado hoje!':'Nenhum contato neste filtro'}</p>
             </div>
           )}
         </div>
       )}
 
-      {/* â•â•â• CLIENTES â•â•â• */}
+      {/* ═══ CLIENTES ═══ */}
       {aba === 'clientes' && (
         <div>
           <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap' }}>
             <input value={clienteSearch} onChange={e=>setClienteSearch(e.target.value)} placeholder="Buscar cliente..." style={{ ...inp, flex:1, minWidth:180, background:'#f8fafc' }} />
             <select value={filtroNivel} onChange={e=>setFiltroNivel(e.target.value)} style={{ ...inp, width:'auto' }}>
-              <option value="todos">Todos os nÃ­veis</option>
+              <option value="todos">Todos os níveis</option>
               {Object.entries(NIVEL_CONFIG).map(([k,v])=><option key={k} value={k}>{v.icon} {v.label}</option>)}
             </select>
           </div>
 
-          {/* Cards de nÃ­vel */}
+          {/* Cards de nível */}
           <div style={{ display:'flex', gap:10, marginBottom:20, flexWrap:'wrap' }}>
             {Object.entries(NIVEL_CONFIG).map(([nivel, cfg]) => {
               const qtd = clientes.filter(c=>c.nivel_crm===nivel).length
@@ -400,7 +400,7 @@ export default function CRMPage() {
           <div style={{ background:'#fff', border:'1px solid #e2e8f0', borderRadius:12, overflow:'hidden' }}>
             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
               <thead><tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
-                {['Cliente','Telefone','NÃ­vel','Score','OS','Total gasto','Ãšltima OS',''].map(h=><th key={h} style={{ padding:'9px 14px', textAlign:'left', fontSize:11, fontWeight:600, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.04em', whiteSpace:'nowrap' }}>{h}</th>)}
+                {['Cliente','Telefone','Nível','Score','OS','Total gasto','Última OS',''].map(h=><th key={h} style={{ padding:'9px 14px', textAlign:'left', fontSize:11, fontWeight:600, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.04em', whiteSpace:'nowrap' }}>{h}</th>)}
               </tr></thead>
               <tbody>
                 {clientes.map(c => {
@@ -409,7 +409,7 @@ export default function CRMPage() {
                   return (
                     <tr key={c.id} style={{ borderBottom:'1px solid #f1f5f9' }}>
                       <td style={{ padding:'10px 14px', fontWeight:500, color:'#0f172a' }}>{c.nome}</td>
-                      <td style={{ padding:'10px 14px', color:'#64748b', fontSize:12 }}>{c.telefone?formatPhone(c.telefone):'â€”'}</td>
+                      <td style={{ padding:'10px 14px', color:'#64748b', fontSize:12 }}>{c.telefone?formatPhone(c.telefone):'—'}</td>
                       <td style={{ padding:'10px 14px' }}><span style={{ fontSize:11, fontWeight:500, padding:'2px 8px', borderRadius:20, background:nc.bg, color:nc.color }}>{nc.icon} {nc.label}</span></td>
                       <td style={{ padding:'10px 14px' }}>
                         <div style={{ display:'flex', alignItems:'center', gap:6 }}>
@@ -420,10 +420,10 @@ export default function CRMPage() {
                         </div>
                       </td>
                       <td style={{ padding:'10px 14px', color:'#374151' }}>{c.total_os??0}</td>
-                      <td style={{ padding:'10px 14px', fontFamily:'monospace', fontSize:12, color:'#374151' }}>{c.total_gasto>0?fm(c.total_gasto):'â€”'}</td>
-                      <td style={{ padding:'10px 14px', fontSize:12, color:diasUlt&&diasUlt>90?'#ef4444':'#94a3b8' }}>{diasUlt!=null?`hÃ¡ ${diasUlt} dias`:'â€”'}</td>
+                      <td style={{ padding:'10px 14px', fontFamily:'monospace', fontSize:12, color:'#374151' }}>{c.total_gasto>0?fm(c.total_gasto):'—'}</td>
+                      <td style={{ padding:'10px 14px', fontSize:12, color:diasUlt&&diasUlt>90?'#ef4444':'#94a3b8' }}>{diasUlt!=null?`há ${diasUlt} dias`:'—'}</td>
                       <td style={{ padding:'10px 14px' }}>
-                        <button onClick={()=>{setClienteSel(c);setAba('timeline')}} style={{ fontSize:12, padding:'4px 10px', border:'1px solid #e2e8f0', borderRadius:6, background:'#fff', cursor:'pointer', color:'#2563eb' }}>Timeline â†’</button>
+                        <button onClick={()=>{setClienteSel(c);setAba('timeline')}} style={{ fontSize:12, padding:'4px 10px', border:'1px solid #e2e8f0', borderRadius:6, background:'#fff', cursor:'pointer', color:'#2563eb' }}>Timeline →</button>
                       </td>
                     </tr>
                   )
@@ -434,12 +434,12 @@ export default function CRMPage() {
         </div>
       )}
 
-      {/* â•â•â• LINHA DO TEMPO â•â•â• */}
+      {/* ═══ LINHA DO TEMPO ═══ */}
       {aba === 'timeline' && (
         <div>
           {!clienteSel ? (
             <div style={{ textAlign:'center', padding:60 }}>
-              <div style={{ fontSize:40, marginBottom:12 }}>ðŸ‘¤</div>
+              <div style={{ fontSize:40, marginBottom:12 }}>👤</div>
               <p style={{ fontSize:14, fontWeight:500, color:'#374151', marginBottom:12 }}>Selecione um cliente para ver a linha do tempo</p>
               <div style={{ display:'flex', gap:8, justifyContent:'center', flexWrap:'wrap' }}>
                 {clientes.slice(0,8).map(c => (
@@ -458,16 +458,16 @@ export default function CRMPage() {
                     </div>
                     <div>
                       <p style={{ fontSize:17, fontWeight:600, color:'#0f172a' }}>{clienteSel.nome}</p>
-                      <p style={{ fontSize:13, color:'#64748b' }}>{clienteSel.telefone?formatPhone(clienteSel.telefone):'â€”'}</p>
+                      <p style={{ fontSize:13, color:'#64748b' }}>{clienteSel.telefone?formatPhone(clienteSel.telefone):'—'}</p>
                     </div>
                     <span style={{ fontSize:12, fontWeight:500, padding:'3px 10px', borderRadius:20, background:NIVEL_CONFIG[clienteSel.nivel_crm]?.bg??'#f8fafc', color:NIVEL_CONFIG[clienteSel.nivel_crm]?.color??'#374151' }}>
                       {NIVEL_CONFIG[clienteSel.nivel_crm]?.icon} {NIVEL_CONFIG[clienteSel.nivel_crm]?.label}
                     </span>
                   </div>
-                  <button onClick={()=>setClienteSel(null)} style={{ fontSize:12, color:'#2563eb', background:'none', border:'none', cursor:'pointer' }}>â† Voltar</button>
+                  <button onClick={()=>setClienteSel(null)} style={{ fontSize:12, color:'#2563eb', background:'none', border:'none', cursor:'pointer' }}>← Voltar</button>
                 </div>
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:10 }}>
-                  {[{l:'Score CRM',v:clienteSel.score_crm??0,c:'#2563eb'},{l:'Total OS',v:clienteSel.total_os??0,c:'#374151'},{l:'Total gasto',v:clienteSel.total_gasto>0?fm(clienteSel.total_gasto):'â€”',c:'#065f46'},{l:'Mensagens WA',v:timelineWA.length,c:'#0369a1'}].map(m=>(
+                  {[{l:'Score CRM',v:clienteSel.score_crm??0,c:'#2563eb'},{l:'Total OS',v:clienteSel.total_os??0,c:'#374151'},{l:'Total gasto',v:clienteSel.total_gasto>0?fm(clienteSel.total_gasto):'—',c:'#065f46'},{l:'Mensagens WA',v:timelineWA.length,c:'#0369a1'}].map(m=>(
                     <div key={m.l} style={{ background:'#f8fafc', borderRadius:8, padding:'10px 12px', textAlign:'center' }}>
                       <p style={{ fontSize:11, color:'#64748b', marginBottom:3 }}>{m.l}</p>
                       <p style={{ fontSize:16, fontWeight:700, color:m.c }}>{m.v}</p>
@@ -479,7 +479,7 @@ export default function CRMPage() {
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
                 {/* OS */}
                 <div style={card}>
-                  <p style={{ fontSize:13, fontWeight:600, color:'#0f172a', marginBottom:12 }}>ðŸ”§ Ordens de ServiÃ§o ({timelineOS.length})</p>
+                  <p style={{ fontSize:13, fontWeight:600, color:'#0f172a', marginBottom:12 }}>🔧 Ordens de Serviço ({timelineOS.length})</p>
                   {timelineOS.length === 0 ? <p style={{ fontSize:13, color:'#94a3b8' }}>Nenhuma OS ainda.</p> :
                     timelineOS.map(os => (
                       <div key={os.id} style={{ padding:'8px 0', borderBottom:'1px solid #f1f5f9' }}>
@@ -487,28 +487,28 @@ export default function CRMPage() {
                           <span style={{ fontWeight:600, color:'#2563eb', fontSize:13 }}>#{os.numero}</span>
                           <span style={{ fontSize:11, color:'#94a3b8' }}>{new Date(os.created_at).toLocaleDateString('pt-BR')}</span>
                         </div>
-                        <p style={{ fontSize:12, color:'#64748b', marginTop:2 }}>{os.modelo??'â€”'} Â· {os.defeito_relatado.slice(0,40)}</p>
-                        <p style={{ fontSize:12, fontWeight:500, color:'#374151' }}>{os.valor_final||os.valor_orcamento?fm(os.valor_final??os.valor_orcamento??0):'â€”'}</p>
+                        <p style={{ fontSize:12, color:'#64748b', marginTop:2 }}>{os.modelo??'—'} · {os.defeito_relatado.slice(0,40)}</p>
+                        <p style={{ fontSize:12, fontWeight:500, color:'#374151' }}>{os.valor_final||os.valor_orcamento?fm(os.valor_final??os.valor_orcamento??0):'—'}</p>
                       </div>
                     ))
                   }
                 </div>
 
-                {/* AnotaÃ§Ãµes */}
+                {/* Anotações */}
                 <div style={card}>
-                  <p style={{ fontSize:13, fontWeight:600, color:'#0f172a', marginBottom:12 }}>ðŸ“ AnotaÃ§Ãµes internas</p>
+                  <p style={{ fontSize:13, fontWeight:600, color:'#0f172a', marginBottom:12 }}>📝 Anotações internas</p>
                   <div style={{ display:'flex', gap:8, marginBottom:12 }}>
-                    <input style={{ ...inp, flex:1 }} value={novaAnotacao} onChange={e=>setNovaAnotacao(e.target.value)} onKeyDown={e=>e.key==='Enter'&&salvarAnotacao()} placeholder="Adicionar anotaÃ§Ã£o... (Enter para salvar)" />
+                    <input style={{ ...inp, flex:1 }} value={novaAnotacao} onChange={e=>setNovaAnotacao(e.target.value)} onKeyDown={e=>e.key==='Enter'&&salvarAnotacao()} placeholder="Adicionar anotação... (Enter para salvar)" />
                     <button onClick={salvarAnotacao} disabled={savingAnotacao||!novaAnotacao.trim()} style={{ padding:'9px 14px', background:'#2563eb', color:'#fff', border:'none', borderRadius:7, fontSize:13, cursor:'pointer' }}>+</button>
                   </div>
-                  {anotacoes.length === 0 ? <p style={{ fontSize:13, color:'#94a3b8' }}>Nenhuma anotaÃ§Ã£o.</p> :
+                  {anotacoes.length === 0 ? <p style={{ fontSize:13, color:'#94a3b8' }}>Nenhuma anotação.</p> :
                     anotacoes.map(a => (
                       <div key={a.id} style={{ background:'#f8fafc', borderRadius:8, padding:'10px 12px', marginBottom:8 }}>
                         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
                           <p style={{ fontSize:13, color:'#374151', flex:1, lineHeight:1.5 }}>{a.texto}</p>
-                          <button onClick={()=>excluirAnotacao(a.id)} style={{ background:'none', border:'none', color:'#ef4444', cursor:'pointer', fontSize:16, marginLeft:8, flexShrink:0 }}>Ã—</button>
+                          <button onClick={()=>excluirAnotacao(a.id)} style={{ background:'none', border:'none', color:'#ef4444', cursor:'pointer', fontSize:16, marginLeft:8, flexShrink:0 }}>×</button>
                         </div>
-                        <p style={{ fontSize:11, color:'#94a3b8', marginTop:4 }}>{(a.perfis as any)?.nome} Â· {new Date(a.created_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</p>
+                        <p style={{ fontSize:11, color:'#94a3b8', marginTop:4 }}>{(a.perfis as any)?.nome} · {new Date(a.created_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</p>
                       </div>
                     ))
                   }
@@ -516,7 +516,7 @@ export default function CRMPage() {
 
                 {/* WhatsApp enviados */}
                 <div style={{ ...card, gridColumn:'1/-1' }}>
-                  <p style={{ fontSize:13, fontWeight:600, color:'#0f172a', marginBottom:12 }}>ðŸ’¬ HistÃ³rico de WhatsApp ({timelineWA.length})</p>
+                  <p style={{ fontSize:13, fontWeight:600, color:'#0f172a', marginBottom:12 }}>💬 Histórico de WhatsApp ({timelineWA.length})</p>
                   {timelineWA.length === 0 ? <p style={{ fontSize:13, color:'#94a3b8' }}>Nenhuma mensagem enviada para este cliente.</p> :
                     <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                       {timelineWA.slice(0,10).map((w:any) => (
@@ -537,7 +537,7 @@ export default function CRMPage() {
         </div>
       )}
 
-      {/* â•â•â• SEGMENTOS â•â•â• */}
+      {/* ═══ SEGMENTOS ═══ */}
       {aba === 'segmentos' && (
         <div style={{ display:'grid', gridTemplateColumns:'260px 1fr', gap:20 }}>
           <div>
@@ -557,15 +557,15 @@ export default function CRMPage() {
             ) : (
               <div style={card}>
                 <p style={{ fontSize:14, fontWeight:600, color:'#0f172a', marginBottom:14 }}>
-                  {segmentos.find(s=>s.id===segmentoSel)?.nome} â€” {membrosSegmento.length} clientes
+                  {segmentos.find(s=>s.id===segmentoSel)?.nome} — {membrosSegmento.length} clientes
                 </p>
                 {membrosSegmento.length === 0 ? <p style={{ fontSize:13, color:'#94a3b8' }}>Nenhum cliente neste segmento ainda.</p> :
                   membrosSegmento.map(c => (
                     <div key={c.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px solid #f1f5f9', fontSize:13 }}>
                       <span style={{ fontWeight:500, color:'#0f172a' }}>{c.nome}</span>
                       <div style={{ display:'flex', gap:10, alignItems:'center' }}>
-                        <span style={{ color:'#94a3b8', fontSize:12 }}>{c.telefone?formatPhone(c.telefone):'â€”'}</span>
-                        <button onClick={()=>{setClienteSel(c);setAba('timeline')}} style={{ fontSize:12, color:'#2563eb', background:'none', border:'none', cursor:'pointer' }}>ver â†’</button>
+                        <span style={{ color:'#94a3b8', fontSize:12 }}>{c.telefone?formatPhone(c.telefone):'—'}</span>
+                        <button onClick={()=>{setClienteSel(c);setAba('timeline')}} style={{ fontSize:12, color:'#2563eb', background:'none', border:'none', cursor:'pointer' }}>ver →</button>
                       </div>
                     </div>
                   ))
@@ -576,7 +576,7 @@ export default function CRMPage() {
         </div>
       )}
 
-      {/* â•â•â• CAMPANHAS â•â•â• */}
+      {/* ═══ CAMPANHAS ═══ */}
       {aba === 'campanhas' && (
         <div>
           <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:16 }}>
@@ -588,12 +588,12 @@ export default function CRMPage() {
             <div style={{ background:'#fff', border:'1px solid #bfdbfe', borderRadius:12, marginBottom:20, overflow:'hidden' }}>
               <div style={{ background:'#dbeafe', padding:'14px 20px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                 <div>
-                  <p style={{ fontSize:14, fontWeight:600, color:'#1d4ed8' }}>ðŸ“£ {campanhaAberta.nome}</p>
+                  <p style={{ fontSize:14, fontWeight:600, color:'#1d4ed8' }}>📣 {campanhaAberta.nome}</p>
                   <p style={{ fontSize:12, color:'#2563eb', marginTop:2 }}>
                     {loadingClientesCampanha ? 'Carregando clientes...' : `${clientesCampanha.length} clientes com telefone`}
                   </p>
                 </div>
-                <button onClick={()=>setCampanhaAberta(null)} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:'#2563eb' }}>Ã—</button>
+                <button onClick={()=>setCampanhaAberta(null)} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:'#2563eb' }}>×</button>
               </div>
               {/* Preview da mensagem */}
               <div style={{ padding:'12px 20px', borderBottom:'1px solid #dbeafe', background:'#eff6ff' }}>
@@ -609,7 +609,7 @@ export default function CRMPage() {
               ) : (
                 <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
                   <thead><tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
-                    {['Cliente','Telefone','NÃ­vel',''].map(h => <th key={h} style={{ padding:'9px 16px', textAlign:'left', fontSize:11, fontWeight:600, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.04em' }}>{h}</th>)}
+                    {['Cliente','Telefone','Nível',''].map(h => <th key={h} style={{ padding:'9px 16px', textAlign:'left', fontSize:11, fontWeight:600, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.04em' }}>{h}</th>)}
                   </tr></thead>
                   <tbody>
                     {clientesCampanha.map(cl => {
@@ -617,7 +617,7 @@ export default function CRMPage() {
                       return (
                         <tr key={cl.id} style={{ borderBottom:'1px solid #f1f5f9' }}>
                           <td style={{ padding:'10px 16px', fontWeight:500, color:'#0f172a' }}>{cl.nome}</td>
-                          <td style={{ padding:'10px 16px', color:'#64748b', fontSize:12 }}>{cl.telefone ? formatPhone(cl.telefone) : 'â€”'}</td>
+                          <td style={{ padding:'10px 16px', color:'#64748b', fontSize:12 }}>{cl.telefone ? formatPhone(cl.telefone) : '—'}</td>
                           <td style={{ padding:'10px 16px' }}><span style={{ fontSize:11, fontWeight:500, padding:'2px 8px', borderRadius:20, background:nc.bg, color:nc.color }}>{nc.icon} {nc.label}</span></td>
                           <td style={{ padding:'10px 16px' }}>
                             <button
@@ -625,7 +625,7 @@ export default function CRMPage() {
                               disabled={enviandoCampanha === cl.id}
                               style={{ padding:'5px 14px', background:'#16a34a', color:'#fff', border:'none', borderRadius:7, fontSize:12, fontWeight:500, cursor:'pointer' }}
                             >
-                              ðŸ’¬ Enviar WhatsApp
+                              💬 Enviar WhatsApp
                             </button>
                           </td>
                         </tr>
@@ -638,7 +638,7 @@ export default function CRMPage() {
           )}
 
           {campanhas.length === 0 ? (
-            <div style={{ textAlign:'center', padding:60 }}><div style={{ fontSize:40, marginBottom:12 }}>ðŸ“£</div><p style={{ fontSize:14, fontWeight:500, color:'#374151' }}>Nenhuma campanha criada</p></div>
+            <div style={{ textAlign:'center', padding:60 }}><div style={{ fontSize:40, marginBottom:12 }}>📣</div><p style={{ fontSize:14, fontWeight:500, color:'#374151' }}>Nenhuma campanha criada</p></div>
           ) : campanhas.map(c => (
             <div key={c.id}
               onClick={() => campanhaAberta?.id === c.id ? setCampanhaAberta(null) : abrirCampanha(c)}
@@ -647,11 +647,11 @@ export default function CRMPage() {
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                 <div>
                   <p style={{ fontSize:14, fontWeight:600, color:'#0f172a' }}>{c.nome}</p>
-                  <p style={{ fontSize:12, color:'#94a3b8', marginTop:2 }}>{new Date(c.created_at).toLocaleDateString('pt-BR')} Â· clique para ver clientes</p>
+                  <p style={{ fontSize:12, color:'#94a3b8', marginTop:2 }}>{new Date(c.created_at).toLocaleDateString('pt-BR')} · clique para ver clientes</p>
                 </div>
                 <div style={{ display:'flex', gap:10, alignItems:'center' }}>
                   <span style={{ fontSize:11, fontWeight:500, padding:'2px 8px', borderRadius:20, background:c.status==='concluida'?'#ecfdf5':c.status==='enviando'?'#eff6ff':'#f8fafc', color:c.status==='concluida'?'#065f46':c.status==='enviando'?'#1d4ed8':'#64748b' }}>{c.status}</span>
-                  <span style={{ fontSize:13, color:'#2563eb' }}>{campanhaAberta?.id === c.id ? 'â–²' : 'â–¼'}</span>
+                  <span style={{ fontSize:13, color:'#2563eb' }}>{campanhaAberta?.id === c.id ? '▲' : '▼'}</span>
                 </div>
               </div>
             </div>
@@ -662,10 +662,10 @@ export default function CRMPage() {
               <div style={{ background:'#fff', borderRadius:14, width:'100%', maxWidth:520 }}>
                 <div style={{ padding:'18px 22px', borderBottom:'1px solid #f1f5f9', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                   <h3 style={{ fontSize:15, fontWeight:600, color:'#0f172a' }}>Nova campanha</h3>
-                  <button onClick={()=>setShowCampanha(false)} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:'#94a3b8' }}>Ã—</button>
+                  <button onClick={()=>setShowCampanha(false)} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:'#94a3b8' }}>×</button>
                 </div>
                 <div style={{ padding:'18px 22px', display:'flex', flexDirection:'column', gap:12 }}>
-                  <div><label style={{ display:'block', fontSize:12, fontWeight:500, color:'#64748b', marginBottom:4 }}>Nome *</label><input style={inp} value={cNome} onChange={e=>setCNome(e.target.value)} placeholder="Ex: PromoÃ§Ã£o aniversariantes" /></div>
+                  <div><label style={{ display:'block', fontSize:12, fontWeight:500, color:'#64748b', marginBottom:4 }}>Nome *</label><input style={inp} value={cNome} onChange={e=>setCNome(e.target.value)} placeholder="Ex: Promoção aniversariantes" /></div>
                   <div><label style={{ display:'block', fontSize:12, fontWeight:500, color:'#64748b', marginBottom:4 }}>Segmento (opcional)</label>
                     <select style={inp} value={cSegmento} onChange={e=>setCSegmento(e.target.value)}>
                       <option value="">Todos os clientes</option>
@@ -676,7 +676,7 @@ export default function CRMPage() {
                 </div>
                 <div style={{ padding:'12px 22px', borderTop:'1px solid #f1f5f9', display:'flex', gap:8, justifyContent:'flex-end' }}>
                   <button onClick={()=>setShowCampanha(false)} style={{ padding:'8px 16px', border:'1px solid #e2e8f0', borderRadius:8, fontSize:13, background:'#fff', cursor:'pointer', color:'#374151' }}>Cancelar</button>
-                  <button onClick={salvarCampanha} disabled={savingCampanha||!cNome.trim()||!cMsg.trim()} style={{ padding:'8px 18px', background:savingCampanha||!cNome.trim()||!cMsg.trim()?'#a5b4fc':'#2563eb', color:'#fff', border:'none', borderRadius:8, fontSize:13, fontWeight:500, cursor:'pointer' }}>
+                  <button onClick={salvarCampanha} disabled={savingCampanha||!cNome.trim()||!cMsg.trim()} style={{ padding:'8px 18px', background:savingCampanha||!cNome.trim()||!cMsg.trim()?'#93c5fd':'#2563eb', color:'#fff', border:'none', borderRadius:8, fontSize:13, fontWeight:500, cursor:'pointer' }}>
                     {savingCampanha?'Criando...':'Criar campanha'}
                   </button>
                 </div>
@@ -686,14 +686,14 @@ export default function CRMPage() {
         </div>
       )}
 
-      {/* â•â•â• AGENDAMENTOS â•â•â• */}
+      {/* ═══ AGENDAMENTOS ═══ */}
       {aba === 'agendamentos' && (
         <div>
           <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:8, padding:'10px 16px', marginBottom:16, fontSize:13, color:'#2563eb' }}>
-            ðŸ“… Agendamentos pendentes â€” mensagens programadas para serem enviadas em horÃ¡rio especÃ­fico.
+            📅 Agendamentos pendentes — mensagens programadas para serem enviadas em horário específico.
           </div>
           {agendamentos.length === 0 ? (
-            <div style={{ textAlign:'center', padding:60 }}><div style={{ fontSize:40, marginBottom:12 }}>â±</div><p style={{ fontSize:14, color:'#374151' }}>Nenhum agendamento pendente.</p></div>
+            <div style={{ textAlign:'center', padding:60 }}><div style={{ fontSize:40, marginBottom:12 }}>⏱</div><p style={{ fontSize:14, color:'#374151' }}>Nenhum agendamento pendente.</p></div>
           ) : (
             <div style={card}>
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
@@ -702,7 +702,7 @@ export default function CRMPage() {
                 </tr></thead>
                 <tbody>{agendamentos.map(a=>(
                   <tr key={a.id} style={{ borderBottom:'1px solid #f1f5f9' }}>
-                    <td style={{ padding:'10px 14px', fontWeight:500, color:'#0f172a' }}>{(a.clientes as any)?.nome??'â€”'}</td>
+                    <td style={{ padding:'10px 14px', fontWeight:500, color:'#0f172a' }}>{(a.clientes as any)?.nome??'—'}</td>
                     <td style={{ padding:'10px 14px' }}><span style={{ fontSize:11, background:'#dbeafe', color:'#1d4ed8', padding:'2px 8px', borderRadius:20 }}>{a.tipo}</span></td>
                     <td style={{ padding:'10px 14px', color:'#374151', fontSize:12 }}>{new Date(a.agendado_para).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</td>
                     <td style={{ padding:'10px 14px', color:'#64748b', fontSize:12, maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.mensagem}</td>
@@ -715,16 +715,16 @@ export default function CRMPage() {
         </div>
       )}
 
-      {/* â•â•â• NPS / AVALIAÃ‡Ã•ES â•â•â• */}
+      {/* ═══ NPS / AVALIAÇÕES ═══ */}
       {aba === 'avaliacoes' && (
         <div>
-          {/* MÃ©tricas NPS */}
+          {/* Métricas NPS */}
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(160px, 1fr))', gap:12, marginBottom:20 }}>
             {[
-              { l:'AvaliaÃ§Ãµes', v:avaliacoes.length, c:'#2563eb' },
-              { l:'Nota mÃ©dia', v:avaliacoes.length>0?npsMedia.toFixed(1):'â€”', c:'#f59e0b' },
-              { l:'Promotores (5â˜…)', v:avaliacoes.filter(a=>a.nota===5).length, c:'#10b981' },
-              { l:'Detratores (1-2â˜…)', v:avaliacoes.filter(a=>(a.nota??0)<=2).length, c:'#ef4444' },
+              { l:'Avaliações', v:avaliacoes.length, c:'#2563eb' },
+              { l:'Nota média', v:avaliacoes.length>0?npsMedia.toFixed(1):'—', c:'#f59e0b' },
+              { l:'Promotores (5★)', v:avaliacoes.filter(a=>a.nota===5).length, c:'#10b981' },
+              { l:'Detratores (1-2★)', v:avaliacoes.filter(a=>(a.nota??0)<=2).length, c:'#ef4444' },
             ].map(m=>(
               <div key={m.l} style={{ background:'#fff', border:'1px solid #e2e8f0', borderRadius:10, padding:'14px 16px' }}>
                 <p style={{ fontSize:11, color:'#64748b', marginBottom:4, textTransform:'uppercase', letterSpacing:'0.04em' }}>{m.l}</p>
@@ -733,12 +733,12 @@ export default function CRMPage() {
             ))}
           </div>
 
-          {/* DistribuiÃ§Ã£o */}
+          {/* Distribuição */}
           <div style={{ ...card, marginBottom:14 }}>
-            <p style={{ fontSize:13, fontWeight:600, color:'#0f172a', marginBottom:12 }}>DistribuiÃ§Ã£o de notas</p>
+            <p style={{ fontSize:13, fontWeight:600, color:'#0f172a', marginBottom:12 }}>Distribuição de notas</p>
             {npsDistrib.map(({nota, qtd}) => {
               const pct = avaliacoes.length > 0 ? (qtd/avaliacoes.length)*100 : 0
-              const stars = 'â˜…'.repeat(nota)+'â˜†'.repeat(5-nota)
+              const stars = '★'.repeat(nota)+'☆'.repeat(5-nota)
               return (
                 <div key={nota} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
                   <span style={{ fontSize:13, color:'#f59e0b', width:60, flexShrink:0 }}>{stars}</span>
@@ -751,15 +751,15 @@ export default function CRMPage() {
             })}
           </div>
 
-          {/* Lista de avaliaÃ§Ãµes */}
+          {/* Lista de avaliações */}
           {avaliacoes.length === 0 ? (
-            <div style={{ textAlign:'center', padding:60 }}><div style={{ fontSize:40, marginBottom:12 }}>â­</div><p style={{ fontSize:14, color:'#374151' }}>Nenhuma avaliaÃ§Ã£o recebida ainda.</p><p style={{ fontSize:13, color:'#94a3b8', marginTop:6 }}>Ative o NPS em ConfiguraÃ§Ãµes â†’ CRM â†’ NPS pÃ³s-venda.</p></div>
+            <div style={{ textAlign:'center', padding:60 }}><div style={{ fontSize:40, marginBottom:12 }}>⭐</div><p style={{ fontSize:14, color:'#374151' }}>Nenhuma avaliação recebida ainda.</p><p style={{ fontSize:13, color:'#94a3b8', marginTop:6 }}>Ative o NPS em Configurações → CRM → NPS pós-venda.</p></div>
           ) : (
             <div style={card}>
               {avaliacoes.map(a => (
                 <div key={a.id} style={{ padding:'10px 0', borderBottom:'1px solid #f1f5f9', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10 }}>
                   <div>
-                    <span style={{ fontSize:16, color:'#f59e0b' }}>{'â˜…'.repeat(a.nota??0)}{'â˜†'.repeat(5-(a.nota??0))}</span>
+                    <span style={{ fontSize:16, color:'#f59e0b' }}>{'★'.repeat(a.nota??0)}{'☆'.repeat(5-(a.nota??0))}</span>
                     {a.comentario && <p style={{ fontSize:13, color:'#374151', marginTop:4 }}>{a.comentario}</p>}
                   </div>
                   <span style={{ fontSize:11, color:'#94a3b8', flexShrink:0 }}>{a.respondido_em?new Date(a.respondido_em).toLocaleDateString('pt-BR'):new Date(a.created_at).toLocaleDateString('pt-BR')}</span>
@@ -775,17 +775,17 @@ export default function CRMPage() {
         <div style={{ position:'fixed', inset:0, background:'rgba(15,23,42,0.5)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:100, padding:20 }}>
           <div style={{ background:'#fff', borderRadius:14, width:'100%', maxWidth:440 }}>
             <div style={{ padding:'18px 22px', borderBottom:'1px solid #f1f5f9', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-              <h3 style={{ fontSize:15, fontWeight:600, color:'#0f172a' }}>ðŸ’¬ Confirmar envio</h3>
-              <button onClick={()=>setWaModal(null)} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:'#94a3b8' }}>Ã—</button>
+              <h3 style={{ fontSize:15, fontWeight:600, color:'#0f172a' }}>💬 Confirmar envio</h3>
+              <button onClick={()=>setWaModal(null)} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:'#94a3b8' }}>×</button>
             </div>
             <div style={{ padding:'18px 22px' }}>
-              <p style={{ fontSize:13, color:'#64748b', marginBottom:12 }}>Para: <strong style={{ color:'#0f172a' }}>{waModal.p.nome}</strong>{waModal.p.telefone&&<span style={{ marginLeft:8, color:'#94a3b8' }}>Â· {formatPhone(waModal.p.telefone)}</span>}</p>
+              <p style={{ fontSize:13, color:'#64748b', marginBottom:12 }}>Para: <strong style={{ color:'#0f172a' }}>{waModal.p.nome}</strong>{waModal.p.telefone&&<span style={{ marginLeft:8, color:'#94a3b8' }}>· {formatPhone(waModal.p.telefone)}</span>}</p>
               <div style={{ background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:8, padding:14, fontSize:13, color:'#374151', lineHeight:1.7, whiteSpace:'pre-wrap', maxHeight:180, overflowY:'auto', marginBottom:14 }}>{waModal.msg}</div>
-              <p style={{ fontSize:12, color:'#94a3b8', marginBottom:14 }}>Ao confirmar, o WhatsApp serÃ¡ aberto e o envio ficarÃ¡ registrado no sistema.</p>
+              <p style={{ fontSize:12, color:'#94a3b8', marginBottom:14 }}>Ao confirmar, o WhatsApp será aberto e o envio ficará registrado no sistema.</p>
               <div style={{ display:'flex', gap:8 }}>
                 <button onClick={()=>setWaModal(null)} style={{ flex:1, padding:'9px', border:'1px solid #e2e8f0', borderRadius:8, fontSize:13, background:'#fff', cursor:'pointer', color:'#374151' }}>Cancelar</button>
                 <button onClick={()=>confirmarWA(waModal.p, waModal.msg)} style={{ flex:2, padding:'9px', background:'#16a34a', color:'#fff', border:'none', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer' }}>
-                  ðŸ’¬ Abrir WhatsApp e registrar âœ“
+                  💬 Abrir WhatsApp e registrar ✓
                 </button>
               </div>
             </div>

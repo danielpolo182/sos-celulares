@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { validarCPF, formatarCPF } from '@/lib/validators'
 
-// â”€â”€â”€ Tipos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Tipos ────────────────────────────────────────────────
 type Aparelho = {
   id: string; tipo: string; status: string
   marca: string; modelo: string; capacidade: string | null; cor: string | null
@@ -36,21 +36,21 @@ type Dispositivo = {
   dimensoes: string | null; peso: string | null; lancamento: string | null
 }
 
-// â”€â”€â”€ Checklist â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Checklist ────────────────────────────────────────────
 const CHECKLIST_ESTETICO = [
-  { key: 'est_tela',      label: 'Tela (arranhÃµes/trincas)' },
-  { key: 'est_carcaca',   label: 'CarcaÃ§a / Estrutura' },
+  { key: 'est_tela',      label: 'Tela (arranhões/trincas)' },
+  { key: 'est_carcaca',   label: 'Carcaça / Estrutura' },
   { key: 'est_aro',       label: 'Aro / Lateral' },
   { key: 'est_tampa',     label: 'Tampa traseira' },
-  { key: 'est_lente_cam', label: 'Lente da cÃ¢mera' },
-  { key: 'est_botoes',    label: 'BotÃµes (aparÃªncia)' },
-  { key: 'est_conector',  label: 'Conector (aparÃªncia)' },
+  { key: 'est_lente_cam', label: 'Lente da câmera' },
+  { key: 'est_botoes',    label: 'Botões (aparência)' },
+  { key: 'est_conector',  label: 'Conector (aparência)' },
 ]
 const CHECKLIST_FUNCIONAL = [
   { key: 'fn_liga',      label: 'Liga normalmente' },
   { key: 'fn_touch',     label: 'Touch / Toque' },
-  { key: 'fn_cam_front', label: 'CÃ¢mera frontal' },
-  { key: 'fn_cam_tras',  label: 'CÃ¢mera traseira' },
+  { key: 'fn_cam_front', label: 'Câmera frontal' },
+  { key: 'fn_cam_tras',  label: 'Câmera traseira' },
   { key: 'fn_bateria',   label: 'Bateria / Autonomia' },
   { key: 'fn_wifi_bt',   label: 'Wi-Fi / Bluetooth / GPS' },
   { key: 'fn_biometria', label: 'Biometria / Face ID' },
@@ -59,31 +59,31 @@ const CHECKLIST_FUNCIONAL = [
   { key: 'fn_conector',  label: 'Conector de carga' },
   { key: 'fn_imei',      label: 'IMEI verificado' },
   { key: 'fn_conta',     label: 'Conta Google/Apple removida' },
-  { key: 'fn_reset',     label: 'Reset de fÃ¡brica feito' },
+  { key: 'fn_reset',     label: 'Reset de fábrica feito' },
 ]
 const CHECKLIST_ITENS = [...CHECKLIST_ESTETICO, ...CHECKLIST_FUNCIONAL]
 
 const PART_MAP: Record<string,{peca:string; preco:number}> = {
   est_tela:      { peca:'Tela / Display',             preco:0 },
-  est_carcaca:   { peca:'CarcaÃ§a / Chassi',           preco:0 },
+  est_carcaca:   { peca:'Carcaça / Chassi',           preco:0 },
   est_aro:       { peca:'Aro / Frame lateral',        preco:0 },
   est_tampa:     { peca:'Tampa traseira',             preco:0 },
-  est_lente_cam: { peca:'Lente da cÃ¢mera',            preco:0 },
-  est_botoes:    { peca:'Flex de botÃµes',             preco:0 },
+  est_lente_cam: { peca:'Lente da câmera',            preco:0 },
+  est_botoes:    { peca:'Flex de botões',             preco:0 },
   est_conector:  { peca:'Conector de carga',          preco:0 },
-  fn_liga:       { peca:'DiagnÃ³stico placa / serviÃ§o',preco:0 },
+  fn_liga:       { peca:'Diagnóstico placa / serviço',preco:0 },
   fn_touch:      { peca:'Touch / Digitalizador',      preco:0 },
-  fn_cam_front:  { peca:'CÃ¢mera frontal',             preco:0 },
-  fn_cam_tras:   { peca:'CÃ¢mera traseira',            preco:0 },
+  fn_cam_front:  { peca:'Câmera frontal',             preco:0 },
+  fn_cam_tras:   { peca:'Câmera traseira',            preco:0 },
   fn_bateria:    { peca:'Bateria',                    preco:0 },
   fn_wifi_bt:    { peca:'Antena Wi-Fi/BT',            preco:0 },
-  fn_biometria:  { peca:'Sensor biomÃ©trico',          preco:0 },
+  fn_biometria:  { peca:'Sensor biométrico',          preco:0 },
   fn_falante:    { peca:'Alto-falante',               preco:0 },
   fn_microfone:  { peca:'Microfone',                  preco:0 },
   fn_conector:   { peca:'Flex conector de carga',     preco:0 },
-  fn_imei:       { peca:'ServiÃ§o (verificaÃ§Ã£o)',      preco:0 },
-  fn_conta:      { peca:'ServiÃ§o (remoÃ§Ã£o conta)',    preco:0 },
-  fn_reset:      { peca:'ServiÃ§o (reset)',            preco:0 },
+  fn_imei:       { peca:'Serviço (verificação)',      preco:0 },
+  fn_conta:      { peca:'Serviço (remoção conta)',    preco:0 },
+  fn_reset:      { peca:'Serviço (reset)',            preco:0 },
 }
 
 const ESTADOS = [
@@ -93,30 +93,30 @@ const ESTADOS = [
   { v: 'N/A',     bg: '#f8fafc', color: '#94a3b8', border: '#e2e8f0' },
 ]
 
-const FORMAS_PGTO = ['Dinheiro','PIX','TransferÃªncia','CartÃ£o dÃ©bito','CartÃ£o crÃ©dito Ã  vista','CartÃ£o crÃ©dito parcelado']
+const FORMAS_PGTO = ['Dinheiro','PIX','Transferência','Cartão débito','Cartão crédito à vista','Cartão crédito parcelado']
 const STATUS_CFG: Record<string, {label:string;bg:string;color:string}> = {
-  sem_revisao:     { label: 'Sem revisÃ£o',      bg: '#fef3c7', color: '#92400e' },
-  aguardando_pecas:{ label: 'Aguard. peÃ§as',    bg: '#fef2f2', color: '#991b1b' },
+  sem_revisao:     { label: 'Sem revisão',      bg: '#fef3c7', color: '#92400e' },
+  aguardando_pecas:{ label: 'Aguard. peças',    bg: '#fef2f2', color: '#991b1b' },
   em_reparo:       { label: 'Em reparo',        bg: '#fff7ed', color: '#c2410c' },
   checklist:       { label: 'Checklist',        bg: '#eff6ff', color: '#1d4ed8' },
-  disponivel:      { label: 'DisponÃ­vel',       bg: '#ecfdf5', color: '#065f46' },
+  disponivel:      { label: 'Disponível',       bg: '#ecfdf5', color: '#065f46' },
   vendido:         { label: 'Vendido',          bg: '#f1f5f9', color: '#64748b' },
 }
 
 const CHECKLIST_APROVACAO = [
   { key: 'liga',       label: 'Liga normalmente' },
   { key: 'touch',      label: 'Touch / Tela funcionando' },
-  { key: 'cam_front',  label: 'CÃ¢mera frontal OK' },
-  { key: 'cam_tras',   label: 'CÃ¢mera traseira OK' },
-  { key: 'bateria',    label: 'Bateria (saÃºde OK)' },
+  { key: 'cam_front',  label: 'Câmera frontal OK' },
+  { key: 'cam_tras',   label: 'Câmera traseira OK' },
+  { key: 'bateria',    label: 'Bateria (saúde OK)' },
   { key: 'wifi_bt',    label: 'Wifi / Bluetooth / GPS' },
   { key: 'biometria',  label: 'Biometria / Face ID' },
-  { key: 'botoes',     label: 'BotÃµes fÃ­sicos (vol, power)' },
+  { key: 'botoes',     label: 'Botões físicos (vol, power)' },
   { key: 'falante',    label: 'Alto-falante e microfone' },
   { key: 'conector',   label: 'Conector de carga' },
   { key: 'imei',       label: 'IMEI verificado' },
   { key: 'conta',      label: 'Conta Google/Apple removida' },
-  { key: 'reset',      label: 'Reset de fÃ¡brica feito' },
+  { key: 'reset',      label: 'Reset de fábrica feito' },
 ]
 
 const inp: React.CSSProperties = { width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, color: '#1e293b', background: '#fff', outline: 'none', fontFamily: 'inherit' }
@@ -131,7 +131,7 @@ function fm(v: number) { return `R$ ${v.toFixed(2).replace('.',',')}` }
 
 function notaGeral(cl: Record<string,string>): string {
   const vals = Object.values(cl).filter(v => v && v !== 'N/A')
-  if (vals.length === 0) return 'NÃ£o avaliado'
+  if (vals.length === 0) return 'Não avaliado'
   const ruim = vals.filter(v => v === 'Ruim').length
   const regular = vals.filter(v => v === 'Regular').length
   if (ruim > 2) return 'Ruim'
@@ -139,7 +139,7 @@ function notaGeral(cl: Record<string,string>): string {
   return 'Bom'
 }
 
-// â”€â”€â”€ Componente principal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Componente principal ─────────────────────────────────
 export default function AparelhoPage() {
   const supabase = createClient()
   const [aba, setAba] = useState<'estoque'|'sem_revisao'|'aguardando_pecas'|'em_reparo'|'checklist'|'historico'|'comprar'|'vender'>('estoque')
@@ -148,7 +148,7 @@ export default function AparelhoPage() {
   const [filtroStatus, setFiltroStatus] = useState('todos')
   const [search, setSearch] = useState('')
 
-  // â”€â”€ Busca de modelo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Busca de modelo ──────────────────────────────────────
   const [modeloInput, setModeloInput] = useState('')
   const [modeloSugestoes, setModeloSugestoes] = useState<Dispositivo[]>([])
   const [modeloSelecionado, setModeloSelecionado] = useState<Dispositivo | null>(null)
@@ -156,7 +156,7 @@ export default function AparelhoPage() {
   const [showSugestoes, setShowSugestoes] = useState(false)
   const modeloTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // â”€â”€ Dados do aparelho â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Dados do aparelho ─────────────────────────────────────
   const [cTipo, setCTipo] = useState<'novo'|'usado'>('usado')
   const [cCapacidade, setCCapacidade] = useState('')
   const [cCor, setCCor] = useState('')
@@ -169,7 +169,7 @@ export default function AparelhoPage() {
   const [cChecklist, setCChecklist] = useState<Record<string,string>>({})
   const [cObs, setCObs] = useState('')
 
-  // â”€â”€ Vendedor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Vendedor ─────────────────────────────────────────────
   const [vNome, setVNome] = useState('')
   const [vCPF, setVCPF] = useState('')
   const [vCpfErro, setVCpfErro] = useState('')
@@ -183,7 +183,7 @@ export default function AparelhoPage() {
   const [vEstado, setVEstado] = useState('')
   const [buscandoCEP, setBuscandoCEP] = useState(false)
 
-  // â”€â”€ Pagamento â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Pagamento ─────────────────────────────────────────────
   const [cValor, setCValor] = useState('')
   const [cForma, setCForma] = useState('Dinheiro')
   const [cParcelas, setCParcelas] = useState(2)
@@ -192,26 +192,26 @@ export default function AparelhoPage() {
   const [submitAttempted, setSubmitAttempted] = useState(false)
   const [modalSucesso, setModalSucesso] = useState<ModalSucesso | null>(null)
 
-  // â”€â”€ Refs para scroll/foco em campos obrigatÃ³rios â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Refs para scroll/foco em campos obrigatórios ──────────
   const modeloRef = useRef<HTMLInputElement>(null)
   const vNomeRef = useRef<HTMLInputElement>(null)
   const vCPFRef = useRef<HTMLInputElement>(null)
   const cValorRef = useRef<HTMLInputElement>(null)
 
-  // â”€â”€ Foto do vendedor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Foto do vendedor ──────────────────────────────────────
   const [fotoVendedor, setFotoVendedor] = useState<string>('')
   const [showCamera, setShowCamera] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const fotoCanvasRef = useRef<HTMLCanvasElement>(null)
   const [streamAtivo, setStreamAtivo] = useState<MediaStream|null>(null)
 
-  // â”€â”€ Assinaturas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Assinaturas ───────────────────────────────────────────
   const vendCanvasRef = useRef<HTMLCanvasElement>(null)
   const [desenhando, setDesenhando] = useState(false)
   const [assinaturaVendedor, setAssinaturaVendedor] = useState('')
   const [assinaturaLoja, setAssinaturaLoja] = useState('')
 
-  // â”€â”€ Venda â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Venda ─────────────────────────────────────────────────
   const [aparelhoVenda, setAparelhoVenda] = useState<Aparelho|null>(null)
   const [bNome, setBNome] = useState('')
   const [bCPF, setBCPF] = useState('')
@@ -227,7 +227,7 @@ export default function AparelhoPage() {
   const comprCanvasRef = useRef<HTMLCanvasElement>(null)
   const [assinaturaComprador, setAssinaturaComprador] = useState('')
 
-  // â”€â”€ Detail modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Detail modal ─────────────────────────────────────────
   const [detalhes, setDetalhes] = useState<Aparelho | null>(null)
   const [detalheEditando, setDetalheEditando] = useState(false)
   const [detalhePrecoVenda, setDetalhePrecoVenda] = useState('')
@@ -235,7 +235,7 @@ export default function AparelhoPage() {
   const [aprovacao, setAprovacao] = useState<Record<string, boolean>>({})
   const [salvandoStatus, setSalvandoStatus] = useState(false)
 
-  // â”€â”€ MÃ¡quina de estados â€” modal peÃ§as â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Máquina de estados — modal peças ─────────────────────
   const [modalPecas, setModalPecas] = useState<AparelhoPC[]>([])
   const [novasPecas, setNovasPecas] = useState<{key:string;nome:string;preco:string;marcado:boolean}[]>([])
   const [semTodasPecas, setSemTodasPecas] = useState(false)
@@ -267,7 +267,7 @@ export default function AparelhoPage() {
     setSalvandoStatus(false)
   }
 
-  // â”€â”€ MÃ¡quina de estados â€” funÃ§Ãµes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Máquina de estados — funções ─────────────────────────
   async function carregarPecas(aparelhoId: string) {
     setLoadingPecas(true)
     const { data } = await supabase.from('aparelho_pecas')
@@ -287,7 +287,7 @@ export default function AparelhoPage() {
     await supabase.from('aparelho_pecas').insert(
       marcadas.map(p => ({ aparelho_id: detalhes.id, item_key: p.key, peca_nome: p.nome, preco: parseFloat(p.preco)||0 }))
     )
-    // Somar custo das peÃ§as ao preco_compra do aparelho
+    // Somar custo das peças ao preco_compra do aparelho
     const custoPecas = marcadas.reduce((acc,p) => acc + (parseFloat(p.preco)||0), 0)
     if (custoPecas > 0) {
       const novoTotal = (detalhes.preco_compra ?? 0) + custoPecas
@@ -341,7 +341,7 @@ export default function AparelhoPage() {
     setSalvandoStatus(false)
   }
 
-  // â”€â”€ Canvas padrÃ£o 3x3 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Canvas padrão 3x3 ────────────────────────────────────
   function desenharPadrao(pontos: number[]) {
     const c = padCanvasRef.current; if (!c) return
     const ctx = c.getContext('2d')!; ctx.clearRect(0,0,c.width,c.height)
@@ -398,7 +398,7 @@ export default function AparelhoPage() {
     if (!ap) return
     const { data: c } = await supabase.from('aparelho_compras')
       .select('*').eq('aparelho_id', aparelhoId).order('created_at', { ascending: false }).limit(1).single()
-    if (!c) { alert('Dados da compra nÃ£o encontrados.'); return }
+    if (!c) { alert('Dados da compra não encontrados.'); return }
     gerarTermoCompraHTML({
       numero: c.numero, hoje: new Date(c.created_at ?? ap.created_at).toLocaleDateString('pt-BR', { day:'2-digit', month:'long', year:'numeric' }),
       ap, vNomeP: c.vendedor_nome, vCPFP: c.vendedor_cpf, vRGP: c.vendedor_rg ?? '',
@@ -414,7 +414,7 @@ export default function AparelhoPage() {
     if (!ap) return
     const { data: v } = await supabase.from('aparelho_vendas')
       .select('*').eq('aparelho_id', aparelhoId).order('created_at', { ascending: false }).limit(1).single()
-    if (!v) { alert('Dados da venda nÃ£o encontrados.'); return }
+    if (!v) { alert('Dados da venda não encontrados.'); return }
     gerarTermoVendaHTML({
       numero: v.numero, hoje: new Date(v.created_at ?? ap.created_at).toLocaleDateString('pt-BR', { day:'2-digit', month:'long', year:'numeric' }),
       ap, bNomeP: v.comprador_nome, bCPFP: v.comprador_cpf,
@@ -438,7 +438,7 @@ export default function AparelhoPage() {
     senhaT: string; senhaV: string
   }) {
     const specs = p.ap.specs_json as Dispositivo | null
-    const senhaTexto = p.senhaT === 'pin' ? `PIN: ${p.senhaV}` : p.senhaT === 'padrao' ? `PadrÃ£o: ${p.senhaV}` : ''
+    const senhaTexto = p.senhaT === 'pin' ? `PIN: ${p.senhaV}` : p.senhaT === 'padrao' ? `Padrão: ${p.senhaV}` : ''
     const assVendHtml = p.assVend ? `<img src="${p.assVend}" class="sig-img" />` : ''
     const assLojaHtml = p.assLoja ? `<img src="${p.assLoja}" class="sig-img" />` : ''
     const fotoHtml = p.foto ? `<img src="${p.foto}" class="foto-vend" alt="Foto vendedor" />` : ''
@@ -486,40 +486,40 @@ section { margin-bottom:7pt; }
 </style></head><body>
 
 <div class="header">
-  <div class="brand"><h1>ðŸ“± SOS Celulares</h1><p>AssistÃªncia TÃ©cnica</p></div>
-  <div><div class="doc-title">TERMO DE COMPRA</div><div class="doc-num">NÂº ${p.numero}</div><div class="doc-date">${p.hoje}</div></div>
+  <div class="brand"><h1>📱 SOS Celulares</h1><p>Assistência Técnica</p></div>
+  <div><div class="doc-title">TERMO DE COMPRA</div><div class="doc-num">Nº ${p.numero}</div><div class="doc-date">${p.hoje}</div></div>
 </div>
 
 <section>
-  <div class="stitle">Vendedor â€” Dados pessoais</div>
+  <div class="stitle">Vendedor — Dados pessoais</div>
   ${fotoHtml}
   <div class="grid2">
     <div><div class="field-label">Nome completo</div><div class="field-value">${p.vNomeP}</div></div>
     <div><div class="field-label">CPF</div><div class="field-value">${formatarCPF(p.vCPFP)}</div></div>
-    <div><div class="field-label">RG</div><div class="field-value">${p.vRGP||'â€”'}</div></div>
-    <div><div class="field-label">Telefone</div><div class="field-value">${p.vTelP?formatPhone(p.vTelP):'â€”'}</div></div>
-    <div><div class="field-label">CEP</div><div class="field-value">${p.vCEPP||'â€”'}</div></div>
+    <div><div class="field-label">RG</div><div class="field-value">${p.vRGP||'—'}</div></div>
+    <div><div class="field-label">Telefone</div><div class="field-value">${p.vTelP?formatPhone(p.vTelP):'—'}</div></div>
+    <div><div class="field-label">CEP</div><div class="field-value">${p.vCEPP||'—'}</div></div>
   </div>
-  <div style="margin-top:3pt"><div class="field-label">EndereÃ§o</div><div class="field-value">${p.vEndP||'â€”'}</div></div>
+  <div style="margin-top:3pt"><div class="field-label">Endereço</div><div class="field-value">${p.vEndP||'—'}</div></div>
 </section>
 
 <section>
-  <div class="stitle">Aparelho â€” IdentificaÃ§Ã£o</div>
+  <div class="stitle">Aparelho — Identificação</div>
   <div class="grid3">
     <div><div class="field-label">Marca / Modelo</div><div class="field-value">${p.ap.marca} ${p.ap.modelo}</div></div>
-    <div><div class="field-label">Capacidade</div><div class="field-value">${p.ap.capacidade||'â€”'}</div></div>
-    <div><div class="field-label">Cor</div><div class="field-value">${p.ap.cor||'â€”'}</div></div>
-    <div><div class="field-label">IMEI 1</div><div class="field-value">${p.ap.imei||'â€”'}</div></div>
-    <div><div class="field-label">IMEI 2</div><div class="field-value">${p.ap.imei2||'â€”'}</div></div>
+    <div><div class="field-label">Capacidade</div><div class="field-value">${p.ap.capacidade||'—'}</div></div>
+    <div><div class="field-label">Cor</div><div class="field-value">${p.ap.cor||'—'}</div></div>
+    <div><div class="field-label">IMEI 1</div><div class="field-value">${p.ap.imei||'—'}</div></div>
+    <div><div class="field-label">IMEI 2</div><div class="field-value">${p.ap.imei2||'—'}</div></div>
     <div><div class="field-label">Estado geral</div><div class="field-value"><span class="nota-badge">${nota}</span></div></div>
   </div>
-  ${p.ap.imei?`<div style="margin-top:3pt;font-size:7pt">ðŸ” <a href="https://www.aparelhoslegais.com.br/consulta?imei=${p.ap.imei}" style="color:#2563eb">Consultar Aparelhos Legais</a></div>`:''}
+  ${p.ap.imei?`<div style="margin-top:3pt;font-size:7pt">🔍 <a href="https://www.aparelhoslegais.com.br/consulta?imei=${p.ap.imei}" style="color:#2563eb">Consultar Aparelhos Legais</a></div>`:''}
 </section>
 
 ${specs?`<section>
-  <div class="stitle">EspecificaÃ§Ãµes tÃ©cnicas</div>
+  <div class="stitle">Especificações técnicas</div>
   <div class="specs-box"><div class="grid3">
-    ${[['Tela',specs.tela],['Processador',specs.processador],['RAM',specs.ram],['Armazenamento',specs.armazenamento],['CÃ¢m. traseira',specs.camera_principal],['CÃ¢m. frontal',specs.camera_frontal],['Bateria',specs.bateria],['Sistema',specs.sistema]].filter(([,v])=>v).map(([k,v])=>`<div><div class="field-label">${k}</div><div style="font-size:8.5pt;font-weight:600">${v}</div></div>`).join('')}
+    ${[['Tela',specs.tela],['Processador',specs.processador],['RAM',specs.ram],['Armazenamento',specs.armazenamento],['Câm. traseira',specs.camera_principal],['Câm. frontal',specs.camera_frontal],['Bateria',specs.bateria],['Sistema',specs.sistema]].filter(([,v])=>v).map(([k,v])=>`<div><div class="field-label">${k}</div><div style="font-size:8.5pt;font-weight:600">${v}</div></div>`).join('')}
   </div></div>
 </section>`:''}
 
@@ -532,11 +532,11 @@ ${Object.keys(cl).length>0?`<section>
 
 ${senhaTexto?`<section>
   <div class="stitle">Senha do aparelho</div>
-  <div class="senha-box">âš  ${senhaTexto} â€” InformaÃ§Ã£o confidencial, de uso exclusivo da SOS Celulares.</div>
+  <div class="senha-box">⚠ ${senhaTexto} — Informação confidencial, de uso exclusivo da SOS Celulares.</div>
 </section>`:''}
 
 <section>
-  <div class="stitle">CondiÃ§Ãµes da compra</div>
+  <div class="stitle">Condições da compra</div>
   <div class="grid3">
     <div><div class="field-label">Valor pago</div><div class="valor-d">R$ ${p.valorP.toFixed(2).replace('.',',')}</div></div>
     <div><div class="field-label">Forma de pagamento</div><div class="field-value">${p.formaP}</div></div>
@@ -545,16 +545,16 @@ ${senhaTexto?`<section>
 </section>
 
 <div class="legal">
-  <p><strong>DECLARAÃ‡ÃƒO DE PROPRIEDADE E RESPONSABILIDADE DO VENDEDOR</strong></p>
+  <p><strong>DECLARAÇÃO DE PROPRIEDADE E RESPONSABILIDADE DO VENDEDOR</strong></p>
   <p>Eu, <strong>${p.vNomeP}</strong>, portador(a) do CPF <strong>${formatarCPF(p.vCPFP)}</strong>${p.vRGP?`, RG <strong>${p.vRGP}</strong>`:''}${p.vEndP?`, residente em <strong>${p.vEndP}</strong>`:''},
   na qualidade de vendedor(a), declaro, sob as penas da lei, que:</p>
-  <p><strong>I.</strong> Sou o(a) legÃ­timo(a) proprietÃ¡rio(a) do aparelho <strong>${p.ap.marca} ${p.ap.modelo}</strong>, IMEI <strong>${p.ap.imei||'â€”'}</strong>, possuindo plena capacidade legal e legitimidade para alienar o bem, estando o mesmo livre de Ã´nus, penhoras, alienaÃ§Ã£o fiduciÃ¡ria, financiamento ou qualquer restriÃ§Ã£o de domÃ­nio.</p>
-  <p><strong>II.</strong> O aparelho <strong>nÃ£o possui origem ilÃ­cita</strong> e nÃ£o foi obtido mediante furto (<span class="art">art. 155 do CÃ³digo Penal</span>), roubo (<span class="art">art. 157 CP</span>), extorsÃ£o (<span class="art">art. 158 CP</span>), estelionato (<span class="art">art. 171 CP</span>), apropriaÃ§Ã£o indÃ©bita (<span class="art">art. 168 CP</span>) ou qualquer outro ilÃ­cito penal ou civil.</p>
-  <p><strong>III.</strong> O nÃºmero de IMEI Ã© original e nÃ£o foi adulterado, clonado ou suprimido. A adulteraÃ§Ã£o de IMEI constitui crime previsto no <span class="art">art. 183 da Lei nÂº 9.472/1997 (Lei Geral de TelecomunicaÃ§Ãµes)</span>, com pena de detenÃ§Ã£o de 2 a 4 anos, alÃ©m de multa.</p>
-  <p><strong>IV.</strong> Declaro ciÃªncia de que a posse, aquisiÃ§Ã£o, recebimento ou ocultaÃ§Ã£o de produto de crime configura <strong>receptaÃ§Ã£o</strong>, tipificada no <span class="art">art. 180 do CÃ³digo Penal</span> (pena: reclusÃ£o de 1 a 4 anos, e multa), podendo ser qualificada (<span class="art">art. 180 Â§1Âº CP</span>) quando praticada no exercÃ­cio de atividade comercial, com pena de reclusÃ£o de 3 a 8 anos.</p>
-  <p><strong>V.</strong> Assumo <strong>integral e exclusiva responsabilidade civil e criminal</strong> pela veracidade das informaÃ§Ãµes aqui prestadas, obrigando-me a ressarcir a SOS Celulares de toda e qualquer perda, dano, custo ou despesa â€” inclusive honorÃ¡rios advocatÃ­cios e custas processuais â€” que esta venha a suportar em decorrÃªncia de falsidade, omissÃ£o ou inexatidÃ£o desta declaraÃ§Ã£o, sem prejuÃ­zo da minha responsabilizaÃ§Ã£o por falsidade ideolÃ³gica (<span class="art">art. 299 CP</span>) e do dever de indenizar previsto nos <span class="art">arts. 186, 187 e 927 do CÃ³digo Civil</span>.</p>
-  <p><strong>VI.</strong> Respondo pela <strong>evicÃ§Ã£o</strong> do bem, nos termos dos <span class="art">arts. 447 a 457 do CÃ³digo Civil</span>, obrigando-me a restituir o valor recebido e a indenizar a SOS Celulares por perdas e danos (<span class="art">arts. 402 a 404 do CÃ³digo Civil</span>) caso o aparelho venha a ser reivindicado, apreendido ou subtraÃ­do da posse da empresa ou de terceiro a quem ela o transfira, em razÃ£o de vÃ­cio na origem ou na titularidade do bem.</p>
-  <p><strong>VII.</strong> Declaro ciÃªncia de que a SOS Celulares <strong>contrata de boa-fÃ©</strong> (<span class="art">art. 422 do CÃ³digo Civil</span>), confiando nas declaraÃ§Ãµes acima e realizando as verificaÃ§Ãµes ordinariamente cabÃ­veis Ã  sua atividade â€” entre elas a conferÃªncia do nÃºmero de IMEI e a minha identificaÃ§Ã£o â€”, sem conhecimento de qualquer vÃ­cio quanto Ã  origem ou Ã  propriedade do aparelho.</p>
+  <p><strong>I.</strong> Sou o(a) legítimo(a) proprietário(a) do aparelho <strong>${p.ap.marca} ${p.ap.modelo}</strong>, IMEI <strong>${p.ap.imei||'—'}</strong>, possuindo plena capacidade legal e legitimidade para alienar o bem, estando o mesmo livre de ônus, penhoras, alienação fiduciária, financiamento ou qualquer restrição de domínio.</p>
+  <p><strong>II.</strong> O aparelho <strong>não possui origem ilícita</strong> e não foi obtido mediante furto (<span class="art">art. 155 do Código Penal</span>), roubo (<span class="art">art. 157 CP</span>), extorsão (<span class="art">art. 158 CP</span>), estelionato (<span class="art">art. 171 CP</span>), apropriação indébita (<span class="art">art. 168 CP</span>) ou qualquer outro ilícito penal ou civil.</p>
+  <p><strong>III.</strong> O número de IMEI é original e não foi adulterado, clonado ou suprimido. A adulteração de IMEI constitui crime previsto no <span class="art">art. 183 da Lei nº 9.472/1997 (Lei Geral de Telecomunicações)</span>, com pena de detenção de 2 a 4 anos, além de multa.</p>
+  <p><strong>IV.</strong> Declaro ciência de que a posse, aquisição, recebimento ou ocultação de produto de crime configura <strong>receptação</strong>, tipificada no <span class="art">art. 180 do Código Penal</span> (pena: reclusão de 1 a 4 anos, e multa), podendo ser qualificada (<span class="art">art. 180 §1º CP</span>) quando praticada no exercício de atividade comercial, com pena de reclusão de 3 a 8 anos.</p>
+  <p><strong>V.</strong> Assumo <strong>integral e exclusiva responsabilidade civil e criminal</strong> pela veracidade das informações aqui prestadas, obrigando-me a ressarcir a SOS Celulares de toda e qualquer perda, dano, custo ou despesa — inclusive honorários advocatícios e custas processuais — que esta venha a suportar em decorrência de falsidade, omissão ou inexatidão desta declaração, sem prejuízo da minha responsabilização por falsidade ideológica (<span class="art">art. 299 CP</span>) e do dever de indenizar previsto nos <span class="art">arts. 186, 187 e 927 do Código Civil</span>.</p>
+  <p><strong>VI.</strong> Respondo pela <strong>evicção</strong> do bem, nos termos dos <span class="art">arts. 447 a 457 do Código Civil</span>, obrigando-me a restituir o valor recebido e a indenizar a SOS Celulares por perdas e danos (<span class="art">arts. 402 a 404 do Código Civil</span>) caso o aparelho venha a ser reivindicado, apreendido ou subtraído da posse da empresa ou de terceiro a quem ela o transfira, em razão de vício na origem ou na titularidade do bem.</p>
+  <p><strong>VII.</strong> Declaro ciência de que a SOS Celulares <strong>contrata de boa-fé</strong> (<span class="art">art. 422 do Código Civil</span>), confiando nas declarações acima e realizando as verificações ordinariamente cabíveis à sua atividade — entre elas a conferência do número de IMEI e a minha identificação —, sem conhecimento de qualquer vício quanto à origem ou à propriedade do aparelho.</p>
 </div>
 
 <div class="sig-row">
@@ -573,7 +573,7 @@ ${senhaTexto?`<section>
   </div>
 </div>
 
-<div class="footer-doc">Documento emitido em ${p.hoje} Â· SOS Celulares Â· Em conformidade com o CÃ³digo Penal (Decreto-Lei 2.848/40), Lei 9.472/97 e CDC (Lei 8.078/90)</div>
+<div class="footer-doc">Documento emitido em ${p.hoje} · SOS Celulares · Em conformidade com o Código Penal (Decreto-Lei 2.848/40), Lei 9.472/97 e CDC (Lei 8.078/90)</div>
 <script>window.onload=()=>window.print()<\/script>
 </body></html>`
     abrirHTML(html)
@@ -618,8 +618,8 @@ section { margin-bottom:12pt; }
 </style></head><body>
 
 <div class="header">
-  <div class="brand"><h1>ðŸ“± SOS Celulares</h1><p>AssistÃªncia TÃ©cnica</p></div>
-  <div><div class="doc-title">TERMO DE VENDA</div><div class="doc-num">NÂº ${p.numero}</div><div class="doc-date">${p.hoje}</div></div>
+  <div class="brand"><h1>📱 SOS Celulares</h1><p>Assistência Técnica</p></div>
+  <div><div class="doc-title">TERMO DE VENDA</div><div class="doc-num">Nº ${p.numero}</div><div class="doc-date">${p.hoje}</div></div>
 </div>
 
 <section>
@@ -627,8 +627,8 @@ section { margin-bottom:12pt; }
   <div class="grid2">
     <div><div class="field-label">Nome completo</div><div class="field-value">${p.bNomeP}</div></div>
     <div><div class="field-label">CPF</div><div class="field-value">${formatarCPF(p.bCPFP)}</div></div>
-    <div><div class="field-label">Telefone</div><div class="field-value">${p.bTelP||'â€”'}</div></div>
-    <div><div class="field-label">EndereÃ§o</div><div class="field-value">${p.bEndP||'â€”'}</div></div>
+    <div><div class="field-label">Telefone</div><div class="field-value">${p.bTelP||'—'}</div></div>
+    <div><div class="field-label">Endereço</div><div class="field-value">${p.bEndP||'—'}</div></div>
   </div>
 </section>
 
@@ -636,28 +636,28 @@ section { margin-bottom:12pt; }
   <div class="stitle">Produto vendido</div>
   <div class="grid3">
     <div><div class="field-label">Modelo</div><div class="field-value">${p.ap.marca} ${p.ap.modelo}</div></div>
-    <div><div class="field-label">Capacidade</div><div class="field-value">${p.ap.capacidade||'â€”'}</div></div>
-    <div><div class="field-label">Cor</div><div class="field-value">${p.ap.cor||'â€”'}</div></div>
-    <div><div class="field-label">IMEI</div><div class="field-value">${p.ap.imei||'â€”'}</div></div>
+    <div><div class="field-label">Capacidade</div><div class="field-value">${p.ap.capacidade||'—'}</div></div>
+    <div><div class="field-label">Cor</div><div class="field-value">${p.ap.cor||'—'}</div></div>
+    <div><div class="field-label">IMEI</div><div class="field-value">${p.ap.imei||'—'}</div></div>
   </div>
 </section>
 
 <section>
-  <div class="stitle">CondiÃ§Ãµes da venda</div>
+  <div class="stitle">Condições da venda</div>
   <div class="grid3">
     <div><div class="field-label">Valor</div><div class="valor-d">R$ ${p.valorP.toFixed(2).replace('.',',')}</div></div>
     <div><div class="field-label">Forma de pagamento</div><div class="field-value">${p.formaP}</div></div>
     <div><div class="field-label">Data</div><div class="field-value">${p.hoje}</div></div>
   </div>
-  <div style="margin-top:8pt"><div class="garantia-box">âœ“ Garantia: ${p.garantiaP} dias a partir desta data</div></div>
+  <div style="margin-top:8pt"><div class="garantia-box">✓ Garantia: ${p.garantiaP} dias a partir desta data</div></div>
 </section>
 
 <div class="legal">
-  <p><strong>TERMOS E CONDIÃ‡Ã•ES DE GARANTIA</strong></p>
-  <p><strong>I.</strong> A SOS Celulares garante o produto acima descrito contra defeitos de fabricaÃ§Ã£o pelo prazo de <strong>${p.garantiaP} dias</strong> a contar da data desta venda, conforme disposto no <strong>art. 26, II, do CÃ³digo de Defesa do Consumidor (Lei 8.078/90)</strong>.</p>
-  <p><strong>II.</strong> A garantia <strong>nÃ£o cobre</strong>: danos fÃ­sicos por quedas, impactos ou lÃ­quidos; danos causados por uso inadequado; desgaste natural da bateria; e danos causados por software ou vÃ­rus.</p>
-  <p><strong>III.</strong> O comprador declara ter inspecionado e aprovado o estado do produto no ato da compra, estando ciente de tratar-se de <strong>aparelho usado</strong> e das condiÃ§Ãµes descritas no checklist anexo.</p>
-  <p><strong>IV.</strong> Declaro ter recebido o aparelho em perfeitas condiÃ§Ãµes de funcionamento, nas especificaÃ§Ãµes acima descritas, concordando integralmente com os termos desta nota de venda.</p>
+  <p><strong>TERMOS E CONDIÇÕES DE GARANTIA</strong></p>
+  <p><strong>I.</strong> A SOS Celulares garante o produto acima descrito contra defeitos de fabricação pelo prazo de <strong>${p.garantiaP} dias</strong> a contar da data desta venda, conforme disposto no <strong>art. 26, II, do Código de Defesa do Consumidor (Lei 8.078/90)</strong>.</p>
+  <p><strong>II.</strong> A garantia <strong>não cobre</strong>: danos físicos por quedas, impactos ou líquidos; danos causados por uso inadequado; desgaste natural da bateria; e danos causados por software ou vírus.</p>
+  <p><strong>III.</strong> O comprador declara ter inspecionado e aprovado o estado do produto no ato da compra, estando ciente de tratar-se de <strong>aparelho usado</strong> e das condições descritas no checklist anexo.</p>
+  <p><strong>IV.</strong> Declaro ter recebido o aparelho em perfeitas condições de funcionamento, nas especificações acima descritas, concordando integralmente com os termos desta nota de venda.</p>
 </div>
 
 <div class="sig-row">
@@ -676,7 +676,7 @@ section { margin-bottom:12pt; }
   </div>
 </div>
 
-<div class="footer-doc">Documento emitido em ${p.hoje} Â· SOS Celulares Â· Conforme CDC (Lei 8.078/90)</div>
+<div class="footer-doc">Documento emitido em ${p.hoje} · SOS Celulares · Conforme CDC (Lei 8.078/90)</div>
 <script>window.onload=()=>window.print()<\/script>
 </body></html>`
     abrirHTML(html)
@@ -684,8 +684,8 @@ section { margin-bottom:12pt; }
 
   function imprimirCard(a: Aparelho) {
     const nota = a.checklist_nota ?? notaGeral(a.checklist_json ?? {})
-    const condLabel = nota === 'Bom' ? 'Usado â€” Excelente' : nota === 'Regular' ? 'Usado â€” Bom' : 'Usado â€” Regular'
-    const imeiOculto = a.imei ? a.imei.slice(0, 8) + '****' + a.imei.slice(-2) : 'â€”'
+    const condLabel = nota === 'Bom' ? 'Usado — Excelente' : nota === 'Regular' ? 'Usado — Bom' : 'Usado — Regular'
+    const imeiOculto = a.imei ? a.imei.slice(0, 8) + '****' + a.imei.slice(-2) : '—'
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Card ${a.marca} ${a.modelo}</title>
 <style>
   @page { size: 148mm 105mm; margin: 0; }
@@ -710,10 +710,10 @@ section { margin-bottom:12pt; }
   <span class="cond-badge">${condLabel}</span>
 </div>
 <div class="modelo">${a.marca} ${a.modelo}</div>
-<div class="specs">${[a.capacidade, a.cor].filter(Boolean).join(' Â· ') || 'â€”'}</div>
+<div class="specs">${[a.capacidade, a.cor].filter(Boolean).join(' · ') || '—'}</div>
 <div class="preco-row">
   <div class="preco"><small>R$</small> ${a.preco_venda ? a.preco_venda.toFixed(2).replace('.', ',') : 'Consulte'}</div>
-  <span class="garantia">âœ“ 90 dias de garantia</span>
+  <span class="garantia">✓ 90 dias de garantia</span>
 </div>
 <div class="bottom">
   <div class="imei-line">IMEI: ${imeiOculto}</div>
@@ -729,12 +729,12 @@ section { margin-bottom:12pt; }
     const w = window.open(url, '_blank'); if (w) w.onload = () => URL.revokeObjectURL(url)
   }
 
-  // â”€â”€ Carregamento â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Carregamento ──────────────────────────────────────────
   const fetchAll = useCallback(async () => {
     setLoading(true)
     const { data } = await supabase.from('aparelhos').select('*').is('deleted_at', null).order('created_at', { ascending: false })
     setAparelhos((data ?? []) as unknown as Aparelho[])
-    // Buscar assinatura da loja (do usuÃ¡rio logado)
+    // Buscar assinatura da loja (do usuário logado)
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
       const { data: ass } = await supabase.from('usuario_assinaturas').select('assinatura').eq('usuario_id', user.id).maybeSingle()
@@ -762,7 +762,7 @@ section { margin-bottom:12pt; }
     setLiberarSemChecklist(false); setSemTodasPecas(false); setPecaExtraNome('')
   }, [detalhes?.id, detalhes?.status])
 
-  // â”€â”€ Busca de modelo no banco â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Busca de modelo no banco ──────────────────────────────
   function onModeloChange(val: string) {
     setModeloInput(val)
     setModeloSelecionado(null)
@@ -803,7 +803,7 @@ section { margin-bottom:12pt; }
     } finally { setBuscandoSpecs(false) }
   }
 
-  // â”€â”€ Busca CEP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Busca CEP ─────────────────────────────────────────────
   async function buscarCEP(cep: string) {
     const clean = cep.replace(/\D/g, '')
     if (clean.length !== 8) return
@@ -820,14 +820,14 @@ section { margin-bottom:12pt; }
     } finally { setBuscandoCEP(false) }
   }
 
-  // â”€â”€ CÃ¢mera â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Câmera ────────────────────────────────────────────────
   async function abrirCamera() {
     setShowCamera(true)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
       setStreamAtivo(stream)
       if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play() }
-    } catch { setShowCamera(false); alert('CÃ¢mera nÃ£o disponÃ­vel. Use upload de arquivo.') }
+    } catch { setShowCamera(false); alert('Câmera não disponível. Use upload de arquivo.') }
   }
 
   function tirarFoto() {
@@ -851,7 +851,7 @@ section { margin-bottom:12pt; }
     reader.readAsDataURL(file)
   }
 
-  // â”€â”€ Canvas de assinatura â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Canvas de assinatura ──────────────────────────────────
   function makeCanvasHandlers(ref: React.RefObject<HTMLCanvasElement | null>, setter: (v: string) => void) {
     let drawing = false
     return {
@@ -878,11 +878,11 @@ section { margin-bottom:12pt; }
 
   function setChecklistItem(key: string, val: string) { setCChecklist(prev => ({ ...prev, [key]: val })) }
 
-  // â”€â”€ Salvar compra â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Salvar compra ─────────────────────────────────────────
   async function salvarCompra() {
     setSubmitAttempted(true)
 
-    // ValidaÃ§Ã£o com scroll para o primeiro campo invÃ¡lido
+    // Validação com scroll para o primeiro campo inválido
     if (!modeloSelecionado) {
       modeloRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       modeloRef.current?.focus()
@@ -920,7 +920,7 @@ section { margin-bottom:12pt; }
       checklist_json: cChecklist, checklist_nota: notaGeral(cChecklist),
       observacoes: cObs || null,
       senha_tipo: cTipoSenha !== 'nenhuma' ? cTipoSenha : null,
-      senha_valor: cTipoSenha === 'pin' ? cSenha : cTipoSenha === 'padrao' && cPadrao.length > 0 ? cPadrao.join(' â†’ ') : null,
+      senha_valor: cTipoSenha === 'pin' ? cSenha : cTipoSenha === 'padrao' && cPadrao.length > 0 ? cPadrao.join(' → ') : null,
     }).select('id').single()
 
     if (apErr || !ap) {
@@ -929,7 +929,7 @@ section { margin-bottom:12pt; }
       setSalvando(false); return
     }
 
-    console.log('[salvarCompra] Aparelho inserido, id:', ap.id, 'â€” inserindo compra...')
+    console.log('[salvarCompra] Aparelho inserido, id:', ap.id, '— inserindo compra...')
 
     const { data: compra, error: compraErr } = await supabase.from('aparelho_compras').insert({
       aparelho_id: ap.id,
@@ -958,7 +958,7 @@ section { margin-bottom:12pt; }
     setSalvando(false); fetchAll()
   }
 
-  // â”€â”€ Salvar venda â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Salvar venda ──────────────────────────────────────────
   async function salvarVenda() {
     if (!aparelhoVenda || !bNome.trim() || !bCPF.trim() || !bValor) return
     setSalvando(true)
@@ -980,19 +980,19 @@ section { margin-bottom:12pt; }
     setSalvando(false); fetchAll()
   }
 
-  // â”€â”€ Resumo impressÃ£o apÃ³s compra (T03) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Resumo impressão após compra (T03) ───────────────────
   function imprimirResumoCompra() {
     if (!modeloSelecionado || !compraSalva) return
     const hoje = new Date().toLocaleDateString('pt-BR')
-    const senhaTexto = cTipoSenha === 'pin' ? `PIN: ${cSenha}` : cTipoSenha === 'padrao' ? `PadrÃ£o: ${cPadrao.join(' â†’ ')}` : 'Sem senha'
+    const senhaTexto = cTipoSenha === 'pin' ? `PIN: ${cSenha}` : cTipoSenha === 'padrao' ? `Padrão: ${cPadrao.join(' → ')}` : 'Sem senha'
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Resumo Compra #${compraSalva.numero}</title>
 <style>@page{size:A5;margin:14mm}*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:10pt;color:#0f172a}
 .tit{font-size:16pt;font-weight:700;margin-bottom:2mm}.sub{font-size:8pt;color:#64748b;margin-bottom:6mm}
 .row{display:flex;justify-content:space-between;padding:3mm 0;border-bottom:0.5pt solid #e2e8f0;font-size:9.5pt}
 .label{color:#64748b}.val{font-weight:600}.total{font-size:14pt;font-weight:700;color:#065f46;padding-top:4mm}
 .footer{margin-top:8mm;font-size:7.5pt;color:#94a3b8;text-align:center}</style></head><body>
-<div class="tit">ðŸ“± SOS Celulares</div>
-<div class="sub">Resumo de Compra Â· ${hoje} Â· #${compraSalva.numero}</div>
+<div class="tit">📱 SOS Celulares</div>
+<div class="sub">Resumo de Compra · ${hoje} · #${compraSalva.numero}</div>
 <div class="row"><span class="label">Aparelho</span><span class="val">${modeloSelecionado.marca} ${modeloSelecionado.modelo}</span></div>
 ${cCapacidade ? `<div class="row"><span class="label">Capacidade</span><span class="val">${cCapacidade}</span></div>` : ''}
 ${cCor ? `<div class="row"><span class="label">Cor</span><span class="val">${cCor}</span></div>` : ''}
@@ -1003,24 +1003,24 @@ ${cIMEI ? `<div class="row"><span class="label">IMEI</span><span class="val">${c
 <div class="row"><span class="label">Forma de pagamento</span><span class="val">${cForma}</span></div>
 ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><span class="val">${senhaTexto}</span></div>` : ''}
 <div class="row total"><span>Valor pago</span><span>R$ ${parseFloat(cValor||'0').toFixed(2).replace('.',',')}</span></div>
-<div class="footer">SOS Celulares Â· Documento interno Â· ${hoje}</div>
+<div class="footer">SOS Celulares · Documento interno · ${hoje}</div>
 <script>window.onload=()=>{window.print()};window.onafterprint=()=>window.close()<\/script>
 </body></html>`
     const b = new Blob([html],{type:'text/html;charset=utf-8'});const u=URL.createObjectURL(b);const w=window.open(u,'_blank');if(w)w.onload=()=>URL.revokeObjectURL(u)
   }
 
-  // â”€â”€â”€ Filtros estoque
+  // ─── Filtros estoque
   const aparelhosFiltrados = aparelhos.filter(a => {
     if (filtroStatus !== 'todos' && a.status !== filtroStatus) return false
     if (search && !`${a.marca} ${a.modelo}`.toLowerCase().includes(search.toLowerCase())) return false
     return true
   })
 
-  // â”€â”€â”€ Handlers de canvas compartilhados â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Handlers de canvas compartilhados ───────────────────
   const vendHandlers = makeCanvasHandlers(vendCanvasRef, setAssinaturaVendedor)
   const comprHandlers = makeCanvasHandlers(comprCanvasRef, setAssinaturaComprador)
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────────────────────────────────────
   return (
     <div style={{ padding: '24px 32px', fontFamily: 'var(--font-sans)', width: '100%' }}>
 
@@ -1028,7 +1028,7 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 600, color: '#0f172a', letterSpacing: '-0.02em' }}>Compra & Venda de Aparelhos</h1>
           <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>
-            {aparelhos.filter(a => a.status === 'disponivel').length} disponÃ­veis Â· {aparelhos.filter(a => a.status === 'vendido').length} vendidos
+            {aparelhos.filter(a => a.status === 'disponivel').length} disponíveis · {aparelhos.filter(a => a.status === 'vendido').length} vendidos
           </p>
         </div>
       </div>
@@ -1036,12 +1036,12 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
       {/* Abas */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 24, borderBottom: '1px solid #e2e8f0', flexWrap: 'wrap', alignItems: 'flex-end' }}>
         {([
-          ['estoque',   'ðŸ“± Estoque',          aparelhos.filter(a=>a.status==='disponivel').length],
-          ['sem_revisao','ðŸ” Em revisÃ£o',       aparelhos.filter(a=>a.status==='sem_revisao').length],
-          ['aguardando_pecas','ðŸ“¦ Aguard. peÃ§as',aparelhos.filter(a=>a.status==='aguardando_pecas').length],
-          ['em_reparo', 'ðŸ”§ Em reparo',         aparelhos.filter(a=>a.status==='em_reparo').length],
-          ['checklist', 'âœ… Checklist',          aparelhos.filter(a=>a.status==='checklist').length],
-          ['historico', 'ðŸ“œ HistÃ³rico',         null],
+          ['estoque',   '📱 Estoque',          aparelhos.filter(a=>a.status==='disponivel').length],
+          ['sem_revisao','🔍 Em revisão',       aparelhos.filter(a=>a.status==='sem_revisao').length],
+          ['aguardando_pecas','📦 Aguard. peças',aparelhos.filter(a=>a.status==='aguardando_pecas').length],
+          ['em_reparo', '🔧 Em reparo',         aparelhos.filter(a=>a.status==='em_reparo').length],
+          ['checklist', '✅ Checklist',          aparelhos.filter(a=>a.status==='checklist').length],
+          ['historico', '📜 Histórico',         null],
         ] as [string,string,number|null][]).map(([k,l,cnt]) => (
           <button key={k} onClick={() => setAba(k as any)} style={{ padding: '10px 14px', fontSize: 13, fontWeight: aba===k?600:400, border: 'none', background: 'none', cursor: 'pointer', color: aba===k?'#2563eb':'#64748b', borderBottom: aba===k?'2px solid #2563eb':'2px solid transparent', marginBottom: -1, display:'flex', alignItems:'center', gap: 5, whiteSpace:'nowrap' }}>
             {l}
@@ -1049,12 +1049,12 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
           </button>
         ))}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, paddingBottom: 4 }}>
-          <button onClick={() => setAba('comprar')} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 8, cursor: 'pointer', background: aba==='comprar'?'#0f172a':'#1e293b', color: '#fbbf24', display: 'flex', alignItems: 'center', gap: 6 }}>â¬‡ Registrar compra</button>
-          <button onClick={() => setAba('vender')} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 8, cursor: 'pointer', background: aba==='vender'?'#065f46':'#16a34a', color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}>â¬† Registrar venda</button>
+          <button onClick={() => setAba('comprar')} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 8, cursor: 'pointer', background: aba==='comprar'?'#0f172a':'#1e293b', color: '#fbbf24', display: 'flex', alignItems: 'center', gap: 6 }}>⬇ Registrar compra</button>
+          <button onClick={() => setAba('vender')} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 8, cursor: 'pointer', background: aba==='vender'?'#065f46':'#16a34a', color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}>⬆ Registrar venda</button>
         </div>
       </div>
 
-      {/* â•â•â• helper: tabela de aparelhos â•â•â• */}
+      {/* ═══ helper: tabela de aparelhos ═══ */}
       {(['estoque','sem_revisao','aguardando_pecas','em_reparo','checklist'] as const).includes(aba as any) && (() => {
         const statusMap: Record<string,string> = { estoque:'disponivel', sem_revisao:'sem_revisao', aguardando_pecas:'aguardando_pecas', em_reparo:'em_reparo', checklist:'checklist' }
         const filtro = statusMap[aba] ?? 'disponivel'
@@ -1067,14 +1067,14 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
             {loading ? <div style={{ textAlign:'center',padding:60,color:'#94a3b8' }}>Carregando...</div> :
             lista.length === 0 ? (
               <div style={{ textAlign:'center',padding:60 }}>
-                <div style={{ fontSize:40,marginBottom:12 }}>ðŸ“±</div>
+                <div style={{ fontSize:40,marginBottom:12 }}>📱</div>
                 <p style={{ fontSize:14,color:'#94a3b8' }}>Nenhum aparelho aqui</p>
               </div>
             ) : (
               <div style={{ background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,overflow:'hidden' }}>
                 <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13 }}>
                   <thead><tr style={{ background:'#f8fafc',borderBottom:'1px solid #e2e8f0' }}>
-                    {['Aparelho','IMEI','Estado','Custo','PreÃ§o venda','Lucro',''].map(h => <th key={h} style={{ padding:'9px 14px',textAlign:'left',fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.04em',whiteSpace:'nowrap' }}>{h}</th>)}
+                    {['Aparelho','IMEI','Estado','Custo','Preço venda','Lucro',''].map(h => <th key={h} style={{ padding:'9px 14px',textAlign:'left',fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.04em',whiteSpace:'nowrap' }}>{h}</th>)}
                   </tr></thead>
                   <tbody>
                     {lista.map(a => {
@@ -1085,21 +1085,21 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
                           onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background=''}>
                           <td style={{ padding:'10px 14px' }}>
                             <p style={{ fontWeight:500,color:'#0f172a' }}>{a.marca} {a.modelo}</p>
-                            {a.capacidade && <p style={{ fontSize:11,color:'#94a3b8' }}>{a.capacidade}{a.cor?` Â· ${a.cor}`:''}</p>}
+                            {a.capacidade && <p style={{ fontSize:11,color:'#94a3b8' }}>{a.capacidade}{a.cor?` · ${a.cor}`:''}</p>}
                           </td>
                           <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,color:'#64748b' }}>
-                            {a.imei ? <a href={`https://www.aparelhoslegais.com.br/consulta?imei=${a.imei}`} target="_blank" rel="noopener noreferrer" style={{ color:'#2563eb',textDecoration:'none' }} onClick={e=>e.stopPropagation()}>{a.imei} ðŸ”</a> : 'â€”'}
+                            {a.imei ? <a href={`https://www.aparelhoslegais.com.br/consulta?imei=${a.imei}`} target="_blank" rel="noopener noreferrer" style={{ color:'#2563eb',textDecoration:'none' }} onClick={e=>e.stopPropagation()}>{a.imei} 🔍</a> : '—'}
                           </td>
                           <td style={{ padding:'10px 14px' }}>
-                            {a.checklist_nota ? <span style={{ fontSize:11,fontWeight:500,padding:'2px 8px',borderRadius:20,background:a.checklist_nota==='Bom'?'#ecfdf5':a.checklist_nota==='Regular'?'#fef3c7':'#fef2f2',color:a.checklist_nota==='Bom'?'#065f46':a.checklist_nota==='Regular'?'#92400e':'#991b1b' }}>{a.checklist_nota}</span> : 'â€”'}
+                            {a.checklist_nota ? <span style={{ fontSize:11,fontWeight:500,padding:'2px 8px',borderRadius:20,background:a.checklist_nota==='Bom'?'#ecfdf5':a.checklist_nota==='Regular'?'#fef3c7':'#fef2f2',color:a.checklist_nota==='Bom'?'#065f46':a.checklist_nota==='Regular'?'#92400e':'#991b1b' }}>{a.checklist_nota}</span> : '—'}
                           </td>
-                          <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,color:'#374151' }}>{a.preco_compra?fm(a.preco_compra):'â€”'}</td>
-                          <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,color:'#374151' }}>{a.preco_venda?fm(a.preco_venda):'â€”'}</td>
-                          <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,fontWeight:lucro&&lucro>0?600:400,color:lucro&&lucro>0?'#065f46':lucro&&lucro<0?'#991b1b':'#94a3b8' }}>{lucro!==null?fm(lucro):'â€”'}</td>
+                          <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,color:'#374151' }}>{a.preco_compra?fm(a.preco_compra):'—'}</td>
+                          <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,color:'#374151' }}>{a.preco_venda?fm(a.preco_venda):'—'}</td>
+                          <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,fontWeight:lucro&&lucro>0?600:400,color:lucro&&lucro>0?'#065f46':lucro&&lucro<0?'#991b1b':'#94a3b8' }}>{lucro!==null?fm(lucro):'—'}</td>
                           <td style={{ padding:'10px 14px' }} onClick={e => e.stopPropagation()}>
                             <div style={{ display:'flex',gap:6 }}>
-                              {a.status==='disponivel' && <button onClick={() => imprimirCard(a)} style={{ fontSize:12,padding:'5px 10px',border:'1px solid #dbeafe',borderRadius:7,background:'#dbeafe',cursor:'pointer',color:'#2563eb' }}>ðŸ·</button>}
-                              {a.status==='disponivel' && <button onClick={() => { setAparelhoVenda(a); setAba('vender') }} style={{ fontSize:12,padding:'5px 10px',border:'1px solid #bbf7d0',borderRadius:7,background:'#ecfdf5',cursor:'pointer',color:'#065f46',fontWeight:500 }}>Vender â†’</button>}
+                              {a.status==='disponivel' && <button onClick={() => imprimirCard(a)} style={{ fontSize:12,padding:'5px 10px',border:'1px solid #dbeafe',borderRadius:7,background:'#dbeafe',cursor:'pointer',color:'#2563eb' }}>🏷</button>}
+                              {a.status==='disponivel' && <button onClick={() => { setAparelhoVenda(a); setAba('vender') }} style={{ fontSize:12,padding:'5px 10px',border:'1px solid #bbf7d0',borderRadius:7,background:'#ecfdf5',cursor:'pointer',color:'#065f46',fontWeight:500 }}>Vender →</button>}
                             </div>
                           </td>
                         </tr>
@@ -1113,7 +1113,7 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
         )
       })()}
 
-      {/* â•â•â• HISTÃ“RICO â•â•â• */}
+      {/* ═══ HISTÓRICO ═══ */}
       {aba === 'historico' && (
         <div>
           <div style={{ display:'flex',gap:10,marginBottom:16 }}>
@@ -1121,7 +1121,7 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
           </div>
           {aparelhos.filter(a => !search || `${a.marca} ${a.modelo}`.toLowerCase().includes(search.toLowerCase())).length === 0 ? (
             <div style={{ textAlign:'center',padding:60,color:'#94a3b8' }}>
-              <div style={{ fontSize:40,marginBottom:12 }}>ðŸ“œ</div>
+              <div style={{ fontSize:40,marginBottom:12 }}>📜</div>
               <p>Nenhum registro.</p>
             </div>
           ) : (
@@ -1141,18 +1141,18 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
                         <tr key={a.id} style={{ borderBottom:'1px solid #f1f5f9' }}>
                           <td style={{ padding:'10px 14px',fontWeight:500,color:'#0f172a' }}>
                             {a.marca} {a.modelo}
-                            {a.capacidade && <span style={{ fontSize:11,color:'#94a3b8',display:'block' }}>{a.capacidade}{a.cor?` Â· ${a.cor}`:''}</span>}
+                            {a.capacidade && <span style={{ fontSize:11,color:'#94a3b8',display:'block' }}>{a.capacidade}{a.cor?` · ${a.cor}`:''}</span>}
                           </td>
-                          <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,color:'#64748b' }}>{a.imei??'â€”'}</td>
-                          <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12 }}>{a.preco_compra?fm(a.preco_compra):'â€”'}</td>
-                          <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12 }}>{a.preco_venda?fm(a.preco_venda):'â€”'}</td>
-                          <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,fontWeight:600,color:lucro&&lucro>0?'#065f46':lucro&&lucro<0?'#991b1b':'#94a3b8' }}>{lucro!==null?fm(lucro):'â€”'}</td>
+                          <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,color:'#64748b' }}>{a.imei??'—'}</td>
+                          <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12 }}>{a.preco_compra?fm(a.preco_compra):'—'}</td>
+                          <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12 }}>{a.preco_venda?fm(a.preco_venda):'—'}</td>
+                          <td style={{ padding:'10px 14px',fontFamily:'monospace',fontSize:12,fontWeight:600,color:lucro&&lucro>0?'#065f46':lucro&&lucro<0?'#991b1b':'#94a3b8' }}>{lucro!==null?fm(lucro):'—'}</td>
                           <td style={{ padding:'10px 14px' }}>{st && <span style={{ fontSize:11,fontWeight:500,padding:'2px 8px',borderRadius:20,background:st.bg,color:st.color }}>{st.label}</span>}</td>
                           <td style={{ padding:'10px 14px',fontSize:12,color:'#94a3b8' }}>{new Date(a.created_at).toLocaleDateString('pt-BR')}</td>
                           <td style={{ padding:'10px 14px' }}>
                             <div style={{ display:'flex',gap:6,flexWrap:'wrap' }}>
-                              <button onClick={() => reimprimirTermoCompra(a.id)} style={{ fontSize:11,padding:'4px 10px',border:'1px solid #bfdbfe',borderRadius:7,background:'#dbeafe',cursor:'pointer',color:'#2563eb',whiteSpace:'nowrap' }}>ðŸ–¨ Compra</button>
-                              {a.status==='vendido' && <button onClick={() => reimprimirTermoVenda(a.id)} style={{ fontSize:11,padding:'4px 10px',border:'1px solid #bbf7d0',borderRadius:7,background:'#ecfdf5',cursor:'pointer',color:'#065f46',whiteSpace:'nowrap' }}>ðŸ–¨ Venda</button>}
+                              <button onClick={() => reimprimirTermoCompra(a.id)} style={{ fontSize:11,padding:'4px 10px',border:'1px solid #bfdbfe',borderRadius:7,background:'#dbeafe',cursor:'pointer',color:'#2563eb',whiteSpace:'nowrap' }}>🖨 Compra</button>
+                              {a.status==='vendido' && <button onClick={() => reimprimirTermoVenda(a.id)} style={{ fontSize:11,padding:'4px 10px',border:'1px solid #bbf7d0',borderRadius:7,background:'#ecfdf5',cursor:'pointer',color:'#065f46',whiteSpace:'nowrap' }}>🖨 Venda</button>}
                             </div>
                           </td>
                         </tr>
@@ -1166,7 +1166,7 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
         </div>
       )}
 
-      {/* â•â•â• MODAL DETALHES â•â•â• */}
+      {/* ═══ MODAL DETALHES ═══ */}
       {detalhes && (
         <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:'20px' }} onClick={() => setDetalhes(null)}>
           <div style={{ width:'100%',maxWidth:560,maxHeight:'90vh',background:'#fff',overflow:'auto',padding:28,borderRadius:16,boxShadow:'0 20px 60px rgba(0,0,0,0.25)' }} onClick={e => e.stopPropagation()}>
@@ -1177,54 +1177,54 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
                   {STATUS_CFG[detalhes.status]?.label ?? detalhes.status}
                 </span>
               </div>
-              <button onClick={() => setDetalhes(null)} style={{ fontSize:20,background:'none',border:'none',cursor:'pointer',color:'#94a3b8' }}>Ã—</button>
+              <button onClick={() => setDetalhes(null)} style={{ fontSize:20,background:'none',border:'none',cursor:'pointer',color:'#94a3b8' }}>×</button>
             </div>
 
-            {/* BotÃµes topo */}
+            {/* Botões topo */}
             <div style={{ display:'flex',gap:8,marginBottom:16 }}>
               <button onClick={() => { setDetalheEditando(v => !v) }} style={{ flex:1,padding:'8px',border:'1px solid #bfdbfe',borderRadius:8,fontSize:13,background:detalheEditando?'#dbeafe':'#fff',color:'#2563eb',cursor:'pointer',fontWeight:detalheEditando?600:400 }}>
-                âœï¸ {detalheEditando ? 'Editando...' : 'Editar'}
+                ✏️ {detalheEditando ? 'Editando...' : 'Editar'}
               </button>
-              <button onClick={() => imprimirCard(detalhes)} style={{ flex:1,padding:'8px',border:'1px solid #dbeafe',borderRadius:8,fontSize:13,background:'#f8f7ff',color:'#2563eb',cursor:'pointer' }}>
-                ðŸ· Reimprimir card
+              <button onClick={() => imprimirCard(detalhes)} style={{ flex:1,padding:'8px',border:'1px solid #dbeafe',borderRadius:8,fontSize:13,background:'#f0f9ff',color:'#2563eb',cursor:'pointer' }}>
+                🏷 Reimprimir card
               </button>
             </div>
 
             {/* Infos */}
             <div style={{ background:'#f8fafc',borderRadius:10,padding:'12px 16px',marginBottom:16 }}>
-              {[['Capacidade',detalhes.capacidade],['Cor',detalhes.cor],['IMEI',detalhes.imei],['PreÃ§o compra',detalhes.preco_compra?fm(detalhes.preco_compra):null]].map(([l,v]) => v ? (
+              {[['Capacidade',detalhes.capacidade],['Cor',detalhes.cor],['IMEI',detalhes.imei],['Preço compra',detalhes.preco_compra?fm(detalhes.preco_compra):null]].map(([l,v]) => v ? (
                 <div key={l as string} style={{ display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'1px solid #e2e8f0',fontSize:13 }}>
                   <span style={{ color:'#64748b' }}>{l}</span><strong style={{ color:'#0f172a' }}>{v}</strong>
                 </div>
               ) : null)}
-              {/* PreÃ§o venda editÃ¡vel */}
+              {/* Preço venda editável */}
               <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',padding:'4px 0',fontSize:13 }}>
-                <span style={{ color:'#64748b' }}>PreÃ§o venda</span>
+                <span style={{ color:'#64748b' }}>Preço venda</span>
                 {detalheEditando
                   ? <input type="number" step="0.01" value={detalhePrecoVenda} onChange={e=>setDetalhePrecoVenda(e.target.value)} style={{ width:100,padding:'3px 8px',border:'1px solid #bfdbfe',borderRadius:6,fontSize:13,textAlign:'right',outline:'none' }} />
-                  : <strong style={{ color:'#0f172a' }}>{detalhes.preco_venda?fm(detalhes.preco_venda):'â€”'}</strong>
+                  : <strong style={{ color:'#0f172a' }}>{detalhes.preco_venda?fm(detalhes.preco_venda):'—'}</strong>
                 }
               </div>
               {detalheEditando && (
                 <div style={{ marginTop:8 }}>
-                  <label style={lbl}>ObservaÃ§Ãµes</label>
+                  <label style={lbl}>Observações</label>
                   <textarea value={detalheObs} onChange={e=>setDetalheObs(e.target.value)} style={{ ...inp,minHeight:50,resize:'vertical',fontSize:12 }} />
                 </div>
               )}
               {detalheEditando && (
                 <button onClick={salvarEdicaoDetalhe} disabled={salvandoStatus} style={{ width:'100%',marginTop:8,padding:'8px',background:'#2563eb',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer' }}>
-                  {salvandoStatus?'Salvando...':'âœ“ Salvar alteraÃ§Ãµes'}
+                  {salvandoStatus?'Salvando...':'✓ Salvar alterações'}
                 </button>
               )}
             </div>
 
-            {/* â”€â”€â”€ ConteÃºdo por status â”€â”€â”€ */}
+            {/* ─── Conteúdo por status ─── */}
 
-            {/* sem_revisao â†’ revisÃ£o e peÃ§as */}
+            {/* sem_revisao → revisão e peças */}
             {detalhes.status === 'sem_revisao' && (
               <div style={{ marginBottom:16 }}>
                 <p style={{ fontSize:13,fontWeight:600,color:'#92400e',background:'#fef3c7',borderRadius:8,padding:'8px 12px',marginBottom:12 }}>
-                  ðŸ” Marque as peÃ§as necessÃ¡rias para reparo
+                  🔍 Marque as peças necessárias para reparo
                 </p>
                 {novasPecas.map((p, i) => {
                   const cl = detalhes.checklist_json?.[p.key]
@@ -1238,7 +1238,7 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
                       </div>
                       {p.marcado && (
                         <div style={{ display:'grid',gridTemplateColumns:'1fr auto',gap:6,paddingLeft:24 }}>
-                          <input value={p.nome} onChange={e => setNovasPecas(prev => prev.map((x,j) => j===i ? {...x, nome:e.target.value} : x))} style={{ ...inp,fontSize:12,padding:'5px 8px' }} placeholder="Nome da peÃ§a" />
+                          <input value={p.nome} onChange={e => setNovasPecas(prev => prev.map((x,j) => j===i ? {...x, nome:e.target.value} : x))} style={{ ...inp,fontSize:12,padding:'5px 8px' }} placeholder="Nome da peça" />
                           <div style={{ display:'flex',alignItems:'center',gap:4 }}>
                             <span style={{ fontSize:12,color:'#64748b' }}>R$</span>
                             <input type="number" step="0.01" value={p.preco} onChange={e => setNovasPecas(prev => prev.map((x,j) => j===i ? {...x, preco:e.target.value} : x))} style={{ ...inp,width:90,fontSize:12,padding:'5px 8px',textAlign:'right' }} />
@@ -1260,7 +1260,7 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
                       </div>
                       {novasPecas.some(p=>p.marcado) && (
                         <div style={{ display:'flex',justifyContent:'space-between',fontSize:13,color:'#64748b',marginBottom:4 }}>
-                          <span>PeÃ§as estimadas</span>
+                          <span>Peças estimadas</span>
                           <span style={{ fontFamily:'monospace' }}>R$ {custoPecas.toFixed(2).replace('.',',')}</span>
                         </div>
                       )}
@@ -1272,23 +1272,23 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
                   )
                 })()}
                 <button onClick={salvarRevisaoPecas} disabled={salvandoStatus} style={{ width:'100%',padding:'10px',background:'#0f172a',color:'#fbbf24',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',marginTop:4 }}>
-                  {salvandoStatus ? 'Salvando...' : novasPecas.some(p=>p.marcado) ? 'âœ“ Confirmar peÃ§as e aguardar chegada' : 'âœ“ Sem peÃ§as necessÃ¡rias â€” disponibilizar'}
+                  {salvandoStatus ? 'Salvando...' : novasPecas.some(p=>p.marcado) ? '✓ Confirmar peças e aguardar chegada' : '✓ Sem peças necessárias — disponibilizar'}
                 </button>
               </div>
             )}
 
-            {/* aguardando_pecas â†’ chegada de peÃ§as */}
+            {/* aguardando_pecas → chegada de peças */}
             {detalhes.status === 'aguardando_pecas' && (
               <div style={{ marginBottom:16 }}>
-                <p style={{ fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:10 }}>PeÃ§as aguardadas</p>
-                {loadingPecas ? <p style={{ color:'#94a3b8',fontSize:13 }}>Carregando...</p> : modalPecas.length === 0 ? <p style={{ color:'#94a3b8',fontSize:13 }}>Nenhuma peÃ§a cadastrada.</p> : (
+                <p style={{ fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:10 }}>Peças aguardadas</p>
+                {loadingPecas ? <p style={{ color:'#94a3b8',fontSize:13 }}>Carregando...</p> : modalPecas.length === 0 ? <p style={{ color:'#94a3b8',fontSize:13 }}>Nenhuma peça cadastrada.</p> : (
                   <div style={{ display:'flex',flexDirection:'column',gap:4 }}>
                     {modalPecas.map(p => (
                       <label key={p.id} style={{ display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:8,background:p.chegou?'#ecfdf5':'#f8fafc',cursor:'pointer',fontSize:13,border:'1px solid #e2e8f0' }}>
                         <input type="checkbox" checked={p.chegou} onChange={e => marcarPecaChegou(p.id, e.target.checked)} style={{ width:16,height:16,cursor:'pointer' }} />
                         <span style={{ flex:1,color:p.chegou?'#065f46':'#374151',fontWeight:p.chegou?500:400 }}>{p.peca_nome}</span>
                         {p.preco > 0 && <span style={{ fontSize:12,color:'#64748b',fontFamily:'monospace' }}>R$ {p.preco.toFixed(2).replace('.',',')}</span>}
-                        {p.chegou && <span style={{ fontSize:11,color:'#065f46' }}>âœ“</span>}
+                        {p.chegou && <span style={{ fontSize:11,color:'#065f46' }}>✓</span>}
                       </label>
                     ))}
                   </div>
@@ -1296,47 +1296,47 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
                 <div style={{ marginTop:12,display:'flex',alignItems:'center',gap:8 }}>
                   <label style={{ display:'flex',alignItems:'center',gap:6,fontSize:12,color:'#64748b',cursor:'pointer' }}>
                     <input type="checkbox" checked={semTodasPecas} onChange={e => setSemTodasPecas(e.target.checked)} />
-                    Iniciar reparo sem todas as peÃ§as
+                    Iniciar reparo sem todas as peças
                   </label>
                 </div>
                 <button onClick={iniciarReparo} disabled={salvandoStatus||(!modalPecas.every(p=>p.chegou)&&!semTodasPecas)}
                   style={{ width:'100%',padding:'10px',marginTop:8,background:(!modalPecas.every(p=>p.chegou)&&!semTodasPecas)?'#e2e8f0':'#c2410c',color:(!modalPecas.every(p=>p.chegou)&&!semTodasPecas)?'#94a3b8':'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:(!modalPecas.every(p=>p.chegou)&&!semTodasPecas)?'default':'pointer' }}>
-                  {salvandoStatus ? 'Salvando...' : 'ðŸ”§ Iniciar reparo'}
+                  {salvandoStatus ? 'Salvando...' : '🔧 Iniciar reparo'}
                 </button>
               </div>
             )}
 
-            {/* em_reparo â†’ o que foi trocado */}
+            {/* em_reparo → o que foi trocado */}
             {detalhes.status === 'em_reparo' && (
               <div style={{ marginBottom:16 }}>
-                <p style={{ fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:10 }}>PeÃ§as trocadas</p>
+                <p style={{ fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:10 }}>Peças trocadas</p>
                 {loadingPecas ? <p style={{ color:'#94a3b8',fontSize:13 }}>Carregando...</p> : (
                   <div style={{ display:'flex',flexDirection:'column',gap:4 }}>
                     {modalPecas.map(p => (
                       <label key={p.id} style={{ display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:8,background:p.trocada?'#ecfdf5':'#f8fafc',cursor:'pointer',fontSize:13,border:'1px solid #e2e8f0' }}>
                         <input type="checkbox" checked={p.trocada} onChange={e => marcarPecaTrocada(p.id, e.target.checked)} style={{ width:16,height:16,cursor:'pointer' }} />
                         <span style={{ flex:1,color:p.trocada?'#065f46':'#374151' }}>{p.peca_nome}</span>
-                        {!p.chegou && <span style={{ fontSize:10,color:'#ef4444',background:'#fef2f2',padding:'1px 6px',borderRadius:4 }}>nÃ£o chegou</span>}
-                        {p.trocada && <span style={{ fontSize:11,color:'#065f46' }}>âœ“</span>}
+                        {!p.chegou && <span style={{ fontSize:10,color:'#ef4444',background:'#fef2f2',padding:'1px 6px',borderRadius:4 }}>não chegou</span>}
+                        {p.trocada && <span style={{ fontSize:11,color:'#065f46' }}>✓</span>}
                       </label>
                     ))}
                   </div>
                 )}
                 <div style={{ display:'flex',gap:8,marginTop:10 }}>
-                  <input value={pecaExtraNome} onChange={e => setPecaExtraNome(e.target.value)} style={{ ...inp,flex:1,fontSize:12,padding:'6px 10px' }} placeholder="PeÃ§a extra trocada (opcional)..." onKeyDown={e => { if(e.key==='Enter') adicionarPecaExtra() }} />
+                  <input value={pecaExtraNome} onChange={e => setPecaExtraNome(e.target.value)} style={{ ...inp,flex:1,fontSize:12,padding:'6px 10px' }} placeholder="Peça extra trocada (opcional)..." onKeyDown={e => { if(e.key==='Enter') adicionarPecaExtra() }} />
                   <button onClick={adicionarPecaExtra} disabled={!pecaExtraNome.trim()} style={{ padding:'6px 12px',background:'#2563eb',color:'#fff',border:'none',borderRadius:8,fontSize:12,cursor:'pointer',flexShrink:0 }}>+ Add</button>
                 </div>
                 <button onClick={confirmarReparo} disabled={salvandoStatus} style={{ width:'100%',padding:'10px',marginTop:10,background:'#1d4ed8',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer' }}>
-                  {salvandoStatus ? 'Salvando...' : 'âœ“ Confirmar reparo â€” fazer checklist'}
+                  {salvandoStatus ? 'Salvando...' : '✓ Confirmar reparo — fazer checklist'}
                 </button>
               </div>
             )}
 
-            {/* checklist â†’ avaliaÃ§Ã£o final */}
+            {/* checklist → avaliação final */}
             {detalhes.status === 'checklist' && (
               <div style={{ marginBottom:16 }}>
                 <p style={{ fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:10 }}>Checklist final</p>
-                <p style={{ fontSize:11,fontWeight:700,color:'#2563eb',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:6 }}>ðŸŽ¨ EstÃ©tico</p>
+                <p style={{ fontSize:11,fontWeight:700,color:'#2563eb',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:6 }}>🎨 Estético</p>
                 <div style={{ display:'flex',flexDirection:'column',gap:4,marginBottom:10 }}>
                   {CHECKLIST_ESTETICO.map(item => (
                     <div key={item.key} style={{ display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:7,background:'#f8fafc' }}>
@@ -1349,7 +1349,7 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
                     </div>
                   ))}
                 </div>
-                <p style={{ fontSize:11,fontWeight:700,color:'#059669',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:6 }}>âš™ï¸ Funcional</p>
+                <p style={{ fontSize:11,fontWeight:700,color:'#059669',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:6 }}>⚙️ Funcional</p>
                 <div style={{ display:'flex',flexDirection:'column',gap:4,marginBottom:10 }}>
                   {CHECKLIST_FUNCIONAL.map(item => (
                     <div key={item.key} style={{ display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:7,background:'#f8fafc' }}>
@@ -1370,26 +1370,26 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
                 )}
                 <button onClick={liberarParaVenda} disabled={salvandoStatus||(!Object.values(checklistFinal).every(v=>v==='Bom'||v==='N/A')&&!liberarSemChecklist)}
                   style={{ width:'100%',padding:'10px',background:(!Object.values(checklistFinal).every(v=>v==='Bom'||v==='N/A')&&!liberarSemChecklist)?'#e2e8f0':'#16a34a',color:(!Object.values(checklistFinal).every(v=>v==='Bom'||v==='N/A')&&!liberarSemChecklist)?'#94a3b8':'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:(!Object.values(checklistFinal).every(v=>v==='Bom'||v==='N/A')&&!liberarSemChecklist)?'default':'pointer' }}>
-                  {salvandoStatus ? 'Salvando...' : 'âœ“ Liberar para venda'}
+                  {salvandoStatus ? 'Salvando...' : '✓ Liberar para venda'}
                 </button>
               </div>
             )}
 
-            {/* disponivel â†’ card + vender */}
+            {/* disponivel → card + vender */}
             {detalhes.status === 'disponivel' && (
               <div style={{ display:'flex',flexDirection:'column',gap:8,marginBottom:16 }}>
                 <button onClick={() => imprimirCard(detalhes)} style={{ width:'100%',padding:'10px',background:'#0f172a',color:'#fbbf24',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer' }}>
-                  ðŸ· Imprimir card de venda
+                  🏷 Imprimir card de venda
                 </button>
                 <button onClick={() => { setAparelhoVenda(detalhes); setDetalhes(null); setAba('vender' as any) }} style={{ width:'100%',padding:'10px',background:'#16a34a',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer' }}>
-                  â¬† Vender este aparelho â†’
+                  ⬆ Vender este aparelho →
                 </button>
               </div>
             )}
 
             {detalhes.observacoes && (
               <div style={{ marginTop:16,background:'#fef3c7',borderRadius:8,padding:'10px 14px',fontSize:13,color:'#92400e' }}>
-                <p style={{ fontWeight:600,marginBottom:4 }}>ObservaÃ§Ãµes</p>
+                <p style={{ fontWeight:600,marginBottom:4 }}>Observações</p>
                 <p>{detalhes.observacoes}</p>
               </div>
             )}
@@ -1397,7 +1397,7 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
         </div>
       )}
 
-      {/* â•â•â• COMPRAR â•â•â• */}
+      {/* ═══ COMPRAR ═══ */}
       {aba === 'comprar' && (
         <div style={{ maxWidth: 820 }}>
 
@@ -1407,15 +1407,15 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
             <div style={{ display:'flex',gap:10 }}>
               {(['usado','novo'] as const).map(t => (
                 <button key={t} onClick={() => setCTipo(t)} style={{ flex:1,padding:'12px',borderRadius:10,border:`2px solid ${cTipo===t?'#2563eb':'#e2e8f0'}`,background:cTipo===t?'#dbeafe':'#fff',cursor:'pointer',fontSize:13,fontWeight:cTipo===t?600:400,color:cTipo===t?'#1d4ed8':'#374151' }}>
-                  {t==='usado'?'ðŸ“± Aparelho usado':'ðŸ†• Aparelho novo'}
+                  {t==='usado'?'📱 Aparelho usado':'🆕 Aparelho novo'}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Modelo â€” busca no banco */}
+          {/* Modelo — busca no banco */}
           <div style={card}>
-            <p style={sec}>IdentificaÃ§Ã£o do aparelho</p>
+            <p style={sec}>Identificação do aparelho</p>
             <div style={{ position:'relative',marginBottom:14 }}>
               <label style={lbl}>Modelo do aparelho *</label>
               <div style={{ display:'flex',gap:10 }}>
@@ -1429,37 +1429,37 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
                           onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.background='#fff'}}>
                           <div>
                             <p style={{ fontSize:13,fontWeight:500,color:'#0f172a' }}>{d.marca} {d.modelo}</p>
-                            <p style={{ fontSize:11,color:'#94a3b8' }}>{[d.ram,d.armazenamento,d.tela].filter(Boolean).join(' Â· ')}</p>
+                            <p style={{ fontSize:11,color:'#94a3b8' }}>{[d.ram,d.armazenamento,d.tela].filter(Boolean).join(' · ')}</p>
                           </div>
                           {d.lancamento && <span style={{ fontSize:11,color:'#94a3b8' }}>{d.lancamento}</span>}
                         </div>
                       ))}
-                      <div onClick={buscarSpecs} style={{ padding:'9px 14px',cursor:'pointer',background:'#f0f4ff',fontSize:12,color:'#2563eb',fontWeight:500,display:'flex',alignItems:'center',gap:6 }}>
-                        ðŸ” NÃ£o encontrado â€” buscar online
+                      <div onClick={buscarSpecs} style={{ padding:'9px 14px',cursor:'pointer',background:'#eff6ff',fontSize:12,color:'#2563eb',fontWeight:500,display:'flex',alignItems:'center',gap:6 }}>
+                        🔍 Não encontrado — buscar online
                       </div>
                     </div>
                   )}
                 </div>
                 {!showSugestoes && (
                   <button onClick={buscarSpecs} disabled={buscandoSpecs || !modeloInput.trim()} style={{ padding:'9px 16px',background:buscandoSpecs?'#93c5fd':'#2563eb',color:'#fff',border:'none',borderRadius:8,fontSize:13,cursor:'pointer',whiteSpace:'nowrap',fontWeight:500 }}>
-                    {buscandoSpecs?'â³ Buscando...':'ðŸ” Buscar specs'}
+                    {buscandoSpecs?'⏳ Buscando...':'🔍 Buscar specs'}
                   </button>
                 )}
               </div>
             </div>
 
             {submitAttempted && !modeloSelecionado && (
-              <p style={{ fontSize:11,color:'#ef4444',marginTop:4 }}>âš  Selecione o modelo do aparelho</p>
+              <p style={{ fontSize:11,color:'#ef4444',marginTop:4 }}>⚠ Selecione o modelo do aparelho</p>
             )}
 
             {modeloSelecionado && (
-              <div style={{ background:'#f0f4ff',border:'1px solid #bfdbfe',borderRadius:10,padding:'12px 16px',marginBottom:14 }}>
+              <div style={{ background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:10,padding:'12px 16px',marginBottom:14 }}>
                 <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8 }}>
-                  <p style={{ fontSize:13,fontWeight:600,color:'#1d4ed8' }}>âœ“ {modeloSelecionado.marca} {modeloSelecionado.modelo}</p>
+                  <p style={{ fontSize:13,fontWeight:600,color:'#1d4ed8' }}>✓ {modeloSelecionado.marca} {modeloSelecionado.modelo}</p>
                   {modeloSelecionado.lancamento && <span style={{ fontSize:11,color:'#2563eb' }}>{modeloSelecionado.lancamento}</span>}
                 </div>
                 <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:8 }}>
-                  {[['Tela',modeloSelecionado.tela],['RAM',modeloSelecionado.ram],['Armazenamento',modeloSelecionado.armazenamento],['Processador',modeloSelecionado.processador],['CÃ¢mera tras.',modeloSelecionado.camera_principal],['CÃ¢mera front.',modeloSelecionado.camera_frontal],['Bateria',modeloSelecionado.bateria],['Sistema',modeloSelecionado.sistema]].filter(([,v])=>v).map(([k,v]) => (
+                  {[['Tela',modeloSelecionado.tela],['RAM',modeloSelecionado.ram],['Armazenamento',modeloSelecionado.armazenamento],['Processador',modeloSelecionado.processador],['Câmera tras.',modeloSelecionado.camera_principal],['Câmera front.',modeloSelecionado.camera_frontal],['Bateria',modeloSelecionado.bateria],['Sistema',modeloSelecionado.sistema]].filter(([,v])=>v).map(([k,v]) => (
                     <div key={k as string}><p style={{ fontSize:10,color:'#2563eb',fontWeight:500 }}>{k}</p><p style={{ fontSize:12,color:'#1e293b',fontWeight:500 }}>{v}</p></div>
                   ))}
                 </div>
@@ -1474,7 +1474,7 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
                 <div style={{ display:'flex',gap:8,marginBottom:8 }}>
                   {(['nenhuma','pin','padrao'] as const).map(t => (
                     <button key={t} onClick={() => setCTipoSenha(t)} style={{ padding:'6px 14px',borderRadius:7,border:`1px solid ${cTipoSenha===t?'#2563eb':'#e2e8f0'}`,background:cTipoSenha===t?'#dbeafe':'#fff',color:cTipoSenha===t?'#2563eb':'#64748b',fontSize:12,fontWeight:cTipoSenha===t?600:400,cursor:'pointer' }}>
-                      {t==='nenhuma'?'Nenhuma':t==='pin'?'PIN / Senha':'PadrÃ£o'}
+                      {t==='nenhuma'?'Nenhuma':t==='pin'?'PIN / Senha':'Padrão'}
                     </button>
                   ))}
                 </div>
@@ -1485,23 +1485,23 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
                   <div style={{ display:'flex',gap:16,alignItems:'center' }}>
                     <canvas ref={padCanvasRef} width={120} height={120} style={{ border:'1px solid #e2e8f0',borderRadius:8,cursor:'pointer',background:'#f8fafc' }} onClick={onPadCanvasClick} />
                     <div>
-                      <p style={{ fontSize:12,color:'#374151',marginBottom:6 }}>Clique nos pontos para traÃ§ar o padrÃ£o</p>
-                      {cPadrao.length > 0 && <p style={{ fontSize:13,fontWeight:600,color:'#2563eb',marginBottom:8 }}>{cPadrao.join(' â†’ ')}</p>}
-                      <button onClick={limparPadrao} style={{ fontSize:12,color:'#ef4444',background:'none',border:'none',cursor:'pointer',padding:0 }}>Limpar padrÃ£o</button>
+                      <p style={{ fontSize:12,color:'#374151',marginBottom:6 }}>Clique nos pontos para traçar o padrão</p>
+                      {cPadrao.length > 0 && <p style={{ fontSize:13,fontWeight:600,color:'#2563eb',marginBottom:8 }}>{cPadrao.join(' → ')}</p>}
+                      <button onClick={limparPadrao} style={{ fontSize:12,color:'#ef4444',background:'none',border:'none',cursor:'pointer',padding:0 }}>Limpar padrão</button>
                     </div>
                   </div>
                 )}
               </div>
               <div>
                 <label style={lbl}>IMEI 1</label>
-                <input style={inp} value={cIMEI} onChange={e => setCIMEI(e.target.value)} placeholder="15 dÃ­gitos" maxLength={15} />
-                {cIMEI.length===15 && <a href={`https://www.aparelhoslegais.com.br/consulta?imei=${cIMEI}`} target="_blank" rel="noopener noreferrer" style={{ fontSize:11,color:'#2563eb',textDecoration:'none',display:'block',marginTop:3 }}>ðŸ” Consultar Aparelhos Legais â†’</a>}
+                <input style={inp} value={cIMEI} onChange={e => setCIMEI(e.target.value)} placeholder="15 dígitos" maxLength={15} />
+                {cIMEI.length===15 && <a href={`https://www.aparelhoslegais.com.br/consulta?imei=${cIMEI}`} target="_blank" rel="noopener noreferrer" style={{ fontSize:11,color:'#2563eb',textDecoration:'none',display:'block',marginTop:3 }}>🔍 Consultar Aparelhos Legais →</a>}
               </div>
               <div><label style={lbl}>IMEI 2 (dual SIM)</label><input style={inp} value={cIMEI2} onChange={e => setCIMEI2(e.target.value)} placeholder="Opcional" maxLength={15} /></div>
             </div>
           </div>
 
-          {/* Checklist â€” duas seÃ§Ãµes */}
+          {/* Checklist — duas seções */}
           {cTipo === 'usado' && (
             <div style={card}>
               <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14 }}>
@@ -1513,8 +1513,8 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
                 )}
               </div>
 
-              {/* EstÃ©tico */}
-              <p style={{ fontSize:11,fontWeight:700,color:'#2563eb',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:8 }}>ðŸŽ¨ EstÃ©tico</p>
+              {/* Estético */}
+              <p style={{ fontSize:11,fontWeight:700,color:'#2563eb',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:8 }}>🎨 Estético</p>
               <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(190px,1fr))',gap:8,marginBottom:16 }}>
                 {CHECKLIST_ESTETICO.map(item => (
                   <div key={item.key} style={{ border:'1px solid #e2e8f0',borderRadius:8,padding:'8px 10px' }}>
@@ -1529,7 +1529,7 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
               </div>
 
               {/* Funcional */}
-              <p style={{ fontSize:11,fontWeight:700,color:'#059669',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:8 }}>âš™ï¸ Funcional</p>
+              <p style={{ fontSize:11,fontWeight:700,color:'#059669',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:8 }}>⚙️ Funcional</p>
               <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(190px,1fr))',gap:8,marginBottom:12 }}>
                 {CHECKLIST_FUNCIONAL.map(item => (
                   <div key={item.key} style={{ border:'1px solid #e2e8f0',borderRadius:8,padding:'8px 10px' }}>
@@ -1544,8 +1544,8 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
               </div>
 
               <div style={{ marginTop:4 }}>
-                <label style={lbl}>ObservaÃ§Ãµes</label>
-                <textarea style={{ ...inp,minHeight:60,resize:'vertical' }} value={cObs} onChange={e => setCObs(e.target.value)} placeholder="ArranhÃµes, detalhes relevantes..." />
+                <label style={lbl}>Observações</label>
+                <textarea style={{ ...inp,minHeight:60,resize:'vertical' }} value={cObs} onChange={e => setCObs(e.target.value)} placeholder="Arranhões, detalhes relevantes..." />
               </div>
             </div>
           )}
@@ -1561,12 +1561,12 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
                 {fotoVendedor ? (
                   <div style={{ position:'relative' }}>
                     <img src={fotoVendedor} style={{ width:80,height:80,objectFit:'cover',borderRadius:8,border:'1px solid #e2e8f0' }} alt="Foto" />
-                    <button onClick={() => setFotoVendedor('')} style={{ position:'absolute',top:-6,right:-6,width:20,height:20,borderRadius:'50%',background:'#ef4444',color:'#fff',border:'none',cursor:'pointer',fontSize:12,display:'flex',alignItems:'center',justifyContent:'center' }}>Ã—</button>
+                    <button onClick={() => setFotoVendedor('')} style={{ position:'absolute',top:-6,right:-6,width:20,height:20,borderRadius:'50%',background:'#ef4444',color:'#fff',border:'none',cursor:'pointer',fontSize:12,display:'flex',alignItems:'center',justifyContent:'center' }}>×</button>
                   </div>
                 ) : null}
                 <div style={{ display:'flex',gap:8,flexWrap:'wrap' }}>
                   <button onClick={abrirCamera} style={{ padding:'8px 14px',border:'1px solid #e2e8f0',borderRadius:8,fontSize:12,cursor:'pointer',background:'#f8fafc',color:'#374151',display:'flex',alignItems:'center',gap:6 }}>
-                    <i className="ti ti-camera" style={{ fontSize:14 }} /> CÃ¢mera / Webcam
+                    <i className="ti ti-camera" style={{ fontSize:14 }} /> Câmera / Webcam
                   </button>
                   <label style={{ padding:'8px 14px',border:'1px solid #e2e8f0',borderRadius:8,fontSize:12,cursor:'pointer',background:'#f8fafc',color:'#374151',display:'flex',alignItems:'center',gap:6 }}>
                     <i className="ti ti-upload" style={{ fontSize:14 }} /> Upload de arquivo
@@ -1580,23 +1580,23 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
               <div style={{ gridColumn:'1/-1' }}>
                 <label style={lbl}>Nome completo *</label>
                 <input ref={vNomeRef} style={{ ...inp, borderColor: submitAttempted && !vNome.trim() ? '#ef4444' : vNome.trim() ? '#22c55e' : '#e2e8f0' }} value={vNome} onChange={e => setVNome(e.target.value)} />
-                {submitAttempted && !vNome.trim() && <p style={{ fontSize:11,color:'#ef4444',marginTop:2 }}>âš  Campo obrigatÃ³rio</p>}
+                {submitAttempted && !vNome.trim() && <p style={{ fontSize:11,color:'#ef4444',marginTop:2 }}>⚠ Campo obrigatório</p>}
               </div>
               <div>
                 <label style={lbl}>CPF *</label>
-                <input ref={vCPFRef} style={{ ...inp, borderColor: (submitAttempted && !vCPF.trim()) || vCpfErro ? '#ef4444' : vCPF.trim() && !vCpfErro ? '#22c55e' : '#e2e8f0' }} value={vCPF} onChange={e => { const v = formatarCPF(e.target.value); setVCPF(v); const raw = v.replace(/\D/g,''); setVCpfErro(raw.length > 0 && raw.length < 11 ? 'CPF incompleto' : raw.length === 11 && !validarCPF(raw) ? 'CPF invÃ¡lido' : '') }} placeholder="000.000.000-00" maxLength={14} />
-                {(vCpfErro || (submitAttempted && !vCPF.trim())) && <p style={{ fontSize:11,color:'#ef4444',marginTop:2 }}>{vCpfErro || 'âš  Campo obrigatÃ³rio'}</p>}
+                <input ref={vCPFRef} style={{ ...inp, borderColor: (submitAttempted && !vCPF.trim()) || vCpfErro ? '#ef4444' : vCPF.trim() && !vCpfErro ? '#22c55e' : '#e2e8f0' }} value={vCPF} onChange={e => { const v = formatarCPF(e.target.value); setVCPF(v); const raw = v.replace(/\D/g,''); setVCpfErro(raw.length > 0 && raw.length < 11 ? 'CPF incompleto' : raw.length === 11 && !validarCPF(raw) ? 'CPF inválido' : '') }} placeholder="000.000.000-00" maxLength={14} />
+                {(vCpfErro || (submitAttempted && !vCPF.trim())) && <p style={{ fontSize:11,color:'#ef4444',marginTop:2 }}>{vCpfErro || '⚠ Campo obrigatório'}</p>}
               </div>
               <div><label style={lbl}>RG</label><input style={inp} value={vRG} onChange={e => setVRG(e.target.value)} /></div>
               <div><label style={lbl}>Telefone</label><input style={inp} value={vTel} onChange={e => setVTel(formatPhone(e.target.value))} placeholder="(00) 00000-0000" maxLength={15} /></div>
               <div><label style={lbl}>E-mail</label><input style={inp} value={vEmail} onChange={e => setVEmail(e.target.value)} /></div>
             </div>
-            {/* CEP com busca automÃ¡tica */}
+            {/* CEP com busca automática */}
             <div style={{ marginTop:12 }}>
               <label style={lbl}>CEP</label>
               <div style={{ display:'flex',gap:8 }}>
                 <input style={{ ...inp,maxWidth:150 }} value={vCEP} onChange={e => { setVCEP(formatCEP(e.target.value)); if (e.target.value.replace(/\D/g,'').length===8) buscarCEP(e.target.value) }} placeholder="00000-000" maxLength={9} />
-                {buscandoCEP && <span style={{ fontSize:12,color:'#2563eb',alignSelf:'center' }}>â³ Buscando...</span>}
+                {buscandoCEP && <span style={{ fontSize:12,color:'#2563eb',alignSelf:'center' }}>⏳ Buscando...</span>}
               </div>
             </div>
             <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginTop:12 }}>
@@ -1609,17 +1609,17 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
 
           {/* Pagamento */}
           <div style={card}>
-            <p style={sec}>CondiÃ§Ãµes de pagamento</p>
+            <p style={sec}>Condições de pagamento</p>
             <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:12 }}>
               <div>
                 <label style={lbl}>Valor pago (R$) *</label>
                 <input ref={cValorRef} style={{ ...inp,fontSize:18,fontWeight:600, borderColor: submitAttempted && (!cValor||parseFloat(cValor)<=0) ? '#ef4444' : cValor && parseFloat(cValor) > 0 ? '#22c55e' : '#e2e8f0' }} type="number" step="0.01" value={cValor} onChange={e => setCValor(e.target.value)} placeholder="0,00" />
-                {submitAttempted && (!cValor || parseFloat(cValor) <= 0) && <p style={{ fontSize:11,color:'#ef4444',marginTop:2 }}>âš  Informe o valor pago</p>}
+                {submitAttempted && (!cValor || parseFloat(cValor) <= 0) && <p style={{ fontSize:11,color:'#ef4444',marginTop:2 }}>⚠ Informe o valor pago</p>}
               </div>
               <div>
                 <label style={lbl}>Forma de pagamento</label>
                 <select style={inp} value={cForma} onChange={e => setCForma(e.target.value)}>{FORMAS_PGTO.map(f=><option key={f}>{f}</option>)}</select>
-                {cForma === 'CartÃ£o crÃ©dito parcelado' && (
+                {cForma === 'Cartão crédito parcelado' && (
                   <div style={{ display:'flex',alignItems:'center',gap:8,marginTop:6 }}>
                     <span style={{ fontSize:12,color:'#64748b' }}>Parcelas:</span>
                     <select value={cParcelas} onChange={e => setCParcelas(parseInt(e.target.value))} style={{ padding:'4px 8px',border:'1px solid #e2e8f0',borderRadius:6,fontSize:13,outline:'none' }}>
@@ -1635,7 +1635,7 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
           {/* Assinaturas */}
           <div style={card}>
             <p style={sec}>Assinatura do vendedor</p>
-            <p style={{ fontSize:12,color:'#64748b',marginBottom:10 }}>O vendedor deve assinar para confirmar as declaraÃ§Ãµes do termo.</p>
+            <p style={{ fontSize:12,color:'#64748b',marginBottom:10 }}>O vendedor deve assinar para confirmar as declarações do termo.</p>
             <div style={{ border:'1px solid #e2e8f0',borderRadius:8,background:'#fafafa',display:'inline-block',position:'relative' }}>
               <canvas ref={vendCanvasRef} width={480} height={110} style={{ display:'block',cursor:'crosshair',borderRadius:8 }}
                 onMouseDown={vendHandlers.onMouseDown} onMouseMove={vendHandlers.onMouseMove} onMouseUp={vendHandlers.onMouseUp} onMouseLeave={vendHandlers.onMouseLeave} />
@@ -1644,64 +1644,64 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
             {assinaturaVendedor && <button onClick={() => limparCanvas(vendCanvasRef, setAssinaturaVendedor)} style={{ marginLeft:10,fontSize:12,color:'#ef4444',background:'none',border:'none',cursor:'pointer' }}>Limpar</button>}
             {assinaturaLoja && (
               <div style={{ marginTop:12 }}>
-                <p style={{ fontSize:11,color:'#64748b',marginBottom:6 }}>Assinatura do responsÃ¡vel da loja (configurada em ConfiguraÃ§Ãµes):</p>
+                <p style={{ fontSize:11,color:'#64748b',marginBottom:6 }}>Assinatura do responsável da loja (configurada em Configurações):</p>
                 <img src={assinaturaLoja} style={{ height:50,border:'1px solid #e2e8f0',borderRadius:6,background:'#fafafa',padding:4 }} alt="Assinatura loja" />
               </div>
             )}
           </div>
 
           <button onClick={salvarCompra} disabled={salvando} style={{ width:'100%',padding:'14px',background:salvando?'#93c5fd':'#2563eb',color:'#fff',border:'none',borderRadius:10,fontSize:14,fontWeight:600,cursor:salvando?'not-allowed':'pointer' }}>
-            {salvando ? 'Salvando...' : 'âœ“ Registrar compra'}
+            {salvando ? 'Salvando...' : '✓ Registrar compra'}
           </button>
         </div>
       )}
 
-      {/* â•â•â• VENDER â•â•â• */}
+      {/* ═══ VENDER ═══ */}
       {aba === 'vender' && (
         <div style={{ maxWidth: 820 }}>
           {!aparelhoVenda ? (
             <div style={card}>
               <p style={sec}>Selecionar aparelho para venda</p>
-              {aparelhos.filter(a=>a.status==='disponivel').length === 0 ? <p style={{ textAlign:'center',padding:30,color:'#94a3b8' }}>Nenhum disponÃ­vel.</p> :
+              {aparelhos.filter(a=>a.status==='disponivel').length === 0 ? <p style={{ textAlign:'center',padding:30,color:'#94a3b8' }}>Nenhum disponível.</p> :
                 aparelhos.filter(a=>a.status==='disponivel').map(a => (
                   <div key={a.id} onClick={() => setAparelhoVenda(a)} style={{ display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px',border:'1px solid #e2e8f0',borderRadius:10,cursor:'pointer',marginBottom:8,background:'#fff' }}
                     onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.background='#eff6ff'}}
                     onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.background='#fff'}}>
-                    <div><p style={{ fontWeight:500,color:'#0f172a' }}>{a.marca} {a.modelo}</p><p style={{ fontSize:12,color:'#94a3b8' }}>{a.capacidade}{a.cor?` Â· ${a.cor}`:''}{a.imei?` Â· ${a.imei}`:''}</p></div>
-                    <p style={{ fontSize:13,fontWeight:600,color:'#2563eb' }}>Comprado por {a.preco_compra?fm(a.preco_compra):'â€”'}</p>
+                    <div><p style={{ fontWeight:500,color:'#0f172a' }}>{a.marca} {a.modelo}</p><p style={{ fontSize:12,color:'#94a3b8' }}>{a.capacidade}{a.cor?` · ${a.cor}`:''}{a.imei?` · ${a.imei}`:''}</p></div>
+                    <p style={{ fontSize:13,fontWeight:600,color:'#2563eb' }}>Comprado por {a.preco_compra?fm(a.preco_compra):'—'}</p>
                   </div>
                 ))
               }
             </div>
           ) : (
             <>
-              <div style={{ ...card,background:'#f0f4ff',border:'1px solid #bfdbfe' }}>
+              <div style={{ ...card,background:'#eff6ff',border:'1px solid #bfdbfe' }}>
                 <div style={{ display:'flex',justifyContent:'space-between' }}>
-                  <div><p style={{ fontSize:15,fontWeight:600,color:'#1d4ed8' }}>{aparelhoVenda.marca} {aparelhoVenda.modelo}</p><p style={{ fontSize:12,color:'#2563eb',marginTop:2 }}>{aparelhoVenda.capacidade}{aparelhoVenda.cor?` Â· ${aparelhoVenda.cor}`:''}</p></div>
-                  <button onClick={() => setAparelhoVenda(null)} style={{ fontSize:12,color:'#2563eb',background:'none',border:'none',cursor:'pointer' }}>Trocar â†’</button>
+                  <div><p style={{ fontSize:15,fontWeight:600,color:'#1d4ed8' }}>{aparelhoVenda.marca} {aparelhoVenda.modelo}</p><p style={{ fontSize:12,color:'#2563eb',marginTop:2 }}>{aparelhoVenda.capacidade}{aparelhoVenda.cor?` · ${aparelhoVenda.cor}`:''}</p></div>
+                  <button onClick={() => setAparelhoVenda(null)} style={{ fontSize:12,color:'#2563eb',background:'none',border:'none',cursor:'pointer' }}>Trocar →</button>
                 </div>
               </div>
               <div style={card}>
                 <p style={sec}>Dados do comprador</p>
                 <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:12 }}>
                   <div style={{ gridColumn:'1/-1' }}><label style={lbl}>Nome completo *</label><input style={inp} value={bNome} onChange={e => setBNome(e.target.value)} /></div>
-                  <div><label style={lbl}>CPF *</label><input style={{ ...inp, borderColor: bCpfErro ? '#ef4444' : '#e2e8f0' }} value={bCPF} onChange={e => { const v = formatarCPF(e.target.value); setBCPF(v); const raw = v.replace(/\D/g,''); setBCpfErro(raw.length > 0 && raw.length < 11 ? 'CPF incompleto' : raw.length === 11 && !validarCPF(raw) ? 'CPF invÃ¡lido' : '') }} placeholder="000.000.000-00" maxLength={14} />{bCpfErro && <p style={{ fontSize:11,color:'#ef4444',marginTop:2 }}>{bCpfErro}</p>}</div>
+                  <div><label style={lbl}>CPF *</label><input style={{ ...inp, borderColor: bCpfErro ? '#ef4444' : '#e2e8f0' }} value={bCPF} onChange={e => { const v = formatarCPF(e.target.value); setBCPF(v); const raw = v.replace(/\D/g,''); setBCpfErro(raw.length > 0 && raw.length < 11 ? 'CPF incompleto' : raw.length === 11 && !validarCPF(raw) ? 'CPF inválido' : '') }} placeholder="000.000.000-00" maxLength={14} />{bCpfErro && <p style={{ fontSize:11,color:'#ef4444',marginTop:2 }}>{bCpfErro}</p>}</div>
                   <div><label style={lbl}>Telefone</label><input style={inp} value={bTel} onChange={e => setBTel(formatPhone(e.target.value))} placeholder="(00) 00000-0000" maxLength={15} /></div>
                   <div><label style={lbl}>E-mail</label><input style={inp} value={bEmail} onChange={e => setBEmail(e.target.value)} /></div>
-                  <div><label style={lbl}>EndereÃ§o</label><input style={inp} value={bEnd} onChange={e => setBEnd(e.target.value)} /></div>
+                  <div><label style={lbl}>Endereço</label><input style={inp} value={bEnd} onChange={e => setBEnd(e.target.value)} /></div>
                 </div>
               </div>
               <div style={card}>
-                <p style={sec}>CondiÃ§Ãµes de venda</p>
+                <p style={sec}>Condições de venda</p>
                 <div style={{ display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12 }}>
                   <div><label style={lbl}>Valor de venda (R$) *</label>
                     <input style={{ ...inp,fontSize:18,fontWeight:600 }} type="number" step="0.01" value={bValor} onChange={e => setBValor(e.target.value)} placeholder="0,00" />
-                    {bValor && aparelhoVenda.preco_compra && <p style={{ fontSize:11,marginTop:4,fontWeight:500,color:parseFloat(bValor)>aparelhoVenda.preco_compra?'#065f46':'#991b1b' }}>{parseFloat(bValor)>aparelhoVenda.preco_compra?`âœ“ Lucro: ${fm(parseFloat(bValor)-aparelhoVenda.preco_compra)}`:`âš  PrejuÃ­zo: ${fm(aparelhoVenda.preco_compra-parseFloat(bValor))}`}</p>}
+                    {bValor && aparelhoVenda.preco_compra && <p style={{ fontSize:11,marginTop:4,fontWeight:500,color:parseFloat(bValor)>aparelhoVenda.preco_compra?'#065f46':'#991b1b' }}>{parseFloat(bValor)>aparelhoVenda.preco_compra?`✓ Lucro: ${fm(parseFloat(bValor)-aparelhoVenda.preco_compra)}`:`⚠ Prejuízo: ${fm(aparelhoVenda.preco_compra-parseFloat(bValor))}`}</p>}
                   </div>
                   <div>
                     <label style={lbl}>Forma de pagamento</label>
                     <select style={inp} value={bForma} onChange={e => setBForma(e.target.value)}>{FORMAS_PGTO.map(f=><option key={f}>{f}</option>)}</select>
-                    {bForma === 'CartÃ£o crÃ©dito parcelado' && (
+                    {bForma === 'Cartão crédito parcelado' && (
                       <div style={{ display:'flex',alignItems:'center',gap:6,marginTop:6 }}>
                         <span style={{ fontSize:12,color:'#64748b' }}>Parcelas:</span>
                         <select value={bParcelas} onChange={e => setBParcelas(parseInt(e.target.value))} style={{ padding:'4px 8px',border:'1px solid #e2e8f0',borderRadius:6,fontSize:13,outline:'none' }}>
@@ -1725,26 +1725,26 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
                 {assinaturaLoja && <div style={{ marginTop:12 }}><p style={{ fontSize:11,color:'#64748b',marginBottom:6 }}>Assinatura da loja:</p><img src={assinaturaLoja} style={{ height:50,border:'1px solid #e2e8f0',borderRadius:6,padding:4 }} alt="Assinatura loja" /></div>}
               </div>
               <button onClick={salvarVenda} disabled={salvando||!bNome.trim()||!bCPF.trim()||!bValor} style={{ width:'100%',padding:'14px',background:salvando||!bNome.trim()||!bCPF.trim()||!bValor?'#e2e8f0':'#2563eb',color:salvando||!bNome.trim()||!bCPF.trim()||!bValor?'#94a3b8':'#fff',border:'none',borderRadius:10,fontSize:14,fontWeight:600,cursor:'pointer' }}>
-                {salvando?'Salvando...':'âœ“ Registrar venda'}
+                {salvando?'Salvando...':'✓ Registrar venda'}
               </button>
             </>
           )}
         </div>
       )}
 
-      {/* â•â•â• MODAL SUCESSO â•â•â• */}
+      {/* ═══ MODAL SUCESSO ═══ */}
       {modalSucesso && (
         <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center',padding:20 }}>
           <div style={{ background:'#fff',borderRadius:20,padding:36,maxWidth:440,width:'100%',boxShadow:'0 24px 64px rgba(0,0,0,0.3)',textAlign:'center' }}>
             <div style={{ width:64,height:64,borderRadius:'50%',background:modalSucesso.tipo==='compra'?'#fef3c7':'#ecfdf5',display:'flex',alignItems:'center',justifyContent:'center',fontSize:32,margin:'0 auto 16px' }}>
-              {modalSucesso.tipo==='compra'?'â¬‡':'â¬†'}
+              {modalSucesso.tipo==='compra'?'⬇':'⬆'}
             </div>
             <h2 style={{ fontSize:20,fontWeight:700,color:'#0f172a',marginBottom:6 }}>
               {modalSucesso.tipo==='compra'?'Compra registrada!':'Venda registrada!'}
             </h2>
             <p style={{ fontSize:14,color:'#2563eb',fontWeight:600,marginBottom:4 }}>#{modalSucesso.numero}</p>
             <p style={{ fontSize:13,color:'#64748b',marginBottom:24 }}>
-              {modalSucesso.aparelho.marca} {modalSucesso.aparelho.modelo}{modalSucesso.aparelho.capacidade?` Â· ${modalSucesso.aparelho.capacidade}`:''}
+              {modalSucesso.aparelho.marca} {modalSucesso.aparelho.modelo}{modalSucesso.aparelho.capacidade?` · ${modalSucesso.aparelho.capacidade}`:''}
             </p>
             <div style={{ display:'flex',flexDirection:'column',gap:10 }}>
               <button onClick={() => {
@@ -1752,12 +1752,12 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
                   gerarTermoCompraHTML({
                     numero: compraSalva?.numero ?? modalSucesso.numero,
                     hoje: new Date().toLocaleDateString('pt-BR', { day:'2-digit', month:'long', year:'numeric' }),
-                    ap: { ...modalSucesso.aparelho, id:'', tipo:'usado', status:'sem_revisao', cor:cCor||null, imei:cIMEI||null, imei2:cIMEI2||null, specs_json:modeloSelecionado??{}, preco_compra:parseFloat(cValor||'0'), preco_venda:null, checklist_json:cChecklist, checklist_nota:notaGeral(cChecklist), observacoes:cObs||null, created_at:'', senha_tipo:cTipoSenha!=='nenhuma'?cTipoSenha:null, senha_valor:cTipoSenha==='pin'?cSenha:cTipoSenha==='padrao'&&cPadrao.length>0?cPadrao.join(' â†’ '):null },
+                    ap: { ...modalSucesso.aparelho, id:'', tipo:'usado', status:'sem_revisao', cor:cCor||null, imei:cIMEI||null, imei2:cIMEI2||null, specs_json:modeloSelecionado??{}, preco_compra:parseFloat(cValor||'0'), preco_venda:null, checklist_json:cChecklist, checklist_nota:notaGeral(cChecklist), observacoes:cObs||null, created_at:'', senha_tipo:cTipoSenha!=='nenhuma'?cTipoSenha:null, senha_valor:cTipoSenha==='pin'?cSenha:cTipoSenha==='padrao'&&cPadrao.length>0?cPadrao.join(' → '):null },
                     vNomeP:vNome, vCPFP:vCPF, vRGP:vRG, vTelP:vTel,
                     vEndP:[vEnd,vBairro,vCidade,vEstado].filter(Boolean).join(', '), vCEPP:vCEP,
                     valorP:parseFloat(cValor||'0'), formaP:cForma,
                     assVend:assinaturaVendedor, assLoja:assinaturaLoja, foto:fotoVendedor,
-                    senhaT:cTipoSenha!=='nenhuma'?cTipoSenha:'', senhaV:cTipoSenha==='pin'?cSenha:cTipoSenha==='padrao'?cPadrao.join(' â†’ '):'',
+                    senhaT:cTipoSenha!=='nenhuma'?cTipoSenha:'', senhaV:cTipoSenha==='pin'?cSenha:cTipoSenha==='padrao'?cPadrao.join(' → '):'',
                   })
                 } else if (aparelhoVenda) {
                   gerarTermoVendaHTML({
@@ -1770,7 +1770,7 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
                   })
                 }
               }} style={{ padding:'12px',background:'#2563eb',color:'#fff',border:'none',borderRadius:10,fontSize:14,fontWeight:600,cursor:'pointer' }}>
-                ðŸ–¨ Imprimir termo
+                🖨 Imprimir termo
               </button>
               <button onClick={() => {
                 setModalSucesso(null)
@@ -1789,13 +1789,13 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
         </div>
       )}
 
-      {/* Modal cÃ¢mera */}
+      {/* Modal câmera */}
       {showCamera && (
         <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.9)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',zIndex:200 }}>
           <video ref={videoRef} autoPlay playsInline style={{ maxWidth:'90vw',maxHeight:'70vh',borderRadius:12 }} />
           <canvas ref={fotoCanvasRef} style={{ display:'none' }} />
           <div style={{ display:'flex',gap:12,marginTop:20 }}>
-            <button onClick={tirarFoto} style={{ padding:'12px 28px',background:'#fff',color:'#0f172a',border:'none',borderRadius:10,fontSize:14,fontWeight:600,cursor:'pointer' }}>ðŸ“¸ Tirar foto</button>
+            <button onClick={tirarFoto} style={{ padding:'12px 28px',background:'#fff',color:'#0f172a',border:'none',borderRadius:10,fontSize:14,fontWeight:600,cursor:'pointer' }}>📸 Tirar foto</button>
             <button onClick={fecharCamera} style={{ padding:'12px 28px',background:'rgba(255,255,255,0.15)',color:'#fff',border:'1px solid rgba(255,255,255,0.3)',borderRadius:10,fontSize:14,cursor:'pointer' }}>Cancelar</button>
           </div>
         </div>
@@ -1803,5 +1803,4 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
     </div>
   )
 }
-
 

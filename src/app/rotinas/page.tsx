@@ -25,29 +25,29 @@ type WAPendencia = {
 
 type WAResumo = { tipo: string; total: number; enviados: number; pendentes: number }
 
-const DIAS_SEMANA = ['Dom','Seg','Ter','Qua','Qui','Sex','SÃ¡b']
-const DIAS_SEMANA_FULL = ['Domingo','Segunda','TerÃ§a','Quarta','Quinta','Sexta','SÃ¡bado']
+const DIAS_SEMANA = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
+const DIAS_SEMANA_FULL = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado']
 
 const CATEGORIA_CONFIG: Record<string, { icon: string; label: string; bg: string; color: string }> = {
-  limpeza:        { icon: 'ðŸ§¹', label: 'Limpeza',        bg: '#E1F5EE', color: '#085041' },
-  administrativo: { icon: 'ðŸ“‹', label: 'Administrativo', bg: '#E6F1FB', color: '#0C447C' },
-  atendimento:    { icon: 'ðŸ“ž', label: 'Atendimento',    bg: '#EEEDFE', color: '#3C3489' },
-  estoque:        { icon: 'ðŸ“¦', label: 'Estoque',        bg: '#FAEEDA', color: '#633806' },
-  financeiro:     { icon: 'ðŸ’°', label: 'Financeiro',     bg: '#EAF3DE', color: '#27500A' },
-  marketing:      { icon: 'ðŸ“£', label: 'Marketing',      bg: '#FAECE7', color: '#712B13' },
-  geral:          { icon: 'âœ”',  label: 'Geral',          bg: '#f1f5f9', color: '#475569' },
+  limpeza:        { icon: '🧹', label: 'Limpeza',        bg: '#E1F5EE', color: '#085041' },
+  administrativo: { icon: '📋', label: 'Administrativo', bg: '#E6F1FB', color: '#0C447C' },
+  atendimento:    { icon: '📞', label: 'Atendimento',    bg: '#EEEDFE', color: '#3C3489' },
+  estoque:        { icon: '📦', label: 'Estoque',        bg: '#FAEEDA', color: '#633806' },
+  financeiro:     { icon: '💰', label: 'Financeiro',     bg: '#EAF3DE', color: '#27500A' },
+  marketing:      { icon: '📣', label: 'Marketing',      bg: '#FAECE7', color: '#712B13' },
+  geral:          { icon: '✔',  label: 'Geral',          bg: '#f1f5f9', color: '#475569' },
 }
 
 const WA_TIPO_CONFIG: Record<string, { label: string; icon: string; templateKey: string }> = {
-  aniversario:            { label: 'Aniversariantes',    icon: 'ðŸŽ‚', templateKey: 'wa_aniversario' },
-  os_pronta_nao_retirada: { label: 'OS prontas',         icon: 'â°', templateKey: 'wa_os_pronta_nao_retirada' },
-  aparelho_90dias:        { label: '+90 dias',           icon: 'ðŸ“¦', templateKey: 'wa_retirada_90dias' },
-  cliente_inativo:        { label: 'Inativos',           icon: 'ðŸ˜´', templateKey: 'wa_cliente_inativo' },
-  nunca_retornou:         { label: 'NÃ£o retornaram',     icon: 'ðŸ‘‹', templateKey: 'wa_nunca_retornou' },
+  aniversario:            { label: 'Aniversariantes',    icon: '🎂', templateKey: 'wa_aniversario' },
+  os_pronta_nao_retirada: { label: 'OS prontas',         icon: '⏰', templateKey: 'wa_os_pronta_nao_retirada' },
+  aparelho_90dias:        { label: '+90 dias',           icon: '📦', templateKey: 'wa_retirada_90dias' },
+  cliente_inativo:        { label: 'Inativos',           icon: '😴', templateKey: 'wa_cliente_inativo' },
+  nunca_retornou:         { label: 'Não retornaram',     icon: '👋', templateKey: 'wa_nunca_retornou' },
 }
 
 const FREQ_CONFIG: Record<string, { label: string; color: string }> = {
-  diaria:  { label: 'DiÃ¡ria',  color: '#2563eb' },
+  diaria:  { label: 'Diária',  color: '#2563eb' },
   semanal: { label: 'Semanal', color: '#0ea5e9' },
   mensal:  { label: 'Mensal',  color: '#8b5cf6' },
 }
@@ -171,7 +171,7 @@ export default function RotinasPage() {
     if (waAtivo && tarefa.categoria === 'marketing') {
       const pendentes = waPendencias.filter(p => !p.enviado_hoje)
       if (pendentes.length > 0) {
-        alert(`âš  Ainda hÃ¡ ${pendentes.length} mensagem(ns) de WhatsApp pendente(s). Envie todas antes de marcar esta tarefa como feita.`)
+        alert(`⚠ Ainda há ${pendentes.length} mensagem(ns) de WhatsApp pendente(s). Envie todas antes de marcar esta tarefa como feita.`)
         return
       }
     }
@@ -251,7 +251,7 @@ export default function RotinasPage() {
   const tarefasFiltradas = tarefas.filter(t => filtroFreq === 'todas' || t.frequencia === filtroFreq)
   const diaAtual = DIAS_SEMANA_FULL[new Date().getDay()]
 
-  // Tipos de WA ativos conforme configuraÃ§Ã£o
+  // Tipos de WA ativos conforme configuração
   const waAtivosTypes = Object.keys(WA_TIPO_CONFIG).filter(tipo => {
     if (tipo === 'aniversario') return waConfig.rotinas_wa_aniversario !== 'false'
     if (tipo === 'os_pronta_nao_retirada') return waConfig.rotinas_wa_os_pronta !== 'false'
@@ -267,7 +267,7 @@ export default function RotinasPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 600, color: '#0f172a', letterSpacing: '-0.02em' }}>Rotinas & Checklist</h1>
-          <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>{diaAtual} Â· {new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })}</p>
+          <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>{diaAtual} · {new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })}</p>
         </div>
         {aba === 'configurar' && (
           <button onClick={abrirNovaTarefa} style={{ padding: '9px 18px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>+ Nova tarefa</button>
@@ -275,22 +275,22 @@ export default function RotinasPage() {
       </div>
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid #e2e8f0' }}>
-        {([['minha', 'âœ… Minhas tarefas'], ['gestor', 'ðŸ‘ Painel gestor'], ['configurar', 'âš™ Configurar']] as const).map(([k, l]) => (
+        {([['minha', '✅ Minhas tarefas'], ['gestor', '👁 Painel gestor'], ['configurar', '⚙ Configurar']] as const).map(([k, l]) => (
           <button key={k} onClick={() => setAba(k)} style={{ padding: '10px 18px', fontSize: 13, fontWeight: aba === k ? 600 : 400, border: 'none', background: 'none', cursor: 'pointer', color: aba === k ? '#2563eb' : '#64748b', borderBottom: aba === k ? '2px solid #2563eb' : '2px solid transparent', marginBottom: -1 }}>{l}</button>
         ))}
       </div>
 
-      {/* â•â•â• MINHAS TAREFAS â•â•â• */}
+      {/* ═══ MINHAS TAREFAS ═══ */}
       {aba === 'minha' && (
         <div>
           {/* Progresso geral */}
           <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '18px 22px', marginBottom: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <div>
-                <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{feitas.length} de {tarefasHoje.length} tarefas concluÃ­das</p>
+                <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{feitas.length} de {tarefasHoje.length} tarefas concluídas</p>
                 <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
-                  {pct === 100 && (!waAtivo || waPendentesTotal === 0) ? 'ðŸŽ‰ Dia completo!' : `${tarefasHoje.length - feitas.length} pendente(s)`}
-                  {waAtivo && waPendentesTotal > 0 && <span style={{ color: '#f59e0b', marginLeft: 8 }}>Â· {waPendentesTotal} WhatsApp(s) pendente(s)</span>}
+                  {pct === 100 && (!waAtivo || waPendentesTotal === 0) ? '🎉 Dia completo!' : `${tarefasHoje.length - feitas.length} pendente(s)`}
+                  {waAtivo && waPendentesTotal > 0 && <span style={{ color: '#f59e0b', marginLeft: 8 }}>· {waPendentesTotal} WhatsApp(s) pendente(s)</span>}
                 </p>
               </div>
               <div style={{ fontSize: 28, fontWeight: 700, color: pct === 100 ? '#10b981' : '#2563eb' }}>{pct}%</div>
@@ -300,20 +300,20 @@ export default function RotinasPage() {
             </div>
           </div>
 
-          {/* â”€â”€ SUBLISTA WHATSAPP (se ativo nas configs) */}
+          {/* ── SUBLISTA WHATSAPP (se ativo nas configs) */}
           {waAtivo && waPendenciasFiltradas.length > 0 && (
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, marginBottom: 16, overflow: 'hidden' }}>
               <div style={{ background: '#f0fdf4', borderBottom: '1px solid #bbf7d0', padding: '12px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <p style={{ fontSize: 13, fontWeight: 600, color: '#065f46' }}>
-                    ðŸ’¬ Mensagens WhatsApp do dia
+                    💬 Mensagens WhatsApp do dia
                     {waPendentesTotal > 0 && (
                       <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, background: '#ef4444', color: '#fff', padding: '2px 8px', borderRadius: 20 }}>
                         {waPendentesTotal} pendente(s)
                       </span>
                     )}
                     {waPendentesTotal === 0 && (
-                      <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, background: '#ecfdf5', color: '#065f46', padding: '2px 8px', borderRadius: 20 }}>âœ“ Todas enviadas</span>
+                      <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, background: '#ecfdf5', color: '#065f46', padding: '2px 8px', borderRadius: 20 }}>✓ Todas enviadas</span>
                     )}
                   </p>
                   <p style={{ fontSize: 11, color: '#065f46', opacity: 0.7, marginTop: 2 }}>Envie todas antes de fechar as tarefas de marketing</p>
@@ -333,7 +333,7 @@ export default function RotinasPage() {
                       <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>{tc.icon} {tc.label}</span>
                       {pendentes > 0
                         ? <span style={{ fontSize: 11, color: '#92400e', background: '#fef3c7', padding: '2px 8px', borderRadius: 20, fontWeight: 500 }}>{pendentes} pendente(s)</span>
-                        : <span style={{ fontSize: 11, color: '#065f46', background: '#ecfdf5', padding: '2px 8px', borderRadius: 20, fontWeight: 500 }}>âœ“ ConcluÃ­do</span>
+                        : <span style={{ fontSize: 11, color: '#065f46', background: '#ecfdf5', padding: '2px 8px', borderRadius: 20, fontWeight: 500 }}>✓ Concluído</span>
                       }
                     </div>
                     {itens.map((p, i) => {
@@ -345,11 +345,11 @@ export default function RotinasPage() {
                             <p style={{ fontSize: 13, fontWeight: 500, color: '#0f172a' }}>{p.nome}</p>
                             <p style={{ fontSize: 11, color: '#94a3b8' }}>
                               {p.telefone ? formatPhone(p.telefone) : 'Sem telefone'}
-                              {p.dias != null && <span style={{ marginLeft: 8 }}>Â· {p.dias} dias</span>}
+                              {p.dias != null && <span style={{ marginLeft: 8 }}>· {p.dias} dias</span>}
                             </p>
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            {p.enviado_hoje && <span style={{ fontSize: 11, color: '#065f46', fontWeight: 500 }}>âœ“ Enviado</span>}
+                            {p.enviado_hoje && <span style={{ fontSize: 11, color: '#065f46', fontWeight: 500 }}>✓ Enviado</span>}
                             {p.telefone && (
                               <button onClick={() => setWaModal({ pendencia: p, mensagem })} style={{
                                 padding: '6px 12px', borderRadius: 7, border: '1px solid',
@@ -358,7 +358,7 @@ export default function RotinasPage() {
                                 color: p.enviado_hoje ? '#065f46' : '#374151',
                                 borderColor: p.enviado_hoje ? '#86efac' : '#e2e8f0',
                               }}>
-                                ðŸ’¬ {p.enviado_hoje ? 'Reenviar' : 'Enviar'}
+                                💬 {p.enviado_hoje ? 'Reenviar' : 'Enviar'}
                               </button>
                             )}
                           </div>
@@ -375,14 +375,14 @@ export default function RotinasPage() {
           {loading ? <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Carregando...</div> :
            tarefasHoje.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 60 }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>ðŸ“‹</div>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
               <p style={{ fontSize: 14, fontWeight: 500, color: '#374151' }}>Nenhuma tarefa para hoje</p>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {tarefasHoje.filter(t => !getExec(t.id)?.feito && isAtrasada(t, getExec(t.id))).length > 0 && (
                 <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '10px 16px', fontSize: 13, color: '#991b1b', fontWeight: 500 }}>
-                  âš  {tarefasHoje.filter(t => !getExec(t.id)?.feito && isAtrasada(t, getExec(t.id))).length} tarefa(s) atrasada(s)
+                  ⚠ {tarefasHoje.filter(t => !getExec(t.id)?.feito && isAtrasada(t, getExec(t.id))).length} tarefa(s) atrasada(s)
                 </div>
               )}
               {tarefasHoje.map(t => {
@@ -402,18 +402,18 @@ export default function RotinasPage() {
                     transition: 'all 0.15s',
                   }}>
                     <div style={{ width: 24, height: 24, borderRadius: 6, flexShrink: 0, border: `2px solid ${feita ? '#10b981' : bloqueadaPorWA ? '#fbbf24' : atrasada ? '#ef4444' : '#d1d5db'}`, background: feita ? '#10b981' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {feita && <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>âœ“</span>}
-                      {bloqueadaPorWA && !feita && <span style={{ fontSize: 12 }}>ðŸ”’</span>}
+                      {feita && <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>✓</span>}
+                      {bloqueadaPorWA && !feita && <span style={{ fontSize: 12 }}>🔒</span>}
                     </div>
                     <div style={{ width: 34, height: 34, borderRadius: 8, background: cat.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>{cat.icon}</div>
                     <div style={{ flex: 1 }}>
                       <p style={{ fontSize: 14, fontWeight: 500, color: feita ? '#065f46' : '#0f172a', textDecoration: feita ? 'line-through' : 'none', opacity: feita ? 0.7 : 1 }}>{t.titulo}</p>
-                      {bloqueadaPorWA && <p style={{ fontSize: 11, color: '#92400e', marginTop: 2 }}>âš  Envie todas as mensagens de WhatsApp primeiro</p>}
+                      {bloqueadaPorWA && <p style={{ fontSize: 11, color: '#92400e', marginTop: 2 }}>⚠ Envie todas as mensagens de WhatsApp primeiro</p>}
                       {t.descricao && !bloqueadaPorWA && <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{t.descricao}</p>}
                     </div>
                     <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      {t.horario_limit && <p style={{ fontSize: 12, fontWeight: 500, color: atrasada ? '#ef4444' : feita ? '#10b981' : '#64748b' }}>{atrasada ? 'âš  ' : ''}atÃ© {t.horario_limit.slice(0, 5)}</p>}
-                      {exec?.feito_em && <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Ã s {new Date(exec.feito_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>}
+                      {t.horario_limit && <p style={{ fontSize: 12, fontWeight: 500, color: atrasada ? '#ef4444' : feita ? '#10b981' : '#64748b' }}>{atrasada ? '⚠ ' : ''}até {t.horario_limit.slice(0, 5)}</p>}
+                      {exec?.feito_em && <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>às {new Date(exec.feito_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>}
                     </div>
                   </div>
                 )
@@ -423,7 +423,7 @@ export default function RotinasPage() {
         </div>
       )}
 
-      {/* â•â•â• PAINEL GESTOR â•â•â• */}
+      {/* ═══ PAINEL GESTOR ═══ */}
       {aba === 'gestor' && (
         <div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14, marginBottom: 24 }}>
@@ -457,7 +457,7 @@ export default function RotinasPage() {
           {/* Resumo WA do dia */}
           {waAtivo && waResumo.length > 0 && (
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '16px 20px' }}>
-              <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 12 }}>ðŸ’¬ WhatsApp do dia â€” progresso</p>
+              <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 12 }}>💬 WhatsApp do dia — progresso</p>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 {waResumo.map(r => {
                   const tc = WA_TIPO_CONFIG[r.tipo]
@@ -466,7 +466,7 @@ export default function RotinasPage() {
                     <div key={r.tipo} style={{ flex: 1, minWidth: 120, background: r.pendentes === 0 ? '#ecfdf5' : '#fef3c7', border: `1px solid ${r.pendentes === 0 ? '#bbf7d0' : '#fde68a'}`, borderRadius: 10, padding: '10px 14px' }}>
                       <p style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>{tc.icon} {tc.label}</p>
                       <p style={{ fontSize: 16, fontWeight: 700, color: r.pendentes === 0 ? '#065f46' : '#92400e' }}>{r.enviados}/{r.total}</p>
-                      <p style={{ fontSize: 10, color: r.pendentes === 0 ? '#065f46' : '#92400e' }}>{r.pendentes === 0 ? 'âœ“ Completo' : `${r.pendentes} pendente(s)`}</p>
+                      <p style={{ fontSize: 10, color: r.pendentes === 0 ? '#065f46' : '#92400e' }}>{r.pendentes === 0 ? '✓ Completo' : `${r.pendentes} pendente(s)`}</p>
                     </div>
                   )
                 })}
@@ -476,7 +476,7 @@ export default function RotinasPage() {
         </div>
       )}
 
-      {/* â•â•â• CONFIGURAR â•â•â• */}
+      {/* ═══ CONFIGURAR ═══ */}
       {aba === 'configurar' && (
         <div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
@@ -499,7 +499,7 @@ export default function RotinasPage() {
                     <div style={{ display: 'flex', gap: 8, marginTop: 3, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 11, color: freq.color, fontWeight: 500 }}>{freq.label}</span>
                       {t.frequencia === 'semanal' && t.dias_semana && <span style={{ fontSize: 11, color: '#64748b' }}>{t.dias_semana.map(d => DIAS_SEMANA[d]).join(', ')}</span>}
-                      {t.horario_limit && <span style={{ fontSize: 11, color: '#64748b' }}>atÃ© {t.horario_limit.slice(0, 5)}</span>}
+                      {t.horario_limit && <span style={{ fontSize: 11, color: '#64748b' }}>até {t.horario_limit.slice(0, 5)}</span>}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
@@ -529,7 +529,7 @@ export default function RotinasPage() {
                         <p style={{ fontSize: 13, fontWeight: 500, color: '#64748b', textDecoration: 'line-through' }}>{t.titulo}</p>
                         <span style={{ fontSize: 11, color: FREQ_CONFIG[t.frequencia]?.color ?? '#94a3b8', fontWeight: 500 }}>{FREQ_CONFIG[t.frequencia]?.label}</span>
                       </div>
-                      <button onClick={() => reativar(t)} style={{ padding: '6px 14px', border: '1px solid #86efac', borderRadius: 7, fontSize: 12, fontWeight: 500, background: '#f0fdf4', cursor: 'pointer', color: '#065f46' }}>â†© Reativar</button>
+                      <button onClick={() => reativar(t)} style={{ padding: '6px 14px', border: '1px solid #86efac', borderRadius: 7, fontSize: 12, fontWeight: 500, background: '#f0fdf4', cursor: 'pointer', color: '#065f46' }}>↩ Reativar</button>
                     </div>
                   )
                 })}
@@ -545,24 +545,24 @@ export default function RotinasPage() {
           <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ padding: '18px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>{editId ? 'Editar tarefa' : 'Nova tarefa'}</h2>
-              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#94a3b8' }}>Ã—</button>
+              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#94a3b8' }}>×</button>
             </div>
             <div style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div><label style={lbl}>TÃ­tulo *</label><input style={inp} value={fTitulo} onChange={e => setFTitulo(e.target.value)} placeholder="Ex: Varrer e passar pano" /></div>
-              <div><label style={lbl}>DescriÃ§Ã£o</label><input style={inp} value={fDesc} onChange={e => setFDesc(e.target.value)} placeholder="Detalhes..." /></div>
+              <div><label style={lbl}>Título *</label><input style={inp} value={fTitulo} onChange={e => setFTitulo(e.target.value)} placeholder="Ex: Varrer e passar pano" /></div>
+              <div><label style={lbl}>Descrição</label><input style={inp} value={fDesc} onChange={e => setFDesc(e.target.value)} placeholder="Detalhes..." /></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div><label style={lbl}>Categoria</label><select style={inp} value={fCategoria} onChange={e => setFCategoria(e.target.value)}>{Object.entries(CATEGORIA_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}</select></div>
-                <div><label style={lbl}>FrequÃªncia</label><select style={inp} value={fFreq} onChange={e => setFFreq(e.target.value as typeof fFreq)}><option value="diaria">DiÃ¡ria</option><option value="semanal">Semanal</option><option value="mensal">Mensal</option></select></div>
+                <div><label style={lbl}>Frequência</label><select style={inp} value={fFreq} onChange={e => setFFreq(e.target.value as typeof fFreq)}><option value="diaria">Diária</option><option value="semanal">Semanal</option><option value="mensal">Mensal</option></select></div>
               </div>
               {fFreq === 'semanal' && (
                 <div><label style={lbl}>Dias da semana</label>
                   <div style={{ display: 'flex', gap: 6 }}>{DIAS_SEMANA.map((d, i) => (<button key={i} onClick={() => setFDiasSemana(ds => ds.includes(i) ? ds.filter(x => x !== i) : [...ds, i])} style={{ flex: 1, padding: '8px 4px', borderRadius: 7, border: '1px solid', cursor: 'pointer', fontSize: 12, fontWeight: 500, background: fDiasSemana.includes(i) ? '#dbeafe' : '#fff', color: fDiasSemana.includes(i) ? '#1d4ed8' : '#64748b', borderColor: fDiasSemana.includes(i) ? '#60a5fa' : '#e2e8f0' }}>{d}</button>))}</div>
                 </div>
               )}
-              {fFreq === 'mensal' && <div><label style={lbl}>Dia do mÃªs (1â€“31)</label><input style={inp} type="number" min="1" max="31" value={fDiaMes} onChange={e => setFDiaMes(e.target.value)} /></div>}
+              {fFreq === 'mensal' && <div><label style={lbl}>Dia do mês (1–31)</label><input style={inp} type="number" min="1" max="31" value={fDiaMes} onChange={e => setFDiaMes(e.target.value)} /></div>}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div><label style={lbl}>HorÃ¡rio limite</label><input style={inp} type="time" value={fHorario} onChange={e => setFHorario(e.target.value)} /></div>
-                <div><label style={lbl}>ResponsÃ¡vel</label><select style={inp} value={fResponsavel} onChange={e => setFResponsavel(e.target.value)}><option value="">Todos</option>{perfis.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}</select></div>
+                <div><label style={lbl}>Horário limite</label><input style={inp} type="time" value={fHorario} onChange={e => setFHorario(e.target.value)} /></div>
+                <div><label style={lbl}>Responsável</label><select style={inp} value={fResponsavel} onChange={e => setFResponsavel(e.target.value)}><option value="">Todos</option>{perfis.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}</select></div>
               </div>
             </div>
             <div style={{ padding: '12px 22px', borderTop: '1px solid #f1f5f9', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -578,22 +578,22 @@ export default function RotinasPage() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 20 }}>
           <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 440 }}>
             <div style={{ padding: '18px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>ðŸ’¬ Confirmar envio</h3>
-              <button onClick={() => setWaModal(null)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#94a3b8' }}>Ã—</button>
+              <h3 style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>💬 Confirmar envio</h3>
+              <button onClick={() => setWaModal(null)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#94a3b8' }}>×</button>
             </div>
             <div style={{ padding: '18px 22px' }}>
               <p style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>
                 Para: <strong style={{ color: '#0f172a' }}>{waModal.pendencia.nome}</strong>
-                {waModal.pendencia.telefone && <span style={{ marginLeft: 8, color: '#94a3b8' }}>Â· {formatPhone(waModal.pendencia.telefone)}</span>}
+                {waModal.pendencia.telefone && <span style={{ marginLeft: 8, color: '#94a3b8' }}>· {formatPhone(waModal.pendencia.telefone)}</span>}
               </p>
               <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 14, fontSize: 13, color: '#374151', lineHeight: 1.7, whiteSpace: 'pre-wrap', maxHeight: 180, overflowY: 'auto', marginBottom: 14 }}>
                 {waModal.mensagem}
               </div>
-              <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 14 }}>Ao confirmar, o WhatsApp abre e o envio fica registrado no sistema. Se nÃ£o enviar, clique em Cancelar.</p>
+              <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 14 }}>Ao confirmar, o WhatsApp abre e o envio fica registrado no sistema. Se não enviar, clique em Cancelar.</p>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={() => setWaModal(null)} style={{ flex: 1, padding: '9px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer', color: '#374151' }}>Cancelar</button>
                 <button onClick={() => enviarWA(waModal.pendencia, waModal.mensagem)} style={{ flex: 2, padding: '9px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                  ðŸ’¬ Abrir WhatsApp e registrar âœ“
+                  💬 Abrir WhatsApp e registrar ✓
                 </button>
               </div>
             </div>
@@ -603,4 +603,3 @@ export default function RotinasPage() {
     </div>
   )
 }
-
