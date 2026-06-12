@@ -30,9 +30,9 @@ export default function LoginPage() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500;600&display=swap');
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        html, body { background: #030a10; }
+        html, body { background: #f1f5f9; }
 
         .login-root {
           min-height: 100vh;
@@ -40,16 +40,16 @@ export default function LoginPage() {
           align-items: center;
           justify-content: center;
           font-family: 'DM Sans', sans-serif;
-          background: #030a10;
+          background: #f1f5f9;
         }
 
         .login-card {
           width: 420px;
-          background: #060e17;
-          border: 1px solid rgba(255,255,255,0.06);
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
           border-radius: 16px;
           padding: 48px 44px;
-          box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+          box-shadow: 0 4px 24px rgba(0,0,0,0.08);
         }
 
         .logo-row {
@@ -61,7 +61,7 @@ export default function LoginPage() {
           font-size: 28px;
           font-weight: 400;
           letter-spacing: 0.03em;
-          color: #dff0ff;
+          color: #1e293b;
           line-height: 1;
           display: inline-flex;
           align-items: center;
@@ -82,74 +82,73 @@ export default function LoginPage() {
           font-family: 'Syne', sans-serif;
           font-size: 26px;
           font-weight: 700;
-          color: #dff0ff;
+          color: #0f172a;
           letter-spacing: -0.04em;
           margin-bottom: 8px;
         }
 
         .login-sub {
           font-size: 13px;
-          color: #2a4a60;
+          color: #94a3b8;
           margin-bottom: 32px;
-          font-weight: 300;
+          font-weight: 400;
         }
 
         .field { margin-bottom: 18px; }
 
         .field-label {
           display: block;
-          font-size: 10px;
-          font-weight: 500;
-          color: #1e3a50;
+          font-size: 11px;
+          font-weight: 600;
+          color: #475569;
           text-transform: uppercase;
-          letter-spacing: 0.12em;
+          letter-spacing: 0.08em;
           margin-bottom: 7px;
         }
 
         .field-input {
           width: 100%;
-          padding: 13px 16px;
-          background: rgba(255,255,255,0.03);
-          border: 1px solid rgba(255,255,255,0.06);
+          padding: 12px 16px;
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
           border-radius: 8px;
           font-size: 14px;
-          color: #c8dff0;
+          color: #0f172a;
           outline: none;
           font-family: 'DM Sans', sans-serif;
           transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
         }
 
-        .field-input::placeholder { color: #1c3348; }
+        .field-input::placeholder { color: #cbd5e1; }
 
         .field-input:focus {
-          border-color: rgba(13,245,216,0.4);
-          background: rgba(13,245,216,0.04);
-          box-shadow: 0 0 0 3px rgba(13,245,216,0.07);
+          border-color: #2563eb;
+          background: #ffffff;
+          box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
         }
 
         .error-box {
-          background: rgba(239,68,68,0.07);
-          border: 1px solid rgba(239,68,68,0.18);
+          background: #fef2f2;
+          border: 1px solid #fecaca;
           border-radius: 8px;
           padding: 11px 14px;
           font-size: 13px;
-          color: #fca5a5;
+          color: #dc2626;
           display: flex;
           align-items: center;
           gap: 8px;
           margin-bottom: 18px;
-          font-weight: 300;
         }
 
         .submit-btn {
           width: 100%;
           padding: 14px;
-          background: #0df5d8;
+          background: #2563eb;
           border: none;
           border-radius: 8px;
           font-size: 14px;
-          font-weight: 500;
-          color: #020c12;
+          font-weight: 600;
+          color: #ffffff;
           cursor: pointer;
           font-family: 'DM Sans', sans-serif;
           margin-top: 6px;
@@ -158,11 +157,12 @@ export default function LoginPage() {
           align-items: center;
           justify-content: center;
           gap: 8px;
+          box-shadow: 0 2px 8px rgba(37,99,235,0.3);
         }
 
         .submit-btn:hover:not(:disabled) {
-          background: #06f0d0;
-          box-shadow: 0 0 28px rgba(13,245,216,0.28);
+          background: #1d4ed8;
+          box-shadow: 0 4px 16px rgba(37,99,235,0.4);
           transform: translateY(-1px);
         }
 
@@ -171,14 +171,13 @@ export default function LoginPage() {
         .card-footer {
           margin-top: 36px;
           padding-top: 20px;
-          border-top: 1px solid rgba(255,255,255,0.04);
+          border-top: 1px solid #f1f5f9;
           font-size: 11px;
-          color: #18303f;
-          font-weight: 300;
+          color: #94a3b8;
           line-height: 1.7;
         }
 
-        .card-footer code { font-size: 10px; color: rgba(13,245,216,0.4); }
+        .card-footer code { font-size: 10px; color: #64748b; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; }
 
         @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -245,7 +244,7 @@ export default function LoginPage() {
                   Verificando...
                 </>
               ) : (
-                <>Acessar o sistema <span style={{ opacity: 0.6 }}>→</span></>
+                <>Acessar o sistema <span style={{ opacity: 0.7 }}>→</span></>
               )}
             </button>
           </form>
