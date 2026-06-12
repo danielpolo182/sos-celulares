@@ -2,37 +2,61 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=Syne:wght@700;800&family=Bebas+Neue&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 
-  --brand-50:  #eef2ff;
-  --brand-100: #e0e7ff;
-  --brand-400: #818cf8;
-  --brand-500: #6366f1;
-  --brand-600: #4f46e5;
-  --brand-700: #4338ca;
+  /* OctaOS brand */
+  --brand:      #0df5d8;
+  --brand-dim:  rgba(13,245,216,0.15);
+  --brand-mute: rgba(13,245,216,0.08);
 
-  --gray-50:  #f8fafc;
-  --gray-100: #f1f5f9;
-  --gray-200: #e2e8f0;
-  --gray-300: #cbd5e1;
-  --gray-400: #94a3b8;
-  --gray-500: #64748b;
-  --gray-600: #475569;
-  --gray-700: #334155;
-  --gray-800: #1e293b;
-  --gray-900: #0f172a;
+  /* Superfícies escuras */
+  --bg-base:    #030a10;
+  --bg-raised:  #060e17;
+  --bg-overlay: #0a1520;
+  --bg-card:    #081018;
 
-  --success: #10b981;
-  --warning: #f59e0b;
-  --danger:  #ef4444;
-  --info:    #3b82f6;
+  /* Bordas */
+  --border:      rgba(255,255,255,0.07);
+  --border-mid:  rgba(255,255,255,0.12);
+
+  /* Texto */
+  --text-1: #dff0ff;
+  --text-2: #7ba8c0;
+  --text-3: #3d6070;
+  --text-4: #1e3a50;
+
+  /* Semânticas */
+  --success:     #34d399;
+  --success-bg:  rgba(52,211,153,0.1);
+  --warning:     #fbbf24;
+  --warning-bg:  rgba(251,191,36,0.1);
+  --danger:      #f87171;
+  --danger-bg:   rgba(248,113,113,0.1);
+  --info:        #60a5fa;
+  --info-bg:     rgba(96,165,250,0.1);
+
+  /* Legados (mantidos para compatibilidade) */
+  --brand-50:  var(--brand-mute);
+  --brand-400: var(--brand);
+  --brand-500: var(--brand);
+  --brand-600: #06f0d0;
+  --gray-50:   var(--bg-base);
+  --gray-100:  var(--bg-raised);
+  --gray-200:  var(--border);
+  --gray-300:  var(--border-mid);
+  --gray-400:  var(--text-3);
+  --gray-500:  var(--text-2);
+  --gray-600:  var(--text-2);
+  --gray-700:  var(--text-1);
+  --gray-800:  var(--text-1);
+  --gray-900:  var(--text-1);
 
   --sidebar-width: 240px;
-  --topbar-height: 52px;
+  --topbar-height: 48px;
 }
 
 *, *::before, *::after {
@@ -46,48 +70,44 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
 }
 
 body {
   font-family: var(--font-sans);
-  background: var(--gray-50);
-  color: var(--gray-900);
+  background: var(--bg-base);
+  color: var(--text-1);
   line-height: 1.5;
   font-size: 14px;
 }
 
-/* Remove centralização forçada nas páginas */
-main {
-  width: 100%;
-}
+main { width: 100%; }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--gray-300); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: var(--gray-400); }
+::-webkit-scrollbar-thumb { background: var(--text-4); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
 
 /* Focus */
 *:focus-visible {
-  outline: 2px solid var(--brand-500);
+  outline: 2px solid var(--brand);
   outline-offset: 2px;
   border-radius: 4px;
 }
 
 /* Tipografia base */
-h1 { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.025em; color: var(--gray-900); }
-h2 { font-size: 1.1rem;  font-weight: 600; letter-spacing: -0.02em;  color: var(--gray-900); }
-h3 { font-size: 1rem;    font-weight: 500; color: var(--gray-800); }
-p  { color: var(--gray-700); }
+h1 { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.025em; color: var(--text-1); }
+h2 { font-size: 1.1rem;  font-weight: 600; letter-spacing: -0.02em;  color: var(--text-1); }
+h3 { font-size: 1rem;    font-weight: 500; color: var(--text-1); }
+p  { color: var(--text-2); }
 
 /* Inputs globais */
 input, select, textarea {
   font-family: var(--font-sans);
   font-size: 13px;
-  color: var(--gray-900);
-  background: #fff;
-  border: 1px solid var(--gray-200);
+  color: var(--text-1);
+  background: var(--bg-overlay);
+  border: 1px solid var(--border);
   border-radius: 7px;
   padding: 8px 12px;
   transition: border-color 0.15s, box-shadow 0.15s;
@@ -95,13 +115,15 @@ input, select, textarea {
   outline: none;
 }
 
+input::placeholder, textarea::placeholder { color: var(--text-4); }
+
 input:focus, select:focus, textarea:focus {
-  border-color: var(--brand-400);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+  border-color: rgba(13,245,216,0.4);
+  box-shadow: 0 0 0 3px rgba(13,245,216,0.07);
 }
 
 input:hover:not(:focus), select:hover:not(:focus), textarea:hover:not(:focus) {
-  border-color: var(--gray-300);
+  border-color: var(--border-mid);
 }
 
 button {
@@ -111,7 +133,7 @@ button {
   transition: all 0.15s;
 }
 
-/* Página padrão — sem centralização, ocupa toda a largura */
+/* Página padrão */
 .page {
   padding: 28px 32px;
   width: 100%;
@@ -120,20 +142,20 @@ button {
 
 /* Tabelas */
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th { 
+th {
   padding: 10px 14px; text-align: left;
-  font-size: 11px; font-weight: 600; color: var(--gray-500);
+  font-size: 11px; font-weight: 600; color: var(--text-3);
   text-transform: uppercase; letter-spacing: 0.05em;
-  background: #f8fafc; border-bottom: 1px solid var(--gray-200);
+  background: var(--bg-overlay); border-bottom: 1px solid var(--border);
 }
-td { padding: 10px 14px; border-bottom: 1px solid var(--gray-100); color: var(--gray-700); }
+td { padding: 10px 14px; border-bottom: 1px solid var(--border); color: var(--text-2); }
 tr:last-child td { border-bottom: none; }
-tr:hover td { background: #fafafa; }
+tr:hover td { background: var(--bg-overlay); }
 
 /* Cards */
 .card {
-  background: #fff;
-  border: 1px solid var(--gray-200);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 18px 22px;
 }
@@ -145,20 +167,12 @@ tr:hover td { background: #fafafa; }
   padding: 2px 8px; border-radius: 20px;
 }
 
-/* Animações suaves */
+/* Animações */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 .fade-in { animation: fadeIn 0.2s ease; }
 
-/* Previne scroll horizontal global */
-html, body {
-  overflow-x: hidden;
-  max-width: 100%;
-}
-
-/* Garante que containers não ultrapassem a largura */
-* {
-  min-width: 0;
-}
+html, body { overflow-x: hidden; max-width: 100%; }
+* { min-width: 0; }
