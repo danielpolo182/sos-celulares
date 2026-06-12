@@ -3,7 +3,8 @@ export const dynamic = 'force-dynamic'
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -11,6 +12,8 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const verified = searchParams.get('verified') === '1'
   const supabase = createClient()
 
   async function handleLogin(e: React.FormEvent) {
@@ -178,6 +181,9 @@ export default function LoginPage() {
         }
 
         .card-footer code { font-size: 10px; color: #64748b; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; }
+        .card-footer a { color: #2563eb; font-weight: 500; text-decoration: none; }
+
+        .verified-banner { background: #d1fae5; border: 1px solid #a7f3d0; border-radius: 10px; padding: 12px 16px; margin-bottom: 24px; display: flex; align-items: center; gap: 10px; font-size: 13px; color: #065f46; font-weight: 500; }
 
         @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -195,6 +201,13 @@ export default function LoginPage() {
 
           <h2 className="login-h">Bem-vindo de volta</h2>
           <p className="login-sub">Entre com suas credenciais para acessar o sistema</p>
+
+          {verified && (
+            <div className="verified-banner">
+              <span style={{ fontSize: 18 }}>✅</span>
+              E-mail verificado! Faça login para acessar o sistema.
+            </div>
+          )}
 
           <form onSubmit={handleLogin}>
             <div className="field">
@@ -250,8 +263,7 @@ export default function LoginPage() {
           </form>
 
           <div className="card-footer">
-            Primeiro acesso? Crie o usuário em:<br/>
-            <code>Supabase → Authentication → Users → Add User</code>
+            Não tem conta? <Link href="/cadastro">Criar conta gratuita</Link>
           </div>
 
         </div>

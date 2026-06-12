@@ -29,9 +29,10 @@ export async function middleware(request: NextRequest) {
   const isLoginPage = path === '/login'
   const isRoot = path === '/'
   const isCadastro = path === '/cadastro'
+  const isAuthCallback = path.startsWith('/auth/callback')
 
   // Não autenticado — redireciona para login
-  if (!user && !isLoginPage && !isRoot && !isCadastro) {
+  if (!user && !isLoginPage && !isRoot && !isCadastro && !isAuthCallback) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
