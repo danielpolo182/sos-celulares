@@ -228,8 +228,8 @@ export default function Sidebar() {
           }}>
             Octa
             <span style={{
-              color: '#020c12',
-              background: '#0df5d8',
+              color: '#ffffff',
+              background: '#2563eb',
               padding: '0.04em 0.18em 0.06em',
               borderRadius: '0.12em',
               marginLeft: '0.1em',

@@ -69,8 +69,8 @@ export default function LoginPage() {
 
         .logo-name em {
           font-style: normal;
-          color: #020c12;
-          background: #0df5d8;
+          color: #ffffff;
+          background: #2563eb;
           padding: 0.04em 0.18em 0.06em;
           border-radius: 0.12em;
           margin-left: 0.1em;
