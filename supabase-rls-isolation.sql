@@ -5,8 +5,9 @@
 
 -- ──────────────────────────────────────────────────────────────
 -- 1. FUNÇÃO AUXILIAR: retorna filial_id do usuário logado
+--    (em public, pois auth schema é restrito no Supabase)
 -- ──────────────────────────────────────────────────────────────
-CREATE OR REPLACE FUNCTION auth.filial_id()
+CREATE OR REPLACE FUNCTION public.get_filial_id()
 RETURNS UUID AS $$
   SELECT filial_id FROM perfis WHERE id = auth.uid()
 $$ LANGUAGE SQL STABLE SECURITY DEFINER;
@@ -49,11 +50,11 @@ ALTER TABLE filiais ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "filial_select" ON filiais;
 CREATE POLICY "filial_select" ON filiais FOR SELECT
-  USING (id = auth.filial_id());
+  USING (id = public.get_filial_id());
 
 DROP POLICY IF EXISTS "filial_update" ON filiais;
 CREATE POLICY "filial_update" ON filiais FOR UPDATE
-  USING (id = auth.filial_id());
+  USING (id = public.get_filial_id());
 
 
 -- ──────────────────────────────────────────────────────────────
@@ -63,19 +64,19 @@ ALTER TABLE perfis ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "perfis_select" ON perfis;
 CREATE POLICY "perfis_select" ON perfis FOR SELECT
-  USING (filial_id = auth.filial_id());
+  USING (filial_id = public.get_filial_id());
 
 DROP POLICY IF EXISTS "perfis_insert" ON perfis;
 CREATE POLICY "perfis_insert" ON perfis FOR INSERT
-  WITH CHECK (filial_id = auth.filial_id());
+  WITH CHECK (filial_id = public.get_filial_id());
 
 DROP POLICY IF EXISTS "perfis_update" ON perfis;
 CREATE POLICY "perfis_update" ON perfis FOR UPDATE
-  USING (filial_id = auth.filial_id());
+  USING (filial_id = public.get_filial_id());
 
 DROP POLICY IF EXISTS "perfis_delete" ON perfis;
 CREATE POLICY "perfis_delete" ON perfis FOR DELETE
-  USING (filial_id = auth.filial_id());
+  USING (filial_id = public.get_filial_id());
 
 
 -- ──────────────────────────────────────────────────────────────
@@ -85,8 +86,8 @@ ALTER TABLE clientes ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "clientes_all" ON clientes;
 CREATE POLICY "clientes_all" ON clientes
-  USING (filial_id = auth.filial_id())
-  WITH CHECK (filial_id = auth.filial_id());
+  USING (filial_id = public.get_filial_id())
+  WITH CHECK (filial_id = public.get_filial_id());
 
 
 -- ──────────────────────────────────────────────────────────────
@@ -96,8 +97,8 @@ ALTER TABLE ordens_servico ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "os_all" ON ordens_servico;
 CREATE POLICY "os_all" ON ordens_servico
-  USING (filial_id = auth.filial_id())
-  WITH CHECK (filial_id = auth.filial_id());
+  USING (filial_id = public.get_filial_id())
+  WITH CHECK (filial_id = public.get_filial_id());
 
 
 -- ──────────────────────────────────────────────────────────────
@@ -107,8 +108,8 @@ ALTER TABLE os_itens ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "os_itens_all" ON os_itens;
 CREATE POLICY "os_itens_all" ON os_itens
-  USING (os_id IN (SELECT id FROM ordens_servico WHERE filial_id = auth.filial_id()))
-  WITH CHECK (os_id IN (SELECT id FROM ordens_servico WHERE filial_id = auth.filial_id()));
+  USING (os_id IN (SELECT id FROM ordens_servico WHERE filial_id = public.get_filial_id()))
+  WITH CHECK (os_id IN (SELECT id FROM ordens_servico WHERE filial_id = public.get_filial_id()));
 
 
 -- ──────────────────────────────────────────────────────────────
@@ -118,8 +119,8 @@ ALTER TABLE produtos ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "produtos_all" ON produtos;
 CREATE POLICY "produtos_all" ON produtos
-  USING (filial_id = auth.filial_id())
-  WITH CHECK (filial_id = auth.filial_id());
+  USING (filial_id = public.get_filial_id())
+  WITH CHECK (filial_id = public.get_filial_id());
 
 
 -- ──────────────────────────────────────────────────────────────
@@ -129,8 +130,8 @@ ALTER TABLE movimentacoes_estoque ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "movest_all" ON movimentacoes_estoque;
 CREATE POLICY "movest_all" ON movimentacoes_estoque
-  USING (filial_id = auth.filial_id())
-  WITH CHECK (filial_id = auth.filial_id());
+  USING (filial_id = public.get_filial_id())
+  WITH CHECK (filial_id = public.get_filial_id());
 
 
 -- ──────────────────────────────────────────────────────────────
@@ -140,8 +141,8 @@ ALTER TABLE vendas ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "vendas_all" ON vendas;
 CREATE POLICY "vendas_all" ON vendas
-  USING (filial_id = auth.filial_id())
-  WITH CHECK (filial_id = auth.filial_id());
+  USING (filial_id = public.get_filial_id())
+  WITH CHECK (filial_id = public.get_filial_id());
 
 
 -- ──────────────────────────────────────────────────────────────
@@ -151,8 +152,8 @@ ALTER TABLE venda_itens ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "venda_itens_all" ON venda_itens;
 CREATE POLICY "venda_itens_all" ON venda_itens
-  USING (venda_id IN (SELECT id FROM vendas WHERE filial_id = auth.filial_id()))
-  WITH CHECK (venda_id IN (SELECT id FROM vendas WHERE filial_id = auth.filial_id()));
+  USING (venda_id IN (SELECT id FROM vendas WHERE filial_id = public.get_filial_id()))
+  WITH CHECK (venda_id IN (SELECT id FROM vendas WHERE filial_id = public.get_filial_id()));
 
 
 -- ──────────────────────────────────────────────────────────────
@@ -177,20 +178,20 @@ CREATE POLICY "flags_read" ON feature_flags FOR SELECT
 
 -- ──────────────────────────────────────────────────────────────
 -- 14. CORRIGIR USUÁRIO EXISTENTE SEM PERFIL
---     Ajusta dc_master_4@hotmail.com se estiver sem filial própria.
---     Substitua o UUID abaixo pelo ID real do usuário no Supabase
---     (Authentication → Users → copie o UUID).
+--     Substitua o UUID pelo ID real do usuário em
+--     Authentication → Users → copie o UUID.
+--     Execute um bloco por usuário sem perfil.
 -- ──────────────────────────────────────────────────────────────
 -- DO $$
 -- DECLARE
---   uid UUID := 'COLE-AQUI-O-UUID-DO-dc_master_4';
+--   uid UUID := 'COLE-AQUI-O-UUID-DO-USUARIO';
 --   nova_filial_id UUID;
 -- BEGIN
 --   IF NOT EXISTS (SELECT 1 FROM perfis WHERE id = uid) THEN
---     INSERT INTO filiais (nome) VALUES ('dc_master_4 — Loja')
+--     INSERT INTO filiais (nome) VALUES ('Loja do Usuario')
 --     RETURNING id INTO nova_filial_id;
 --
 --     INSERT INTO perfis (id, filial_id, nome, papel)
---     VALUES (uid, nova_filial_id, 'dc_master_4', 'admin');
+--     VALUES (uid, nova_filial_id, 'Admin', 'admin');
 --   END IF;
 -- END $$;
