@@ -90,19 +90,19 @@ function NavItem({ item, depth = 0 }: { item: NavItem; depth?: number }) {
 
   // Ícones de estado
   const iconColor = isActive
-    ? '#818cf8'
+    ? '#0df5d8'
     : depth > 0
     ? '#4b5563'
     : '#4b5563'
 
-  const labelColor = isActive ? '#c7d2fe' : '#6b7280'
+  const labelColor = isActive ? '#dff0ff' : '#6b7280'
   const labelWeight = isActive ? 500 : 400
 
   const itemStyle: React.CSSProperties = {
     display: 'flex', alignItems: 'center',
     gap: 9, padding: depth > 0 ? '6px 10px 6px 28px' : '7px 10px',
     borderRadius: 8, marginBottom: 1,
-    background: isActive ? 'rgba(99,102,241,0.12)' : 'transparent',
+    background: isActive ? 'rgba(13,245,216,0.1)' : 'transparent',
     cursor: 'pointer', border: 'none', width: '100%',
     textAlign: 'left', textDecoration: 'none',
     fontFamily: "'Inter', -apple-system, sans-serif",
@@ -117,9 +117,9 @@ function NavItem({ item, depth = 0 }: { item: NavItem; depth?: number }) {
       <div>
         <button
           onClick={() => setOpen(!open)}
-          style={{ ...itemStyle, color: open || anyChildActive ? '#c7d2fe' : '#6b7280', background: open || anyChildActive ? 'rgba(99,102,241,0.08)' : 'transparent' }}
+          style={{ ...itemStyle, color: open || anyChildActive ? '#dff0ff' : '#6b7280', background: open || anyChildActive ? 'rgba(13,245,216,0.07)' : 'transparent' }}
         >
-          <i className={`ti ${item.icon}`} style={{ fontSize: 15, color: open || anyChildActive ? '#818cf8' : '#4b5563', flexShrink: 0 }} aria-hidden="true" />
+          <i className={`ti ${item.icon}`} style={{ fontSize: 15, color: open || anyChildActive ? '#0df5d8' : '#4b5563', flexShrink: 0 }} aria-hidden="true" />
           <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>
           <i className={`ti ti-chevron-${open ? 'up' : 'down'}`} style={{ fontSize: 11, color: '#374151', flexShrink: 0, transition: 'transform 0.2s' }} aria-hidden="true" />
         </button>
@@ -211,7 +211,7 @@ export default function Sidebar() {
 
       <aside style={{
         width: 240, minWidth: 240, maxWidth: 240,
-        height: '100vh', background: '#111827',
+        height: '100vh', background: '#060e17',
         display: 'flex', flexDirection: 'column',
         borderRight: '1px solid rgba(255,255,255,0.05)',
         position: 'fixed', top: 0, left: 0, zIndex: 50,
@@ -287,7 +287,7 @@ export default function Sidebar() {
         {/* Footer — usuário */}
         <div style={{ padding: '10px', borderTop: '1px solid rgba(255,255,255,0.05)', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 8px', borderRadius: 8 }}>
-            <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: '#818cf8', flexShrink: 0 }}>
+            <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(13,245,216,0.1)', border: '1px solid rgba(13,245,216,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: '#0df5d8', flexShrink: 0 }}>
               {initial}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>

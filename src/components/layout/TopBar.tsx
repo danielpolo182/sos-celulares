@@ -35,19 +35,19 @@ export default function TopBar() {
         display: 'flex', alignItems: 'center', gap: 6,
         padding: primary ? '7px 16px' : '6px 13px',
         borderRadius: 7, border: primary ? 'none' : '1px solid rgba(255,255,255,0.1)',
-        background: primary ? '#6366f1' : 'rgba(255,255,255,0.05)',
-        color: primary ? '#fff' : '#9ca3af',
+        background: primary ? '#0df5d8' : 'rgba(255,255,255,0.05)',
+        color: primary ? '#020c12' : '#9ca3af',
         fontSize: 12.5, fontWeight: primary ? 500 : 400,
         cursor: 'pointer', fontFamily: 'inherit',
         letterSpacing: '-0.01em', whiteSpace: 'nowrap',
         transition: 'all 0.15s',
       }}
       onMouseEnter={e => {
-        if (primary) e.currentTarget.style.background = '#4f46e5'
+        if (primary) e.currentTarget.style.background = '#06f0d0'
         else { e.currentTarget.style.background = 'rgba(255,255,255,0.09)'; e.currentTarget.style.color = '#e5e7eb' }
       }}
       onMouseLeave={e => {
-        if (primary) e.currentTarget.style.background = '#6366f1'
+        if (primary) e.currentTarget.style.background = '#0df5d8'
         else { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = '#9ca3af' }
       }}
     >
@@ -58,7 +58,7 @@ export default function TopBar() {
 
   return (
     <div style={{
-      height: 48, background: '#111827',
+      height: 48, background: '#060e17',
       borderBottom: '1px solid rgba(255,255,255,0.05)',
       display: 'flex', alignItems: 'center',
       paddingLeft: 252, paddingRight: 20, gap: 8,
