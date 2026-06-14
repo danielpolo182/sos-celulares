@@ -28,6 +28,7 @@ const HREF_MODULO: Record<string, string> = {
   '/fechamento':   'fechamento',
   '/aparelhos':    'aparelhos',
   '/relatorios':   'relatorios',
+  '/whatsapp':     'whatsapp',
   '/usuarios':     'configuracoes',
   '/configuracoes':'configuracoes',
 }
@@ -43,6 +44,7 @@ const NAV: NavItem[] = [
       { href: '/garantias',    icon: 'ti-shield-check',     label: 'Garantias' },
       { href: '/clientes',     icon: 'ti-users',            label: 'Clientes' },
       { href: '/crm',          icon: 'ti-speakerphone',     label: 'CRM & Acomp.' },
+      { href: '/whatsapp',    icon: 'ti-brand-whatsapp',   label: 'Inbox WhatsApp' },
     ],
   },
   {
