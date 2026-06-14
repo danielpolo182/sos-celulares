@@ -29,3 +29,6 @@ tsconfig.tsbuildinfo
 
 # Docs / planos locais
 docs/
+
+# PIX Migration (executar manualmente no Supabase)
+supabase-pix-migration.sql
