@@ -2,7 +2,9 @@
 export const dynamic = 'force-dynamic'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import ModalPixRemoto from '@/components/pix/ModalPixRemoto'
 
 type Produto = {
   id: string; nome: string; categoria?: string | null
@@ -52,6 +54,7 @@ function hoje() { return new Date().toISOString().split('T')[0] }
 
 export default function PDVPage() {
   const supabase = createClient()
+  const router = useRouter()
   const [aba, setAba] = useState<'venda' | 'caixa' | 'historico'>('venda')
   const [produtos, setProdutos] = useState<Produto[]>([])
   const [maisVendidos, setMaisVendidos] = useState<Produto[]>([])
@@ -69,6 +72,9 @@ export default function PDVPage() {
   const [salvando, setSalvando] = useState(false)
   const [vendaOk, setVendaOk] = useState(false)
   const [ultimaVenda, setUltimaVenda] = useState<{ numero: number; total: number; troco: number } | null>(null)
+  const [ultimaVendaId, setUltimaVendaId] = useState<string | null>(null)
+  const [pixCriando, setPixCriando] = useState(false)
+  const [pixModal, setPixModal] = useState<{ cobrancaId: string; pixCopiaCola: string; valor: number; expiraEm: string; temTelefone: boolean } | null>(null)
   const [caixaHoje, setCaixaHoje] = useState<CaixaHoje | null>(null)
   const [movimentos, setMovimentos] = useState<MovimentoCaixa[]>([])
   const [showCaixaModal, setShowCaixaModal] = useState(false)
@@ -258,6 +264,73 @@ export default function PDVPage() {
       fetchProdutos(); fetchCaixa()
     }
     setSalvando(false)
+  }
+
+  async function criarVendaParaPix(): Promise<string | null> {
+    if (itens.length === 0 || faltaPagar > 0.01) return null
+    setSalvando(true)
+    const { data: venda } = await supabase.from('vendas').insert({
+      status: 'finalizada', tipo: 'pdv', subtotal, desconto, total, taxa_pagamento: taxaFormaAtual > 0 ? taxaFormaAtual : null,
+      valor_recebido: total, troco: 0,
+      pagamentos: [{ forma: 'pix', valor: total }],
+      forma_pagamento: 'pix',
+      pago: false, observacoes: obs || null,
+    }).select('id, numero').single()
+
+    if (venda) {
+      await supabase.from('venda_itens').insert(itens.map(i => ({ venda_id: venda.id, produto_id: i.produto_id, descricao: i.descricao, quantidade: i.quantidade, preco_unit: i.preco_unit })))
+      for (const item of itens) {
+        if (item.produto_id) {
+          const prod = produtos.find(p => p.id === item.produto_id)
+          if (prod && prod.estoque_atual != null) await supabase.from('produtos').update({ estoque_atual: Math.max(0, prod.estoque_atual - item.quantidade) }).eq('id', item.produto_id)
+        }
+      }
+      await supabase.from('caixa_movimentos').insert({ tipo: 'venda', valor: total, forma: 'pix', referencia_id: venda.id, observacoes: `Venda #${venda.numero} (PIX pendente)`, data_ref: hoje() })
+      setUltimaVendaId(venda.id)
+      setItens([]); setPagamentos([]); setDesconto(0); setObs('')
+      fetchProdutos(); fetchCaixa()
+      setSalvando(false)
+      return venda.id
+    }
+    setSalvando(false)
+    return null
+  }
+
+  async function criarPixPresencialPdv() {
+    const vendaId = await criarVendaParaPix()
+    if (!vendaId) return
+    setPixCriando(true)
+    try {
+      const res = await fetch('/api/pix/criar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ referenciaId: vendaId, tipoReferencia: 'pdv', valor: total, modalidade: 'presencial', descricao: `Venda PDV` }),
+      })
+      const data = await res.json() as { cobrancaId?: string; qrCodeBase64?: string; pixCopiaCola?: string; expiraEm?: string; error?: string }
+      if (!res.ok || !data.cobrancaId) { alert(data.error ?? 'Erro ao gerar PIX'); return }
+      sessionStorage.setItem(`pix_${data.cobrancaId}`, JSON.stringify({ qrCodeBase64: data.qrCodeBase64, pixCopiaCola: data.pixCopiaCola, expiraEm: data.expiraEm, valor: total, tipoReferencia: 'pdv', referenciaId: vendaId }))
+      router.push(`/pagamento/${data.cobrancaId}`)
+    } finally {
+      setPixCriando(false)
+    }
+  }
+
+  async function criarPixRemotoPdv() {
+    const vendaId = await criarVendaParaPix()
+    if (!vendaId) return
+    setPixCriando(true)
+    try {
+      const res = await fetch('/api/pix/criar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ referenciaId: vendaId, tipoReferencia: 'pdv', valor: total, modalidade: 'remoto', descricao: `Venda PDV` }),
+      })
+      const data = await res.json() as { cobrancaId?: string; pixCopiaCola?: string; expiraEm?: string; error?: string }
+      if (!res.ok || !data.cobrancaId) { alert(data.error ?? 'Erro ao gerar PIX'); return }
+      setPixModal({ cobrancaId: data.cobrancaId, pixCopiaCola: data.pixCopiaCola!, valor: total, expiraEm: data.expiraEm!, temTelefone: false })
+    } finally {
+      setPixCriando(false)
+    }
   }
 
   async function salvarCaixa() {
@@ -592,14 +665,39 @@ export default function PDVPage() {
                   <input style={{ ...inp, fontSize: 12, padding: '7px 10px' }} value={obs} onChange={e => setObs(e.target.value)} placeholder="Observações (opcional)..." />
                 </div>
 
-                <button onClick={finalizarVenda} disabled={salvando || itens.length === 0 || faltaPagar > 0.01}
-                  style={{ width: '100%', padding: '12px', background: salvando || itens.length === 0 || faltaPagar > 0.01 ? '#e2e8f0' : '#2563eb', color: salvando || itens.length === 0 || faltaPagar > 0.01 ? '#94a3b8' : '#fff', border: 'none', borderRadius: 9, fontSize: 14, fontWeight: 600, cursor: salvando || itens.length === 0 || faltaPagar > 0.01 ? 'not-allowed' : 'pointer' }}>
-                  {salvando ? 'Finalizando...' : itens.length === 0 ? 'Adicione itens' : faltaPagar > 0.01 ? `Falta ${formatMoeda(faltaPagar)}` : `✓ Finalizar · ${formatMoeda(total)}`}
-                </button>
+                {formaPag === 'pix' ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <button onClick={criarPixPresencialPdv} disabled={salvando || pixCriando || itens.length === 0 || faltaPagar > 0.01}
+                      style={{ width: '100%', padding: '12px', background: salvando || pixCriando || itens.length === 0 || faltaPagar > 0.01 ? '#e2e8f0' : '#2563eb', color: salvando || pixCriando || itens.length === 0 || faltaPagar > 0.01 ? '#94a3b8' : '#fff', border: 'none', borderRadius: 9, fontSize: 14, fontWeight: 600, cursor: salvando || pixCriando || itens.length === 0 || faltaPagar > 0.01 ? 'not-allowed' : 'pointer' }}>
+                      {pixCriando ? 'Gerando PIX...' : itens.length === 0 ? 'Adicione itens' : faltaPagar > 0.01 ? `Falta ${formatMoeda(faltaPagar)}` : `📱 Gerar QR PIX · ${formatMoeda(total)}`}
+                    </button>
+                    <button onClick={criarPixRemotoPdv} disabled={salvando || pixCriando || itens.length === 0 || faltaPagar > 0.01}
+                      style={{ width: '100%', padding: '9px', background: '#f1f5f9', color: '#374151', border: '1px solid #e2e8f0', borderRadius: 9, fontSize: 13, fontWeight: 500, cursor: salvando || pixCriando || itens.length === 0 || faltaPagar > 0.01 ? 'not-allowed' : 'pointer', opacity: salvando || pixCriando || itens.length === 0 || faltaPagar > 0.01 ? 0.6 : 1 }}>
+                      📲 Enviar remotamente
+                    </button>
+                  </div>
+                ) : (
+                  <button onClick={finalizarVenda} disabled={salvando || itens.length === 0 || faltaPagar > 0.01}
+                    style={{ width: '100%', padding: '12px', background: salvando || itens.length === 0 || faltaPagar > 0.01 ? '#e2e8f0' : '#2563eb', color: salvando || itens.length === 0 || faltaPagar > 0.01 ? '#94a3b8' : '#fff', border: 'none', borderRadius: 9, fontSize: 14, fontWeight: 600, cursor: salvando || itens.length === 0 || faltaPagar > 0.01 ? 'not-allowed' : 'pointer' }}>
+                    {salvando ? 'Finalizando...' : itens.length === 0 ? 'Adicione itens' : faltaPagar > 0.01 ? `Falta ${formatMoeda(faltaPagar)}` : `✓ Finalizar · ${formatMoeda(total)}`}
+                  </button>
+                )}
               </div>
             </div>
           </>
         )}
+
+      {pixModal && (
+        <ModalPixRemoto
+          cobrancaId={pixModal.cobrancaId}
+          pixCopiaCola={pixModal.pixCopiaCola}
+          valor={pixModal.valor}
+          expiraEm={pixModal.expiraEm}
+          temTelefone={pixModal.temTelefone}
+          onClose={() => setPixModal(null)}
+          onPago={() => { setVendaOk(true); setUltimaVenda({ numero: 0, total, troco: 0 }); setPixModal(null) }}
+        />
+      )}
 
         {/* ── ABA CAIXA */}
         {aba === 'caixa' && (
