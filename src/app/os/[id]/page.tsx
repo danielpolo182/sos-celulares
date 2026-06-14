@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect, use, useRef, useCallback, Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, useSearchParams } from 'next/navigation'
+import ModalPixRemoto from '@/components/pix/ModalPixRemoto'
 
 type OS = {
   id: string; numero: number; status: string; marca: string | null; modelo: string | null
@@ -114,6 +115,8 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
   const [desconto, setDesconto] = useState('')
   const [formaPagamento, setFormaPagamento] = useState('')
   const [pago, setPago] = useState(false)
+  const [pixCriando, setPixCriando] = useState(false)
+  const [pixModal, setPixModal] = useState<{ cobrancaId: string; pixCopiaCola: string; valor: number; expiraEm: string; temTelefone: boolean } | null>(null)
   const [observacoes, setObservacoes] = useState('')
   const [checklist, setChecklist] = useState<ChecklistState>({})
 
@@ -689,6 +692,43 @@ ${itensOrc.length > 0 ? `<table><thead><tr><th>Item</th><th>Qtd</th><th>Unit.</t
     </div>
   )
 
+  async function criarPixPresencial() {
+    const valor = valorFinal ? parseFloat(valorFinal) : (os?.valor_orcamento ?? 0)
+    if (!valor || valor <= 0) return
+    setPixCriando(true)
+    try {
+      const res = await fetch('/api/pix/criar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ referenciaId: id, tipoReferencia: 'os', valor, modalidade: 'presencial', descricao: `OS #${os?.numero} — ${os?.modelo ?? 'aparelho'}` }),
+      })
+      const data = await res.json() as { cobrancaId?: string; qrCodeBase64?: string; pixCopiaCola?: string; expiraEm?: string; error?: string }
+      if (!res.ok || !data.cobrancaId) { alert(data.error ?? 'Erro ao gerar PIX'); return }
+      sessionStorage.setItem(`pix_${data.cobrancaId}`, JSON.stringify({ qrCodeBase64: data.qrCodeBase64, pixCopiaCola: data.pixCopiaCola, expiraEm: data.expiraEm, valor, tipoReferencia: 'os', referenciaId: id }))
+      router.push(`/pagamento/${data.cobrancaId}`)
+    } finally {
+      setPixCriando(false)
+    }
+  }
+
+  async function criarPixRemoto() {
+    const valor = valorFinal ? parseFloat(valorFinal) : (os?.valor_orcamento ?? 0)
+    if (!valor || valor <= 0) return
+    setPixCriando(true)
+    try {
+      const res = await fetch('/api/pix/criar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ referenciaId: id, tipoReferencia: 'os', valor, modalidade: 'remoto', descricao: `OS #${os?.numero} — ${os?.modelo ?? 'aparelho'}` }),
+      })
+      const data = await res.json() as { cobrancaId?: string; pixCopiaCola?: string; expiraEm?: string; error?: string }
+      if (!res.ok || !data.cobrancaId) { alert(data.error ?? 'Erro ao gerar PIX'); return }
+      setPixModal({ cobrancaId: data.cobrancaId, pixCopiaCola: data.pixCopiaCola!, valor, expiraEm: data.expiraEm!, temTelefone: !!(os?.clientes?.telefone) })
+    } finally {
+      setPixCriando(false)
+    }
+  }
+
   const st = STATUS_CONFIG[os.status] ?? STATUS_CONFIG.aberta
   const senha = parseSenha(os.senha_aparelho)
   const valorTotal = valorFinal ? (parseFloat(valorFinal) - (parseFloat(desconto) || 0)) : null
@@ -811,9 +851,31 @@ ${itensOrc.length > 0 ? `<table><thead><tr><th>Item</th><th>Qtd</th><th>Unit.</t
                   <div onClick={() => setPago(!pago)} style={{ width: 44, height: 24, borderRadius: 12, cursor: 'pointer', background: pago ? '#6366f1' : '#e2e8f0', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}><div style={{ position: 'absolute', top: 3, left: pago ? 23 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} /></div>
                   <span style={{ fontSize: 13, fontWeight: 500, color: pago ? '#065f46' : '#64748b' }}>{pago ? '✅ Pagamento confirmado' : 'Aguardando pagamento'}</span>
                 </div>
+                {!pago && (
+                  <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+                    <button onClick={criarPixPresencial} disabled={pixCriando} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: pixCriando ? 'not-allowed' : 'pointer', opacity: pixCriando ? 0.7 : 1 }}>
+                      📱 Cobrar via PIX
+                    </button>
+                    <button onClick={criarPixRemoto} disabled={pixCriando} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', background: '#f1f5f9', color: '#374151', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: pixCriando ? 'not-allowed' : 'pointer' }}>
+                      📲 Enviar cobrança remota
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
+
+          {pixModal && (
+            <ModalPixRemoto
+              cobrancaId={pixModal.cobrancaId}
+              pixCopiaCola={pixModal.pixCopiaCola}
+              valor={pixModal.valor}
+              expiraEm={pixModal.expiraEm}
+              temTelefone={pixModal.temTelefone}
+              onClose={() => setPixModal(null)}
+              onPago={() => { setPago(true); setPixModal(null) }}
+            />
+          )}
 
           <div style={card}><div style={cardTitle}><span>📝</span> Observações internas</div><textarea style={{ ...inp, minHeight: 80, resize: 'vertical' }} value={observacoes} onChange={e => setObservacoes(e.target.value)} placeholder="Anotações internas..." /></div>
         </>
