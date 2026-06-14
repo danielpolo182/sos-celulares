@@ -6,6 +6,14 @@ import { createClient } from '@/lib/supabase/client'
 import { formatarCNPJ, formatarCPF, formatarTelefone, validarCNPJ, validarCPF, validarTelefone } from '@/lib/validators'
 
 // ─── Tipos ────────────────────────────────────────────────
+type WaConfig = {
+  phone_number_id: string | null
+  access_token: string | null
+  verify_token: string
+  bot_ativo: boolean
+  bot_prompt: string
+}
+
 type Config = {
   id: string; chave: string; valor: string
   descricao: string | null; categoria: string; versao: number
@@ -32,7 +40,7 @@ const MENU = [
   { key: 'numeracao',    icon: '🔢', label: 'Numeração',            sub: [] },
   { key: 'plano',        icon: '💎', label: 'Meu plano',            sub: [] },
   { key: 'qualidades',   icon: '🏷',  label: 'Qualidades de peças',  sub: [] },
-  { key: 'whatsapp',     icon: '💬', label: 'Modelos WhatsApp',     sub: [] },
+  { key: 'whatsapp',     icon: '💬', label: 'WhatsApp API',           sub: [] },
   { key: 'pdv_cfg',      icon: '💳', label: 'PDV',                  sub: [] },
   { key: 'rotinas_cfg',  icon: '✅', label: 'Rotinas',              sub: [] },
   { key: 'pix',          icon: '📱', label: 'PIX',                  sub: [] },
@@ -178,6 +186,9 @@ export default function ConfiguracoesPage() {
   const [formasPgto, setFormasPgto] = useState<FormaPgto[]>(FORMAS_PADRAO)
   const [formasSaving, setFormasSaving] = useState(false)
   const [formasSaved, setFormasSaved] = useState(false)
+  const [waConfig, setWaConfig] = useState<WaConfig | null>(null)
+  const [waSaving, setWaSaving] = useState(false)
+  const [waMsg, setWaMsg] = useState('')
 
   // ── Fetch ────────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
@@ -199,6 +210,11 @@ export default function ConfiguracoesPage() {
     setConfigs((c ?? []) as Config[])
     setQualidades((q ?? []) as Qualidade[])
     setNumeracoes((n ?? []) as NumeracaoConfig[])
+    const { data: waCfg } = await supabase
+      .from('wa_config')
+      .select('phone_number_id, access_token, verify_token, bot_ativo, bot_prompt')
+      .single()
+    if (waCfg) setWaConfig(waCfg as WaConfig)
     setLoading(false)
   }, [supabase])
 
@@ -247,6 +263,25 @@ export default function ConfiguracoesPage() {
     if (u) { setUEditId(u.id); setUNome(u.nome); setUEmail(u.email ?? ''); setUPapel(u.papel as Cargo); setUAtivo(u.ativo) }
     else { setUEditId(null); setUNome(''); setUEmail(''); setUPapel('tecnico'); setUAtivo(true) }
     setUModal(true)
+  }
+
+  async function salvarWaConfig() {
+    if (!waConfig) return
+    setWaSaving(true); setWaMsg('')
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setWaSaving(false); return }
+    const { data: perfil } = await supabase.from('perfis').select('filial_id').eq('id', user.id).single()
+    if (!perfil?.filial_id) { setWaMsg('❌ Filial não encontrada'); setWaSaving(false); return }
+    const { error } = await supabase.from('wa_config').upsert({
+      filial_id: perfil.filial_id,
+      phone_number_id: waConfig.phone_number_id || null,
+      access_token: waConfig.access_token || null,
+      verify_token: waConfig.verify_token,
+      bot_ativo: waConfig.bot_ativo,
+      bot_prompt: waConfig.bot_prompt,
+    })
+    setWaMsg(error ? '❌ Erro ao salvar' : '✅ Configurações salvas!')
+    setWaSaving(false)
   }
 
   async function salvarFormasPgto() {
@@ -906,16 +941,76 @@ export default function ConfiguracoesPage() {
           </div>
         )}
 
-        {/* ── MODELOS WHATSAPP */}
+        {/* ── WHATSAPP API */}
         {activeMenu === 'whatsapp' && (
           <div>
-            <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>💬 Modelos de WhatsApp</h2>
-            <p style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>Mensagens enviadas em cada situação. Use as variáveis abaixo.</p>
-            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 14px', marginBottom: 20, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-              <span style={{ fontSize: 12, fontWeight: 500, color: '#2563eb' }}>Variáveis:</span>
-              {WA_VARS.map(v => <code key={v} style={{ fontSize: 11, background: '#dbeafe', color: '#1d4ed8', padding: '2px 8px', borderRadius: 6 }}>{v}</code>)}
+            <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', marginBottom: 24 }}>💬 WhatsApp API</h2>
+
+            {/* Seção 1: Conexão */}
+            <div style={{ marginBottom: 32 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 12 }}>Conexão Meta Business</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 12 }}>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Phone Number ID</label>
+                  <input style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} value={waConfig?.phone_number_id ?? ''} onChange={e => setWaConfig(c => c ? { ...c, phone_number_id: e.target.value } : c)} placeholder="1234567890123456" />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Access Token</label>
+                  <input style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} type="password" value={waConfig?.access_token ?? ''} onChange={e => setWaConfig(c => c ? { ...c, access_token: e.target.value } : c)} placeholder="EAAxxxxx..." />
+                </div>
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Verify Token (para o webhook)</label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input style={{ flex: 1, padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'monospace', background: '#f8fafc' }} readOnly value={waConfig?.verify_token ?? ''} />
+                  <button onClick={() => navigator.clipboard.writeText(waConfig?.verify_token ?? '')} style={{ padding: '10px 16px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12, cursor: 'pointer' }}>Copiar</button>
+                </div>
+              </div>
+              <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#0369a1' }}>
+                URL do Webhook:{' '}<strong>https://octaos.com.br/api/whatsapp/webhook</strong>
+                <button onClick={() => navigator.clipboard.writeText('https://octaos.com.br/api/whatsapp/webhook')} style={{ marginLeft: 8, padding: '2px 8px', background: '#0369a1', color: '#fff', border: 'none', borderRadius: 4, fontSize: 11, cursor: 'pointer' }}>Copiar</button>
+              </div>
             </div>
-            {['wa_os_recebida','wa_os_andamento','wa_os_pronta','wa_os_entregue','wa_aniversario','wa_cliente_inativo','wa_nunca_retornou','wa_retirada_90dias','wa_os_pronta_nao_retirada'].map(chave => renderWAField(chave))}
+
+            {/* Seção 2: Bot */}
+            <div style={{ marginBottom: 32, borderTop: '1px solid #f1f5f9', paddingTop: 24 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Chatbot com IA</div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#0f172a' }}>
+                  Ativo
+                  <div onClick={() => setWaConfig(c => c ? { ...c, bot_ativo: !c.bot_ativo } : c)} style={{ width: 40, height: 22, borderRadius: 11, cursor: 'pointer', background: waConfig?.bot_ativo ? '#2563eb' : '#cbd5e1', position: 'relative', transition: 'background 0.2s' }}>
+                    <div style={{ position: 'absolute', top: 3, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.2s', left: waConfig?.bot_ativo ? 21 : 3 }} />
+                  </div>
+                </label>
+              </div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Prompt do sistema</label>
+              <textarea rows={5} style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }} value={waConfig?.bot_prompt ?? ''} onChange={e => setWaConfig(c => c ? { ...c, bot_prompt: e.target.value } : c)} />
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Modelo: Claude Haiku 4.5 · Use [HUMANO] para instruir quando transferir para atendente.</div>
+            </div>
+
+            {/* Seção 3: Templates */}
+            <div style={{ marginBottom: 32, borderTop: '1px solid #f1f5f9', paddingTop: 24 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 12 }}>Templates de Notificação de OS</div>
+              {[
+                { status: 'aberta', template: 'os_aberta', vars: '{{nome}}, {{numero}}' },
+                { status: 'em_andamento', template: 'os_em_andamento', vars: '{{nome}}, {{numero}}' },
+                { status: 'pronta', template: 'os_pronta', vars: '{{nome}}, {{numero}}, {{valor}}' },
+                { status: 'entregue', template: 'os_entregue', vars: '{{nome}}, {{numero}}' },
+                { status: 'cancelada', template: 'os_cancelada', vars: '{{nome}}, {{numero}}' },
+              ].map(t => (
+                <div key={t.status} style={{ display: 'grid', gridTemplateColumns: '120px 1fr 130px', gap: 8, alignItems: 'center', background: '#f8fafc', borderRadius: 6, padding: '8px 12px', marginBottom: 6 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>{t.status}</div>
+                  <div style={{ fontSize: 11, color: '#64748b', fontFamily: 'monospace' }}>{t.template} · {t.vars}</div>
+                  <a href="https://business.facebook.com/wa/manage/message-templates/" target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#2563eb', textDecoration: 'none' }}>Criar no Meta →</a>
+                </div>
+              ))}
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>Templates criados no Meta Business Manager. Aprovação leva 24-48h.</div>
+            </div>
+
+            {waMsg && <div style={{ marginBottom: 12, fontSize: 13, color: waMsg.startsWith('✅') ? '#059669' : '#dc2626' }}>{waMsg}</div>}
+            <button onClick={salvarWaConfig} disabled={waSaving} style={{ padding: '11px 24px', background: waSaving ? '#a5b4fc' : '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: waSaving ? 'not-allowed' : 'pointer' }}>
+              {waSaving ? 'Salvando...' : '💾 Salvar configurações WhatsApp'}
+            </button>
           </div>
         )}
 

@@ -260,6 +260,13 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
     }).eq('id', id)
     if (fechandoOS && itensOrc.length > 0) await baixarEstoque()
     try { await supabase.from('events').insert({ type: 'OS_ATUALIZADA', entity: 'os', entity_id: id, payload: { status, pago } }) } catch { /* non-critical */ }
+    if (status !== os?.status) {
+      fetch('/api/whatsapp/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ osId: id, newStatus: status }),
+      }).catch(() => {})
+    }
     const { data } = await supabase.from('ordens_servico').select('*,clientes(id,nome,telefone,cpf)').eq('id', id).single()
     if (data) setOs(data as unknown as OS)
     setSaving(false)
