@@ -31,6 +31,8 @@ type Historico = {
   perfis: { nome: string } | null
 }
 
+type PixConfig = { mp_access_token: string; mp_webhook_secret: string; ativo: boolean }
+
 // ─── Menu lateral ─────────────────────────────────────────
 const MENU = [
   { key: 'loja',         icon: '🏪', label: 'Dados da loja',       sub: [] },
@@ -190,6 +192,14 @@ export default function ConfiguracoesPage() {
   const [waSaving, setWaSaving] = useState(false)
   const [waMsg, setWaMsg] = useState('')
 
+  // PIX
+  const [pixConfig, setPixConfig] = useState<PixConfig>({ mp_access_token: '', mp_webhook_secret: '', ativo: false })
+  const [pixSaving, setPixSaving] = useState(false)
+  const [pixMsg, setPixMsg] = useState('')
+  const [pixShowToken, setPixShowToken] = useState(false)
+  const [pixShowSecret, setPixShowSecret] = useState(false)
+  const [pixManualOpen, setPixManualOpen] = useState(false)
+
   // ── Fetch ────────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -215,6 +225,15 @@ export default function ConfiguracoesPage() {
       .select('phone_number_id, access_token, verify_token, bot_ativo, bot_prompt')
       .single()
     if (waCfg) setWaConfig(waCfg as WaConfig)
+    const { data: pixCfg } = await supabase
+      .from('pix_config')
+      .select('mp_access_token, mp_webhook_secret, ativo')
+      .single()
+    if (pixCfg) setPixConfig({
+      mp_access_token: pixCfg.mp_access_token ?? '',
+      mp_webhook_secret: pixCfg.mp_webhook_secret ?? '',
+      ativo: pixCfg.ativo ?? false,
+    })
     setLoading(false)
   }, [supabase])
 
@@ -282,6 +301,25 @@ export default function ConfiguracoesPage() {
     })
     setWaMsg(error ? '❌ Erro ao salvar' : '✅ Configurações salvas!')
     setWaSaving(false)
+  }
+
+  async function salvarPixConfig() {
+    setPixSaving(true)
+    setPixMsg('')
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setPixMsg('❌ Não autenticado'); setPixSaving(false); return }
+    const { data: perfil } = await supabase.from('perfis').select('filial_id, papel').eq('id', user.id).single()
+    if (!perfil?.filial_id) { setPixMsg('❌ Filial não encontrada'); setPixSaving(false); return }
+    if (!['admin', 'gerente'].includes(perfil.papel)) { setPixMsg('❌ Apenas admin ou gerente podem alterar'); setPixSaving(false); return }
+    const { error } = await supabase.from('pix_config').upsert({
+      filial_id: perfil.filial_id,
+      mp_access_token: pixConfig.mp_access_token || null,
+      mp_webhook_secret: pixConfig.mp_webhook_secret || null,
+      ativo: pixConfig.ativo,
+    }, { onConflict: 'filial_id' })
+    if (error) setPixMsg('❌ Erro ao salvar: ' + error.message)
+    else setPixMsg('✅ Configurações PIX salvas!')
+    setPixSaving(false)
   }
 
   async function salvarFormasPgto() {
@@ -1065,14 +1103,91 @@ export default function ConfiguracoesPage() {
         {/* ── PIX */}
         {activeMenu === 'pix' && (
           <div>
-            <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>📱 PIX</h2>
-            <p style={{ fontSize: 13, color: '#64748b', marginBottom: 20 }}>Chave PIX para recebimento.</p>
+            <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>📱 PIX — Mercado Pago</h2>
+            <p style={{ fontSize: 13, color: '#64748b', marginBottom: 20 }}>Configure a integração com o Mercado Pago para receber pagamentos PIX diretamente no sistema.</p>
+
+            {/* Seção 1 — Credenciais */}
             <div style={card}>
-              {renderField('pix_chave')}
-              {renderField('pix_favorecido')}
-              <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: '12px 16px', marginTop: 8, fontSize: 13, color: '#92400e' }}>
-                ⚠ A integração automática PIX (QR Code) está disponível no plano Enterprise.
+              <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 600, color: '#0f172a' }}>🔒 Credenciais Mercado Pago</h3>
+
+              <div style={{ marginBottom: 14 }}>
+                <label style={lbl}>Access Token de Produção</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    type={pixShowToken ? 'text' : 'password'}
+                    style={{ flex: 1, padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'monospace' }}
+                    value={pixConfig.mp_access_token}
+                    onChange={e => setPixConfig(c => ({ ...c, mp_access_token: e.target.value }))}
+                    placeholder="APP_USR-..."
+                  />
+                  <button onClick={() => setPixShowToken(v => !v)} style={{ padding: '10px 14px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
+                    {pixShowToken ? '🙈' : '👁'}
+                  </button>
+                </div>
               </div>
+
+              <div style={{ marginBottom: 14 }}>
+                <label style={lbl}>Webhook Secret</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    type={pixShowSecret ? 'text' : 'password'}
+                    style={{ flex: 1, padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'monospace' }}
+                    value={pixConfig.mp_webhook_secret}
+                    onChange={e => setPixConfig(c => ({ ...c, mp_webhook_secret: e.target.value }))}
+                    placeholder="Cole o secret do webhook aqui"
+                  />
+                  <button onClick={() => setPixShowSecret(v => !v)} style={{ padding: '10px 14px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
+                    {pixShowSecret ? '🙈' : '👁'}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+                <div onClick={() => setPixConfig(c => ({ ...c, ativo: !c.ativo }))} style={{ width: 40, height: 22, borderRadius: 11, cursor: 'pointer', background: pixConfig.ativo ? '#2563eb' : '#cbd5e1', position: 'relative', transition: 'background 0.2s' }}>
+                  <div style={{ position: 'absolute', top: 3, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.2s', left: pixConfig.ativo ? 21 : 3 }} />
+                </div>
+                <span style={{ fontSize: 13, color: '#374151' }}>PIX {pixConfig.ativo ? 'ativo' : 'inativo'} para esta filial</span>
+              </div>
+
+              {pixMsg && <div style={{ marginBottom: 12, fontSize: 13, color: pixMsg.startsWith('✅') ? '#059669' : '#dc2626' }}>{pixMsg}</div>}
+              <button onClick={salvarPixConfig} disabled={pixSaving} style={{ padding: '10px 20px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: pixSaving ? 'not-allowed' : 'pointer', opacity: pixSaving ? 0.7 : 1 }}>
+                {pixSaving ? 'Salvando...' : 'Salvar configurações'}
+              </button>
+            </div>
+
+            {/* Seção 2 — Webhook URL */}
+            <div style={{ ...card, marginTop: 16 }}>
+              <h3 style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 600, color: '#0f172a' }}>🔗 URL do Webhook</h3>
+              <p style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>Cadastre esta URL no painel do Mercado Pago para receber confirmações de pagamento:</p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  readOnly
+                  style={{ flex: 1, padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'monospace', background: '#f8fafc', color: '#374151' }}
+                  value={`${typeof window !== 'undefined' ? window.location.origin : process.env.NEXT_PUBLIC_APP_URL ?? ''}/api/pix/webhook`}
+                />
+                <button onClick={() => navigator.clipboard.writeText(`${typeof window !== 'undefined' ? window.location.origin : ''}/api/pix/webhook`)} style={{ padding: '10px 14px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
+                  Copiar
+                </button>
+              </div>
+              <div style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '4px 10px', borderRadius: 20, background: pixConfig.mp_access_token ? '#dcfce7' : '#f1f5f9', color: pixConfig.mp_access_token ? '#16a34a' : '#94a3b8' }}>
+                {pixConfig.mp_access_token ? '✓ Credenciais configuradas' : '○ Sem credenciais'}
+              </div>
+            </div>
+
+            {/* Seção 3 — Manual (accordion) */}
+            <div style={{ ...card, marginTop: 16 }}>
+              <button onClick={() => setPixManualOpen(v => !v)} style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#0f172a' }}>📖 Como configurar em 4 passos</h3>
+                <span style={{ fontSize: 18, color: '#64748b' }}>{pixManualOpen ? '▲' : '▼'}</span>
+              </button>
+              {pixManualOpen && (
+                <div style={{ marginTop: 16, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: 16, fontSize: 13, color: '#1e40af', lineHeight: 2 }}>
+                  <strong>1.</strong> Acesse <strong>mercadopago.com.br/developers</strong> → Suas integrações → Criar aplicação<br />
+                  <strong>2.</strong> Ative o modo <strong>Produção</strong> e copie o <strong>Access Token de produção</strong> (começa com APP_USR-)<br />
+                  <strong>3.</strong> Em Webhooks, cadastre a URL acima e selecione o evento <strong>&quot;payment&quot;</strong><br />
+                  <strong>4.</strong> Copie o <strong>Webhook Secret</strong> gerado e cole no campo acima, depois salve
+                </div>
+              )}
             </div>
           </div>
         )}
