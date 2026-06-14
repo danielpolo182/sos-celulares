@@ -7,6 +7,7 @@ import { criarCobrancaPix } from '@/lib/pix/mp'
 export const dynamic = 'force-dynamic'
 
 export async function POST(request: NextRequest) {
+  try {
   const cookieStore = await cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -103,4 +104,8 @@ export async function POST(request: NextRequest) {
     pixCopiaCola: qrData.qr_code,
     expiraEm,
   })
+  } catch (err) {
+    console.error('[pix/criar] erro inesperado:', err)
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
 }
