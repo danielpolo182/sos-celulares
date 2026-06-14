@@ -49,3 +49,18 @@ CREATE POLICY rls_filial ON pix_cobrancas
 CREATE INDEX IF NOT EXISTS idx_pix_cobrancas_referencia ON pix_cobrancas (referencia_id, tipo_referencia);
 CREATE INDEX IF NOT EXISTS idx_pix_cobrancas_mp_payment ON pix_cobrancas (mp_payment_id);
 CREATE INDEX IF NOT EXISTS idx_pix_cobrancas_filial_status ON pix_cobrancas (filial_id, status);
+
+-- ============================================================
+-- TRIGGER: auto-update atualizado_em na pix_config
+-- ============================================================
+DROP TRIGGER IF EXISTS trg_pix_config_updated_at ON pix_config;
+CREATE TRIGGER trg_pix_config_updated_at
+  BEFORE UPDATE ON pix_config
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- ============================================================
+-- UNIQUE CONSTRAINT: evitar race conditions com webhook
+-- ============================================================
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pix_cobrancas_mp_payment_id
+  ON pix_cobrancas (mp_payment_id)
+  WHERE mp_payment_id IS NOT NULL;
