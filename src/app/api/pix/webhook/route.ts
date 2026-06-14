@@ -21,8 +21,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'invalid json' }, { status: 400 })
   }
 
-  // Só processa pagamentos aprovados
-  if (body.action !== 'payment.updated' || !body.data?.id) {
+  // Aceita payment.created e payment.updated
+  if (!body.action?.startsWith('payment') || !body.data?.id) {
     return NextResponse.json({ ok: true })
   }
 
@@ -48,19 +48,22 @@ export async function POST(request: NextRequest) {
     .single()
 
   if (config?.mp_webhook_secret) {
-    // Mercado Pago envia: x-signature: ts=...,v1=...
     const sig = request.headers.get('x-signature') ?? ''
     const tsMatch = sig.match(/ts=(\d+)/)
-    const v1Match = sig.match(/v1=([a-f0-9]+)/)
+    const v1Match = sig.match(/v1=([a-f0-9]+)/i)
     if (tsMatch && v1Match) {
       const ts = tsMatch[1]
-      const received = v1Match[1]
+      const received = v1Match[1].toLowerCase()
       const toSign = `id:${mpPaymentId};request-id:${request.headers.get('x-request-id') ?? ''};ts:${ts};`
       const expected = crypto
         .createHmac('sha256', config.mp_webhook_secret)
         .update(toSign)
         .digest('hex')
-      if (!crypto.timingSafeEqual(Buffer.from(received), Buffer.from(expected))) {
+      // timingSafeEqual requer buffers do mesmo tamanho
+      const a = Buffer.from(received.padEnd(64, '0'))
+      const b = Buffer.from(expected.padEnd(64, '0'))
+      if (received.length !== expected.length || !crypto.timingSafeEqual(a, b)) {
+        console.error('[pix/webhook] assinatura inválida', { received, expected })
         return NextResponse.json({ error: 'invalid signature' }, { status: 401 })
       }
     }
