@@ -22,3 +22,10 @@ Thumbs.db
 *.swp
 .vscode/
 .superpowers/
+
+# TypeScript build info
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Docs / planos locais
+docs/
