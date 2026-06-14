@@ -11,6 +11,7 @@ const RELATORIOS = [
   { href: '/relatorios/financeiro', icon: 'ti-cash',         label: 'Financeiro' },
   { href: '/relatorios/fiscal',     icon: 'ti-file-invoice', label: 'Fiscal' },
   { href: '/relatorios/logs',       icon: 'ti-terminal-2',   label: 'Logs do sistema' },
+  { href: '/relatorios/whatsapp',   icon: 'ti-brand-whatsapp', label: 'WhatsApp' },
 ]
 
 const PERIODOS = [

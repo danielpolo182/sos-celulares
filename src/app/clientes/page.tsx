@@ -148,6 +148,7 @@ export default function ClientesPage() {
   const [cpfErro, setCpfErro] = useState('')
   const [telErro, setTelErro] = useState('')
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
+  const [waMensagens, setWaMensagens] = useState<{ id: string; direcao: string; conteudo: string; criado_em: string }[]>([])
 
   // Dropdown state per field
   const [dropdown, setDropdown] = useState<{ field: 'nome' | 'cpf' | 'telefone'; results: Cliente[] } | null>(null)
@@ -180,6 +181,28 @@ export default function ClientesPage() {
   }, [supabase])
 
   useEffect(() => { fetchClientes() }, [fetchClientes])
+
+  useEffect(() => {
+    if (!selectedCliente?.telefone) { setWaMensagens([]); return }
+    const raw = selectedCliente.telefone.replace(/\D/g, '')
+    supabase
+      .from('wa_conversas')
+      .select('id')
+      .ilike('telefone', `%${raw.slice(-8)}%`)
+      .order('atualizado_em', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data: conv }) => {
+        if (!conv) { setWaMensagens([]); return }
+        supabase
+          .from('wa_mensagens')
+          .select('id, direcao, conteudo, criado_em')
+          .eq('conversa_id', conv.id)
+          .order('criado_em', { ascending: false })
+          .limit(20)
+          .then(({ data }) => setWaMensagens(data ?? []))
+      })
+  }, [selectedCliente, supabase])
 
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current)
@@ -432,6 +455,31 @@ export default function ClientesPage() {
                 border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer',
               }}>+ Nova OS para este cliente</button>
             </div>
+            {/* Histórico WhatsApp */}
+            {waMensagens.length > 0 && (
+              <div style={{ marginTop: 24 }}>
+                <p style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <i className="ti ti-brand-whatsapp" style={{ color: '#22c55e' }} />
+                  Histórico WhatsApp (últimas {waMensagens.length})
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {[...waMensagens].reverse().map(m => (
+                    <div key={m.id} style={{
+                      padding: '7px 12px', borderRadius: 8, fontSize: 12,
+                      background: m.direcao === 'saida' ? '#eff6ff' : '#f8fafc',
+                      border: '1px solid',
+                      borderColor: m.direcao === 'saida' ? '#bfdbfe' : '#e2e8f0',
+                      color: '#1e293b',
+                    }}>
+                      <span style={{ fontSize: 10, color: '#94a3b8', display: 'block', marginBottom: 2 }}>
+                        {m.direcao === 'saida' ? '→ Enviado' : '← Recebido'} · {new Date(m.criado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      {m.conteudo}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div style={{ padding: 60, textAlign: 'center' }}>
