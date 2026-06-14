@@ -267,15 +267,20 @@ export default function PDVPage() {
   }
 
   async function criarVendaParaPix(): Promise<string | null> {
-    if (itens.length === 0 || faltaPagar > 0.01) return null
+    if (itens.length === 0 || total <= 0) return null
     setSalvando(true)
-    const { data: venda } = await supabase.from('vendas').insert({
-      status: 'finalizada', tipo: 'pdv', subtotal, desconto, total, taxa_pagamento: taxaFormaAtual > 0 ? taxaFormaAtual : null,
-      valor_recebido: total, troco: 0,
-      pagamentos: [{ forma: 'pix', valor: total }],
+    const { data: venda, error: vendaErr } = await supabase.from('vendas').insert({
+      status: 'finalizada', subtotal, desconto, total,
       forma_pagamento: 'pix',
       pago: false, observacoes: obs || null,
     }).select('id, numero').single()
+
+    if (vendaErr) {
+      console.error('[criarVendaParaPix] erro insert vendas:', vendaErr)
+      alert('Erro ao criar venda: ' + vendaErr.message)
+      setSalvando(false)
+      return null
+    }
 
     if (venda) {
       await supabase.from('venda_itens').insert(itens.map(i => ({ venda_id: venda.id, produto_id: i.produto_id, descricao: i.descricao, quantidade: i.quantidade, preco_unit: i.preco_unit })))
