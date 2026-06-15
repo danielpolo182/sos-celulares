@@ -62,6 +62,10 @@ BEGIN
   JOIN pedidos_compra pc ON pc.id = pi.pedido_id
   WHERE pi.id = NEW.pedido_item_id;
 
+  IF v_produto_id IS NULL THEN
+    RAISE EXCEPTION 'pedido_item_id % not found', NEW.pedido_item_id;
+  END IF;
+
   INSERT INTO movimentacoes_estoque (filial_id, produto_id, tipo, quantidade, motivo)
   VALUES (
     v_filial_id,
@@ -71,7 +75,7 @@ BEGIN
     'Recebimento pedido #' || NEW.pedido_id
   );
 
-  UPDATE produtos SET preco_custo = NEW.preco_pago WHERE id = v_produto_id;
+  UPDATE produtos SET preco_custo = NEW.preco_pago / NEW.qtd_recebida WHERE id = v_produto_id;
 
   DELETE FROM compras_blacklist
   WHERE produto_id = v_produto_id AND filial_id = v_filial_id;
@@ -102,6 +106,13 @@ CREATE TRIGGER trg_estoque_entrada_blacklist
   AFTER INSERT ON movimentacoes_estoque
   FOR EACH ROW EXECUTE FUNCTION fn_estoque_entrada_blacklist();
 
+-- ── Índices nas novas tabelas ──────────────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_pedido_itens_pedido    ON pedido_itens(pedido_id);
+CREATE INDEX IF NOT EXISTS idx_pedido_itens_produto   ON pedido_itens(produto_id);
+CREATE INDEX IF NOT EXISTS idx_recebimentos_pedido    ON pedido_recebimentos(pedido_id);
+CREATE INDEX IF NOT EXISTS idx_recebimentos_item      ON pedido_recebimentos(pedido_item_id);
+CREATE INDEX IF NOT EXISTS idx_pedidos_compra_filial  ON pedidos_compra(filial_id);
+
 -- ── RPC calcular_lista_compras ────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION calcular_lista_compras(
   p_filial_id    UUID,
@@ -127,14 +138,13 @@ BEGIN
   WITH saidas_semanais AS (
     SELECT
       me.produto_id,
-      EXTRACT(EPOCH FROM DATE_TRUNC('week', me.criado_em)) / 604800 AS semana_num,
+      EXTRACT(EPOCH FROM DATE_TRUNC('week', me.created_at)) / 604800 AS semana_num,
       SUM(me.quantidade)::NUMERIC AS qtd_semana
     FROM movimentacoes_estoque me
     WHERE me.filial_id = p_filial_id
       AND me.tipo = 'saida'
-      AND me.criado_em >= v_inicio
-      AND me.deleted_at IS NULL
-    GROUP BY me.produto_id, DATE_TRUNC('week', me.criado_em)
+      AND me.created_at >= v_inicio
+    GROUP BY me.produto_id, DATE_TRUNC('week', me.created_at)
   ),
   regressao AS (
     SELECT
