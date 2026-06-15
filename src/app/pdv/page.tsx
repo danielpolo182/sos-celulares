@@ -64,13 +64,14 @@ export default function PDVPage() {
   const [produtos, setProdutos] = useState<Produto[]>([])
   const [maisVendidos, setMaisVendidos] = useState<Produto[]>([])
   const [searchProd, setSearchProd] = useState('')
-  const [searchFocused, setSearchFocused] = useState(false)
+  const [dropdownOpen, setDropdownOpen] = useState(false)
   const [dropdownIndex, setDropdownIndex] = useState(0)
   const [showQuickAdd, setShowQuickAdd] = useState(false)
   const [qaPreco, setQaPreco] = useState('')
   const [qaSaving, setQaSaving] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const searchContainerRef = useRef<HTMLDivElement>(null)
 
   // Carrinho
   const [itens, setItens] = useState<ItemVenda[]>([])
@@ -194,7 +195,7 @@ export default function PDVPage() {
         return
       }
       if (e.key === 'Escape') {
-        if (searchFocused && searchProd) { setSearchProd(''); return }
+        if (dropdownOpen && searchProd) { setSearchProd(''); setDropdownOpen(false); return }
         if (etapa === 'pagamento') { setEtapa('produtos'); return }
         return
       }
@@ -218,7 +219,19 @@ export default function PDVPage() {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tela, etapa, itens, faltaPagar, formaPag, searchFocused, searchProd, prodResults, dropdownIndex])
+  }, [tela, etapa, itens, faltaPagar, formaPag, dropdownOpen, searchProd, prodResults, dropdownIndex])
+
+  // Fecha dropdown ao clicar fora do container de busca
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false)
+        setShowQuickAdd(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   // Reset dropdown index quando resultados mudam
   useEffect(() => { setDropdownIndex(0) }, [searchProd])
@@ -240,6 +253,7 @@ export default function PDVPage() {
       return [...prev, { produto_id: p.id, descricao: p.nome, quantidade: 1, preco_unit: p.preco_venda, custo_unit: p.custo_unit ?? 0, subtotal: p.preco_venda }]
     })
     setSearchProd('')
+    setDropdownOpen(false)
     setShowQuickAdd(false)
     searchRef.current?.focus()
   }
@@ -265,7 +279,7 @@ export default function PDVPage() {
       const p = prod as Produto
       setItens(prev => [...prev, { produto_id: p.id, descricao: p.nome, quantidade: 1, preco_unit: p.preco_venda, custo_unit: 0, subtotal: p.preco_venda }])
       setProdutos(prev => [...prev, p])
-      setShowQuickAdd(false); setQaPreco(''); setSearchProd('')
+      setShowQuickAdd(false); setQaPreco(''); setSearchProd(''); setDropdownOpen(false)
     } else if (error) { alert(`Erro ao cadastrar: ${error.message}`) }
     setQaSaving(false)
   }
@@ -409,7 +423,7 @@ export default function PDVPage() {
     const w = window.open(u, '_blank'); if (w) w.onload = () => URL.revokeObjectURL(u)
   }
 
-  const showDropdown = searchFocused && searchProd.trim().length > 0
+  const showDropdown = dropdownOpen && searchProd.trim().length > 0
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#e2e8f0', fontFamily: 'var(--font-sans, system-ui, sans-serif)', overflow: 'hidden', padding: '12px' }}>
@@ -490,16 +504,15 @@ export default function PDVPage() {
 
                   {/* Barra de busca com dropdown */}
                   <div style={{ padding: '14px 16px', background: '#fff', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
-                    <div style={{ position: 'relative' }}>
+                    <div ref={searchContainerRef} style={{ position: 'relative' }}>
                       <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: '#94a3b8', pointerEvents: 'none', zIndex: 1 }}>🔍</span>
                       <input
                         ref={searchRef}
-                        style={{ ...inp, paddingLeft: 42, paddingRight: 100, fontSize: 14, borderRadius: 10, border: '2px solid', borderColor: searchFocused ? '#2563eb' : '#e2e8f0', transition: 'border-color 0.15s' }}
+                        style={{ ...inp, paddingLeft: 42, paddingRight: 100, fontSize: 14, borderRadius: 10, border: '2px solid', borderColor: dropdownOpen ? '#2563eb' : '#e2e8f0', transition: 'border-color 0.15s' }}
                         placeholder="Buscar por nome ou código... (F2)"
                         value={searchProd}
-                        onChange={e => { setSearchProd(e.target.value); setShowQuickAdd(false) }}
-                        onFocus={() => setSearchFocused(true)}
-                        onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
+                        onChange={e => { setSearchProd(e.target.value); setDropdownOpen(true); setShowQuickAdd(false) }}
+                        onFocus={() => { if (searchProd) setDropdownOpen(true) }}
                         onKeyDown={e => {
                           if (e.key === 'ArrowDown' && prodResults.length > 0) { e.preventDefault(); setDropdownIndex(i => Math.min(i + 1, prodResults.length - 1)) }
                           if (e.key === 'ArrowUp' && prodResults.length > 0) { e.preventDefault(); setDropdownIndex(i => Math.max(i - 1, 0)) }
@@ -507,13 +520,13 @@ export default function PDVPage() {
                             e.preventDefault()
                             if (prodResults.length > 0 && dropdownIndex < prodResults.length) adicionarProduto(prodResults[dropdownIndex])
                           }
-                          if (e.key === 'Escape') { setSearchProd(''); setShowQuickAdd(false) }
+                          if (e.key === 'Escape') { setSearchProd(''); setDropdownOpen(false); setShowQuickAdd(false) }
                         }}
                         autoComplete="off"
                         autoFocus
                       />
                       {searchProd && (
-                        <button onClick={() => { setSearchProd(''); setShowQuickAdd(false); searchRef.current?.focus() }}
+                        <button onClick={() => { setSearchProd(''); setDropdownOpen(false); setShowQuickAdd(false); searchRef.current?.focus() }}
                           style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 18, padding: '0 4px', lineHeight: 1 }}>
                           ×
                         </button>
