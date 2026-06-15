@@ -231,11 +231,13 @@ export default function NovaOSPage() {
   const [fornecedorResults, setFornecedorResults] = useState<{ codigo: string; nome: string; preco: number }[]>([])
   const [fornecedorAberto, setFornecedorAberto] = useState(false)
   const [fornecedorQuery, setFornecedorQuery] = useState('')
+  const [fornecedorErro, setFornecedorErro] = useState('')
 
   async function buscarFornecedor() {
     if (!fornecedorQuery.trim()) return
     setFornecedorLoading(true)
     setFornecedorResults([])
+    setFornecedorErro('')
     try {
       const res = await fetch('/api/fornecedor/buscar', {
         method: 'POST',
@@ -244,7 +246,9 @@ export default function NovaOSPage() {
       })
       const data = await res.json() as { produtos?: { codigo: string; nome: string; preco: number }[]; error?: string }
       if (data.produtos) setFornecedorResults(data.produtos)
-      else setError(data.error ?? 'Erro ao consultar fornecedor')
+      else setFornecedorErro(data.error ?? 'Erro desconhecido')
+    } catch (e) {
+      setFornecedorErro(String(e))
     } finally {
       setFornecedorLoading(false)
     }
@@ -717,8 +721,11 @@ export default function NovaOSPage() {
                       </div>
                     )}
 
-                    {!fornecedorLoading && fornecedorResults.length === 0 && fornecedorQuery && (
-                      <p style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', padding: '8px 0' }}>Nenhum resultado ainda — clique em Buscar</p>
+                    {fornecedorErro && (
+                      <p style={{ fontSize: 11, color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '6px 10px', marginTop: 4, wordBreak: 'break-all' }}>{fornecedorErro}</p>
+                    )}
+                    {!fornecedorLoading && !fornecedorErro && fornecedorResults.length === 0 && fornecedorQuery && (
+                      <p style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', padding: '8px 0' }}>Nenhum produto encontrado para &quot;{fornecedorQuery}&quot;</p>
                     )}
                   </div>
                 )}

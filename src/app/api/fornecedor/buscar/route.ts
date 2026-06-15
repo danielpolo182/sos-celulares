@@ -55,13 +55,16 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({}),
     })
 
+    const startText = await startRes.text()
     if (!startRes.ok) {
-      return NextResponse.json({ error: `startChat falhou: ${startRes.status}` }, { status: 502 })
+      return NextResponse.json({ error: `startChat falhou: ${startRes.status} — ${startText.slice(0, 300)}` }, { status: 502 })
     }
 
-    const startData = await startRes.json() as { sessionId?: string }
+    let startData: { sessionId?: string; messages?: unknown[] }
+    try { startData = JSON.parse(startText) } catch { return NextResponse.json({ error: `startChat resposta inválida: ${startText.slice(0, 300)}` }, { status: 502 }) }
+
     const sessionId = startData.sessionId
-    if (!sessionId) return NextResponse.json({ error: 'sessionId não retornado' }, { status: 502 })
+    if (!sessionId) return NextResponse.json({ error: `sessionId ausente. Resposta: ${startText.slice(0, 400)}` }, { status: 502 })
 
     // 2. Envia a busca
     const chatRes = await fetch(`${BOT_BASE}/sessions/${sessionId}/continueChat`, {
