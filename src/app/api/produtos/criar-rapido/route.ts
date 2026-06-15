@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
-import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 
 export const dynamic = 'force-dynamic'
@@ -8,6 +7,7 @@ export const dynamic = 'force-dynamic'
 export async function POST(request: NextRequest) {
   try {
     const cookieStore = await cookies()
+    // Usa cliente com sessão do usuário — auth.uid() funciona, trigger preenche filial_id
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -23,23 +23,13 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authErr } = await supabase.auth.getUser()
     if (authErr || !user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
-    const { data: perfil } = await supabase
-      .from('perfis').select('filial_id').eq('id', user.id).single()
-
-    const filial_id = (perfil as { filial_id: string } | null)?.filial_id
-    if (!filial_id) return NextResponse.json({ error: 'Filial não encontrada para este usuário' }, { status: 400 })
-
     const body = await request.json() as Record<string, unknown>
     if (!body.nome) return NextResponse.json({ error: 'Nome é obrigatório' }, { status: 400 })
 
-    const admin = createServiceClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-
-    const { data: produto, error } = await admin
+    // Não passa filial_id — o trigger auto_filial_produtos preenche via get_filial_id()
+    const { data: produto, error } = await supabase
       .from('produtos')
-      .insert({ ...body, filial_id })
+      .insert(body)
       .select()
       .single()
 
