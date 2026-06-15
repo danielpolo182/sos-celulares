@@ -521,7 +521,7 @@ export default function PDVPage() {
 
                       {/* Dropdown de resultados */}
                       {showDropdown && (
-                        <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, zIndex: 100, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, boxShadow: '0 8px 32px rgba(0,0,0,0.12)', overflow: 'hidden' }}>
+                        <div onMouseDown={e => e.preventDefault()} style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, zIndex: 100, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, boxShadow: '0 8px 32px rgba(0,0,0,0.12)', overflow: 'hidden' }}>
                           {prodResults.length > 0 ? (
                             <div ref={dropdownRef} style={{ maxHeight: 320, overflowY: 'auto' }}>
                               {prodResults.map((p, idx) => (
@@ -556,7 +556,7 @@ export default function PDVPage() {
                                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                                     <div style={{ flex: 1 }}>
                                       <label htmlFor="qa-preco" style={{ ...lbl, marginBottom: 2 }}>Preço de venda (R$) *</label>
-                                      <input id="qa-preco" autoFocus type="number" step="0.01" min="0" value={qaPreco} onChange={e => setQaPreco(e.target.value)}
+                                      <input id="qa-preco" ref={el => { if (el && showQuickAdd) setTimeout(() => el.focus(), 0) }} type="number" step="0.01" min="0" value={qaPreco} onChange={e => setQaPreco(e.target.value)}
                                         onKeyDown={e => e.key === 'Enter' && salvarQuickAdd()}
                                         placeholder="0,00" style={{ ...inp, padding: '6px 10px', fontSize: 13 }} />
                                     </div>
