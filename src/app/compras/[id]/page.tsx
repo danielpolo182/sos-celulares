@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, use } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
@@ -57,7 +57,8 @@ const btnPrimary: React.CSSProperties = {
   cursor: 'pointer',
 }
 
-export default function PedidoRecebimentoPage({ params }: { params: { id: string } }) {
+export default function PedidoRecebimentoPage({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params)
   const supabase = createClient()
   const router = useRouter()
 
@@ -73,7 +74,7 @@ export default function PedidoRecebimentoPage({ params }: { params: { id: string
     const { data: pedidoData } = await supabase
       .from('pedidos_compra')
       .select('id, created_at, status, periodo_dias, pedido_origem_id, fornecedores(nome)')
-      .eq('id', params.id)
+      .eq('id', resolvedParams.id)
       .single()
 
     if (pedidoData) {
@@ -91,7 +92,7 @@ export default function PedidoRecebimentoPage({ params }: { params: { id: string
     const { data: itensData } = await supabase
       .from('pedido_itens')
       .select('id, produto_id, qtd_pedida, qtd_sugerida, preco_custo_ref, produtos(nome)')
-      .eq('pedido_id', params.id)
+      .eq('pedido_id', resolvedParams.id)
 
     if (itensData) {
       const mapped: PedidoItem[] = itensData.map((i: any) => ({
@@ -117,7 +118,7 @@ export default function PedidoRecebimentoPage({ params }: { params: { id: string
   useEffect(() => {
     setLoading(true)
     fetchPedido().finally(() => setLoading(false))
-  }, [params.id])
+  }, [resolvedParams.id])
 
   function showToast(msg: string, tipo: 'ok' | 'erro') {
     setToast({ msg, tipo })
@@ -138,7 +139,7 @@ export default function PedidoRecebimentoPage({ params }: { params: { id: string
           preco_pago: recebimentos[item.id]?.preco_pago ?? 0,
         })),
       }
-      const res = await fetch(`/api/compras/pedidos/${params.id}/receber`, {
+      const res = await fetch(`/api/compras/pedidos/${resolvedParams.id}/receber`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
