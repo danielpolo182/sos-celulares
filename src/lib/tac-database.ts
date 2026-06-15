@@ -2,7 +2,7 @@ export type ModelSpec = {
   marca: string
   modelo: string
   display: string
-  displayTipo: 'AMOLED' | 'Super AMOLED' | 'OLED' | 'IPS LCD' | 'LCD' | 'TFT'
+  displayTipo: string
   resolucao: string
   bateria: string
   processador: string

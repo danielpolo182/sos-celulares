@@ -328,14 +328,14 @@ export default function NovaOSPage() {
     modeloTimer.current = setTimeout(async () => {
       const { data } = await supabase
         .from('dispositivos_modelos')
-        .select('marca, modelo, tela, bateria, processador, ram')
-        .or(`marca.ilike.%${v}%,modelo.ilike.%${v}%`)
+        .select('marca, modelo, numero_modelo, tela, display_tipo, bateria, processador, ram')
+        .or(`marca.ilike.%${v}%,modelo.ilike.%${v}%,numero_modelo.ilike.%${v}%`)
         .eq('ativo', true)
         .limit(12)
       if (data && data.length > 0) {
         setModeloResults(data.map(d => ({
           marca: d.marca, modelo: d.modelo,
-          display: d.tela ?? '', displayTipo: 'IPS LCD' as const,
+          display: d.tela ?? '', displayTipo: (d.display_tipo ?? '') as string,
           resolucao: '', bateria: d.bateria ?? '',
           processador: d.processador ?? '', ram: d.ram ?? '', camera: '',
         })))
