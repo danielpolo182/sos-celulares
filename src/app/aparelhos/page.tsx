@@ -142,7 +142,7 @@ function notaGeral(cl: Record<string,string>): string {
 // ─── Componente principal ─────────────────────────────────
 export default function AparelhoPage() {
   const supabase = createClient()
-  const [aba, setAba] = useState<'estoque'|'sem_revisao'|'aguardando_pecas'|'em_reparo'|'checklist'|'historico'|'comprar'|'vender'>('estoque')
+  const [aba, setAba] = useState<'estoque'|'sem_revisao'|'aguardando_pecas'|'em_reparo'|'checklist'|'historico'|'comprar'|'vender'|'aprovacoes'>('estoque')
   const [aparelhos, setAparelhos] = useState<Aparelho[]>([])
   const [loading, setLoading] = useState(true)
   const [filtroStatus, setFiltroStatus] = useState('todos')
@@ -243,6 +243,12 @@ export default function AparelhoPage() {
   const [checklistFinal, setChecklistFinal] = useState<Record<string,string>>({})
   const [pecaExtraNome, setPecaExtraNome] = useState('')
   const [loadingPecas, setLoadingPecas] = useState(false)
+
+  // ── Aprovações ────────────────────────────────────────────
+  const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [pendentes, setPendentes] = useState<Dispositivo[]>([])
+  const [syncLoading, setSyncLoading] = useState(false)
+  const [syncResult, setSyncResult] = useState<{ ok: boolean; novos: number; erros: string[] } | null>(null)
 
   async function atualizarStatus(id: string, novoStatus: string) {
     setSalvandoStatus(true)
@@ -737,6 +743,7 @@ section { margin-bottom:12pt; }
     // Buscar assinatura da loja (do usuário logado)
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
+      setUserEmail(user.email ?? null)
       const { data: ass } = await supabase.from('usuario_assinaturas').select('assinatura').eq('usuario_id', user.id).maybeSingle()
       if (ass) setAssinaturaLoja(ass.assinatura)
     }
@@ -744,6 +751,40 @@ section { margin-bottom:12pt; }
   }, [supabase])
 
   useEffect(() => { fetchAll() }, [fetchAll])
+
+  const carregarPendentes = useCallback(async () => {
+    const { data } = await supabase
+      .from('dispositivos_modelos')
+      .select('*')
+      .eq('verificado', false)
+      .eq('ativo', true)
+      .order('created_at', { ascending: false })
+    setPendentes(data ?? [])
+  }, [supabase])
+
+  useEffect(() => {
+    if (aba === 'aprovacoes') carregarPendentes()
+  }, [aba, carregarPendentes])
+
+  async function aprovar(id: string) {
+    await supabase.from('dispositivos_modelos').update({ verificado: true }).eq('id', id)
+    setPendentes(p => p.filter(x => x.id !== id))
+  }
+
+  async function rejeitar(id: string) {
+    await supabase.from('dispositivos_modelos').update({ ativo: false }).eq('id', id)
+    setPendentes(p => p.filter(x => x.id !== id))
+  }
+
+  async function sincronizar() {
+    setSyncLoading(true)
+    setSyncResult(null)
+    const res = await fetch('/api/scraping', { method: 'POST' })
+    const json = await res.json()
+    setSyncResult(json)
+    setSyncLoading(false)
+    await carregarPendentes()
+  }
 
   useEffect(() => {
     if (!detalhes) { setModalPecas([]); setNovasPecas([]); setSemTodasPecas(false); setLiberarSemChecklist(false); return }
@@ -1049,6 +1090,32 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
           </button>
         ))}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, paddingBottom: 4 }}>
+          {userEmail === 'danielcwpolo@gmail.com' && (
+            <button
+              onClick={() => setAba('aprovacoes' as any)}
+              style={{
+                padding: '8px 16px', borderRadius: 7, fontSize: 13, cursor: 'pointer',
+                border: '1px solid',
+                background: aba === 'aprovacoes' ? '#fef3c7' : '#fff',
+                color: aba === 'aprovacoes' ? '#92400e' : '#64748b',
+                borderColor: aba === 'aprovacoes' ? '#fde68a' : '#e2e8f0',
+                fontWeight: aba === 'aprovacoes' ? 600 : 400,
+                position: 'relative',
+              }}
+            >
+              Aprovações
+              {pendentes.length > 0 && (
+                <span style={{
+                  position: 'absolute', top: -6, right: -6,
+                  background: '#ef4444', color: '#fff', borderRadius: '50%',
+                  width: 18, height: 18, fontSize: 10, fontWeight: 700,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {pendentes.length}
+                </span>
+              )}
+            </button>
+          )}
           <button onClick={() => setAba('comprar')} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 8, cursor: 'pointer', background: aba==='comprar'?'#0f172a':'#1e293b', color: '#fbbf24', display: 'flex', alignItems: 'center', gap: 6 }}>⬇ Registrar compra</button>
           <button onClick={() => setAba('vender')} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 8, cursor: 'pointer', background: aba==='vender'?'#065f46':'#16a34a', color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}>⬆ Registrar venda</button>
         </div>
@@ -1112,6 +1179,82 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
           </div>
         )
       })()}
+
+      {/* ═══ APROVAÇÕES ═══ */}
+      {aba === 'aprovacoes' && userEmail === 'danielcwpolo@gmail.com' && (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <p style={{ fontSize: 13, color: '#64748b' }}>
+              {pendentes.length === 0
+                ? 'Nenhum modelo aguardando aprovação.'
+                : `${pendentes.length} modelo(s) aguardando aprovação`}
+            </p>
+            <button
+              onClick={sincronizar}
+              disabled={syncLoading}
+              style={{
+                padding: '8px 16px', borderRadius: 7, fontSize: 13, cursor: syncLoading ? 'not-allowed' : 'pointer',
+                background: syncLoading ? '#e2e8f0' : '#0f172a', color: syncLoading ? '#94a3b8' : '#fff',
+                border: 'none', fontWeight: 500,
+              }}
+            >
+              {syncLoading ? 'Buscando...' : '🔄 Buscar novos modelos'}
+            </button>
+          </div>
+
+          {syncResult && (
+            <div style={{
+              background: syncResult.erros?.length > 0 ? '#fef3c7' : '#f0fdf4',
+              border: '1px solid',
+              borderColor: syncResult.erros?.length > 0 ? '#fde68a' : '#bbf7d0',
+              borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13,
+              color: syncResult.erros?.length > 0 ? '#92400e' : '#065f46',
+            }}>
+              {syncResult.novos} novos modelos encontrados.
+              {syncResult.erros?.length > 0 && ` ${syncResult.erros.length} erros.`}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {pendentes.map(d => (
+              <div key={d.id} style={{
+                background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10,
+                padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12,
+              }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>
+                    {d.marca} {d.modelo}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+                    {[d.tela, d.ram, d.bateria].filter(Boolean).join(' · ')}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={() => rejeitar(d.id)}
+                    style={{
+                      padding: '6px 14px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+                      background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca',
+                    }}
+                  >
+                    Rejeitar
+                  </button>
+                  <button
+                    onClick={() => aprovar(d.id)}
+                    style={{
+                      padding: '6px 14px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+                      background: '#f0fdf4', color: '#059669', border: '1px solid #bbf7d0',
+                      fontWeight: 600,
+                    }}
+                  >
+                    Aprovar
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ═══ HISTÓRICO ═══ */}
       {aba === 'historico' && (
