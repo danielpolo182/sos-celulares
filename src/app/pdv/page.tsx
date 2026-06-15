@@ -412,7 +412,8 @@ export default function PDVPage() {
   const showDropdown = searchFocused && searchProd.trim().length > 0
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#f1f5f9', fontFamily: 'var(--font-sans, system-ui, sans-serif)', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#e2e8f0', fontFamily: 'var(--font-sans, system-ui, sans-serif)', overflow: 'hidden', padding: '12px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, background: '#fff', borderRadius: 14, border: '1px solid #cbd5e1', boxShadow: '0 4px 24px rgba(15,23,42,0.10)', overflow: 'hidden', maxWidth: 1400, width: '100%', margin: '0 auto' }}>
       <style>{`
         .pdv-card-btn:hover { background: #dbeafe !important; border-color: #93c5fd !important; }
         .pdv-dd-item:hover { background: #eff6ff !important; }
@@ -554,8 +555,8 @@ export default function PDVPage() {
                                   <p style={{ fontSize: 12, fontWeight: 600, color: '#065f46', marginBottom: 8 }}>Novo produto: <span style={{ color: '#0f172a' }}>{searchProd}</span></p>
                                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                                     <div style={{ flex: 1 }}>
-                                      <label style={{ ...lbl, marginBottom: 2 }}>Preço de venda (R$) *</label>
-                                      <input autoFocus type="number" step="0.01" min="0" value={qaPreco} onChange={e => setQaPreco(e.target.value)}
+                                      <label htmlFor="qa-preco" style={{ ...lbl, marginBottom: 2 }}>Preço de venda (R$) *</label>
+                                      <input id="qa-preco" autoFocus type="number" step="0.01" min="0" value={qaPreco} onChange={e => setQaPreco(e.target.value)}
                                         onKeyDown={e => e.key === 'Enter' && salvarQuickAdd()}
                                         placeholder="0,00" style={{ ...inp, padding: '6px 10px', fontSize: 13 }} />
                                     </div>
@@ -917,8 +918,8 @@ export default function PDVPage() {
             </h3>
             {(caixaAcao === 'abertura' || caixaAcao === 'reabertura') && <p style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>Informe o saldo físico contado na gaveta.</p>}
             {caixaAcao === 'fechamento' && <p style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>Informe o saldo físico contado na gaveta agora.</p>}
-            <div style={{ marginBottom: 12 }}><label style={lbl}>Valor declarado (R$) *</label><input style={inp} type="number" step="0.01" min="0" value={caixaValor} onChange={e => setCaixaValor(e.target.value)} placeholder="0,00" autoFocus /></div>
-            <div style={{ marginBottom: 16 }}><label style={lbl}>Observações</label><input style={inp} value={caixaObs} onChange={e => setCaixaObs(e.target.value)} placeholder="Opcional..." /></div>
+            <div style={{ marginBottom: 12 }}><label htmlFor="caixa-valor" style={lbl}>Valor declarado (R$) *</label><input id="caixa-valor" style={inp} type="number" step="0.01" min="0" value={caixaValor} onChange={e => setCaixaValor(e.target.value)} placeholder="0,00" autoFocus /></div>
+            <div style={{ marginBottom: 16 }}><label htmlFor="caixa-obs" style={lbl}>Observações</label><input id="caixa-obs" style={inp} value={caixaObs} onChange={e => setCaixaObs(e.target.value)} placeholder="Opcional..." /></div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => setShowCaixaModal(false)} style={{ flex: 1, padding: '9px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer', color: '#374151' }}>Cancelar</button>
               <button onClick={salvarCaixa} disabled={salvandoCaixa || !caixaValor}
@@ -929,6 +930,7 @@ export default function PDVPage() {
           </div>
         </div>
       )}
+    </div>
     </div>
   )
 }
