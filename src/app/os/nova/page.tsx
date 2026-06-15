@@ -12,10 +12,22 @@ type Produto = { id: string; nome: string; preco_venda: number; categoria: strin
 type PatternCell = number
 
 const SINTOMAS = [
-  'Tela trincada', 'Vidro quebrado', 'Sem imagem', 'Tela preta',
-  'Não carrega', 'Carregando lento', 'Não liga', 'Desligando sozinho',
-  'Sem áudio', 'Som baixo', 'Câmera', 'Molhado', 'Caiu na água',
-  'Falante', 'Botão power', 'Touch',
+  { id: 'display',    icon: '🖥️', label: 'Display',        desc: 'Sem imagem / tela preta' },
+  { id: 'trinca',     icon: '🔲', label: 'Tela trincada',  desc: 'Vidro quebrado' },
+  { id: 'touch',      icon: '👆', label: 'Touch',           desc: 'Sem resposta ao toque' },
+  { id: 'nao_liga',   icon: '⚡', label: 'Não liga',        desc: 'Sem resposta ao ligar' },
+  { id: 'carga',      icon: '🔌', label: 'Carregamento',   desc: 'Não carrega ou lento' },
+  { id: 'bateria',    icon: '🔋', label: 'Bateria',         desc: 'Descarrega rápido' },
+  { id: 'desliga',    icon: '🔄', label: 'Desligando',      desc: 'Reinicia sozinho' },
+  { id: 'sem_som',    icon: '🔇', label: 'Sem som',         desc: 'Áudio ausente ou baixo' },
+  { id: 'falante',    icon: '🔊', label: 'Falante',         desc: 'Alto-falante com falha' },
+  { id: 'microfone',  icon: '🎙️', label: 'Microfone',       desc: 'Voz não transmite' },
+  { id: 'power',      icon: '🔴', label: 'Botão power',     desc: 'Não funciona' },
+  { id: 'volume',     icon: '🎚️', label: 'Botões volume',   desc: 'Teclas sem resposta' },
+  { id: 'camera',     icon: '📷', label: 'Câmera',          desc: 'Frontal ou traseira' },
+  { id: 'molhado',    icon: '💧', label: 'Molhado',         desc: 'Caiu na água' },
+  { id: 'conector',   icon: '🔧', label: 'Conector',        desc: 'Porta USB com folga' },
+  { id: 'rede',       icon: '📶', label: 'Sem sinal',       desc: 'Rede / Wi-Fi / BT' },
 ]
 
 
@@ -285,7 +297,7 @@ export default function NovaOSPage() {
   // ─── Salvar OS — agora abre modal em vez de redirecionar
   async function salvar() {
     if (!clienteSelecionado && !nomeCliente.trim()) { setError('Informe o cliente.'); return }
-    if (!defeito.trim()) { setError('Informe o defeito relatado.'); return }
+    if (sintomasSelecionados.length === 0 && !defeito.trim()) { setError('Informe ao menos um sintoma ou descreva o defeito.'); return }
     setSaving(true); setError('')
 
     let clienteId = clienteSelecionado?.id ?? null
@@ -317,9 +329,10 @@ export default function NovaOSPage() {
       cor: cor || null,
       acessorios: acessorios.length > 0 ? acessorios : null,
       senha_aparelho: senhaInfo,
-      defeito_relatado: sintomasSelecionados.length > 0
-        ? `[${sintomasSelecionados.join(', ')}] ${defeito.trim()}`
-        : defeito.trim(),
+      defeito_relatado: [
+        sintomasSelecionados.length > 0 ? sintomasSelecionados.map(id => SINTOMAS.find(s => s.id === id)?.label ?? id).join(', ') : '',
+        defeito.trim(),
+      ].filter(Boolean).join(' — ') || 'Sem descrição',
       observacoes: observacoes || null,
       valor_orcamento: valor ? parseFloat(valor) : null,
       status: 'aguardando_diagnostico',
@@ -333,20 +346,19 @@ export default function NovaOSPage() {
     let produtoNomeFinal = produtoSelecionado?.nome ?? null
     let produtoPrecoFinal = produtoSelecionado?.preco_venda ?? null
 
-    if (novoProduto && nomeProduto.trim()) {
-      const preco = precoProduto ? parseFloat(precoProduto) : 0
+    if (produtoId === '__novo__' && produtoNomeFinal) {
       const { data: pData } = await supabase.from('produtos').insert({
-        nome: nomeProduto.trim(),
-        preco_venda: preco,
+        nome: produtoNomeFinal,
+        preco_venda: produtoPrecoFinal ?? 0,
         categoria: 'Peça',
         estoque_atual: 0,
       }).select('id,nome,preco_venda').single()
       produtoId = pData?.id ?? null
-      produtoNomeFinal = pData?.nome ?? nomeProduto.trim()
-      produtoPrecoFinal = pData?.preco_venda ?? preco
+      produtoNomeFinal = pData?.nome ?? produtoNomeFinal
+      produtoPrecoFinal = pData?.preco_venda ?? produtoPrecoFinal
     }
 
-    if (produtoId && produtoNomeFinal) {
+    if (produtoId && produtoId !== '__novo__' && produtoNomeFinal) {
       await supabase.from('os_itens').insert({
         os_id: osData.id,
         produto_id: produtoId,
@@ -552,10 +564,22 @@ export default function NovaOSPage() {
               {/* Sintomas */}
               <div style={{ gridColumn: '1/-1' }}>
                 <label style={lbl}>Sintomas relatados</label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                  {SINTOMAS.map(s => (
-                    <button key={s} type="button" onClick={() => toggleSintoma(s)} style={{ padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 500, cursor: 'pointer', border: '1px solid', background: sintomasSelecionados.includes(s) ? '#6366f1' : '#f8fafc', color: sintomasSelecionados.includes(s) ? '#fff' : '#475569', borderColor: sintomasSelecionados.includes(s) ? '#6366f1' : '#e2e8f0' }}>{s}</button>
-                  ))}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 5 }}>
+                  {SINTOMAS.map(s => {
+                    const sel = sintomasSelecionados.includes(s.id)
+                    return (
+                      <button key={s.id} type="button" onClick={() => toggleSintoma(s.id)}
+                        style={{ padding: '6px 4px', borderRadius: 8, fontSize: 10, fontWeight: 500, cursor: 'pointer', border: '2px solid', textAlign: 'center', lineHeight: 1.3, transition: 'all 0.1s',
+                          background: sel ? '#6366f1' : '#f8fafc',
+                          color: sel ? '#fff' : '#475569',
+                          borderColor: sel ? '#6366f1' : '#e2e8f0',
+                        }}>
+                        <div style={{ fontSize: 16, marginBottom: 2 }}>{s.icon}</div>
+                        <div style={{ fontWeight: 600 }}>{s.label}</div>
+                        <div style={{ fontSize: 9, opacity: 0.75, marginTop: 1 }}>{s.desc}</div>
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
 
@@ -595,6 +619,19 @@ export default function NovaOSPage() {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                       <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Nome *</label><input style={inp} value={nomeProduto} onChange={e => setNomeProduto(e.target.value)} placeholder="Ex: Tela Samsung A54 Incell" /></div>
                       <div><label style={lbl}>Preço de venda (R$)</label><input style={inp} type="number" min="0" step="0.01" value={precoProduto} onChange={e => setPrecoProduto(e.target.value)} placeholder="0,00" /></div>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
+                        <button type="button" onClick={() => {
+                          if (!nomeProduto.trim()) return
+                          setProdutoSelecionado({ id: '__novo__', nome: nomeProduto.trim(), preco_venda: precoProduto ? parseFloat(precoProduto) : 0, categoria: 'Peça' })
+                          setProdutoSearch(nomeProduto.trim())
+                          setNovoProduto(false)
+                        }} style={{ padding: '6px 14px', background: '#0369a1', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                          Confirmar
+                        </button>
+                        <button type="button" onClick={() => { setNovoProduto(false); setProdutoSearch('') }} style={{ padding: '6px 10px', background: 'none', border: '1px solid #bae6fd', borderRadius: 6, fontSize: 12, color: '#64748b', cursor: 'pointer' }}>
+                          Cancelar
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
