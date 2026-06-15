@@ -226,6 +226,42 @@ export default function NovaOSPage() {
   const [precoProduto, setPrecoProduto] = useState('')
   const produtoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // ── Fornecedor (Iplay)
+  const [fornecedorLoading, setFornecedorLoading] = useState(false)
+  const [fornecedorResults, setFornecedorResults] = useState<{ codigo: string; nome: string; preco: number }[]>([])
+  const [fornecedorAberto, setFornecedorAberto] = useState(false)
+  const [fornecedorQuery, setFornecedorQuery] = useState('')
+
+  async function buscarFornecedor() {
+    if (!fornecedorQuery.trim()) return
+    setFornecedorLoading(true)
+    setFornecedorResults([])
+    try {
+      const res = await fetch('/api/fornecedor/buscar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: fornecedorQuery }),
+      })
+      const data = await res.json() as { produtos?: { codigo: string; nome: string; preco: number }[]; error?: string }
+      if (data.produtos) setFornecedorResults(data.produtos)
+      else setError(data.error ?? 'Erro ao consultar fornecedor')
+    } finally {
+      setFornecedorLoading(false)
+    }
+  }
+
+  function selecionarDoFornecedor(item: { codigo: string; nome: string; preco: number }) {
+    const nome = `${item.nome} (cód. ${item.codigo})`
+    setProdutoSelecionado({ id: '__novo__', nome, preco_venda: item.preco, categoria: 'Peça' })
+    setProdutoSearch(nome)
+    setNomeProduto(nome)
+    setPrecoProduto(item.preco.toFixed(2))
+    setValor(item.preco.toFixed(2))
+    setFornecedorAberto(false)
+    setFornecedorResults([])
+    setNovoProduto(false)
+  }
+
   async function buscarProduto(q: string) {
     if (!q || q.length < 2) { setProdutoResults([]); return }
     const { data } = await supabase.from('produtos').select('id,nome,preco_venda,categoria').eq('ativo', true).ilike('nome', `%${q}%`).is('deleted_at', null).limit(6).order('nome')
@@ -636,8 +672,60 @@ export default function NovaOSPage() {
                 )}
               </div>
 
+              {/* Fornecedor Iplay */}
               <div style={{ gridColumn: '1/-1' }}>
-                <label style={lbl}>Defeito relatado pelo cliente *</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: fornecedorAberto ? 8 : 0 }}>
+                  <button type="button" onClick={() => { setFornecedorAberto(v => !v); setFornecedorResults([]) }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', border: '1px solid #e2e8f0', borderRadius: 6, background: fornecedorAberto ? '#f0fdf4' : '#f8fafc', fontSize: 11, fontWeight: 600, color: fornecedorAberto ? '#065f46' : '#475569', cursor: 'pointer' }}>
+                    🏪 Buscar no fornecedor (Iplay)
+                  </button>
+                  {fornecedorAberto && <span style={{ fontSize: 10, color: '#94a3b8' }}>Preços de custo — consulta em tempo real</span>}
+                </div>
+
+                {fornecedorAberto && (
+                  <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '10px 12px' }}>
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                      <input
+                        style={{ ...inp, flex: 1, background: '#fff' }}
+                        value={fornecedorQuery}
+                        onChange={e => setFornecedorQuery(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && buscarFornecedor()}
+                        placeholder="Ex: tela a32, bateria moto g52, conector iphone 11..."
+                        autoFocus
+                      />
+                      <button type="button" onClick={buscarFornecedor} disabled={fornecedorLoading}
+                        style={{ padding: '6px 14px', background: fornecedorLoading ? '#86efac' : '#16a34a', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: fornecedorLoading ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
+                        {fornecedorLoading ? 'Buscando...' : '🔍 Buscar'}
+                      </button>
+                    </div>
+
+                    {fornecedorResults.length > 0 && (
+                      <div style={{ maxHeight: 220, overflowY: 'auto', borderRadius: 6, border: '1px solid #bbf7d0', background: '#fff' }}>
+                        <div style={{ padding: '6px 10px', borderBottom: '1px solid #f1f5f9', fontSize: 10, fontWeight: 600, color: '#64748b', display: 'grid', gridTemplateColumns: '60px 1fr 70px' }}>
+                          <span>CÓD.</span><span>PRODUTO</span><span style={{ textAlign: 'right' }}>CUSTO</span>
+                        </div>
+                        {fornecedorResults.map(item => (
+                          <button key={item.codigo} type="button" onClick={() => selecionarDoFornecedor(item)}
+                            style={{ display: 'grid', gridTemplateColumns: '60px 1fr 70px', width: '100%', padding: '7px 10px', textAlign: 'left', background: 'none', border: 'none', borderBottom: '1px solid #f8fafc', cursor: 'pointer', fontSize: 11, color: '#1e293b', alignItems: 'center' }}
+                            onMouseEnter={e => (e.currentTarget.style.background = '#f0fdf4')}
+                            onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                            <span style={{ color: '#94a3b8', fontFamily: 'monospace' }}>{item.codigo}</span>
+                            <span style={{ fontWeight: 500, paddingRight: 8 }}>{item.nome}</span>
+                            <span style={{ textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>R$ {item.preco.toFixed(2)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {!fornecedorLoading && fornecedorResults.length === 0 && fornecedorQuery && (
+                      <p style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', padding: '8px 0' }}>Nenhum resultado ainda — clique em Buscar</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ gridColumn: '1/-1' }}>
+                <label style={lbl}>Defeito relatado pelo cliente</label>
                 <textarea style={{ ...inp, minHeight: 64, resize: 'vertical' }} value={defeito} onChange={e => setDefeito(e.target.value)} placeholder="Descreva o problema relatado pelo cliente..." />
               </div>
               <div>
