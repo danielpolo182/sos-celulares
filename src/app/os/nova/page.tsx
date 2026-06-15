@@ -4,20 +4,12 @@ export const dynamic = 'force-dynamic'
 import { useState, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { searchByModel, searchByTAC, validateIMEI, suggestRepair, type ModelSpec, type RepairSuggestion } from '@/lib/tac-database'
+import { searchByModel, searchByTAC, validateIMEI, type ModelSpec } from '@/lib/tac-database'
 
 // ─── Types ───────────────────────────────────────────────────
 type Cliente = { id: string; nome: string; telefone: string | null; cpf: string | null; data_nascimento: string | null }
 type PatternCell = number
 
-const DISPLAY_TYPES = ['AMOLED', 'Super AMOLED', 'OLED', 'IPS LCD', 'LCD', 'TFT'] as const
-
-const SINTOMAS = [
-  'Sem imagem', 'Tela preta', 'Tela trincada', 'Vidro quebrado',
-  'Não carrega', 'Carregando lento', 'Não liga', 'Desligando sozinho',
-  'Sem áudio', 'Som baixo', 'Câmera', 'Molhado', 'Caiu na água',
-  'Falante', 'Foto',
-]
 
 function formatPhone(v: string) {
   return v.replace(/\D/g, '').slice(0, 11)
@@ -71,17 +63,10 @@ function PatternLock({ value, onChange }: { value: number[]; onChange: (v: numbe
   )
 }
 
-type USBReading = '0' | '0.6' | '0.6-3.0' | 'above3'
-const USB_OPTIONS: { value: USBReading; label: string; color: string }[] = [
-  { value: '0',       label: '0A — Sem leitura',        color: '#ef4444' },
-  { value: '0.6',     label: '0.6A — Carregando lento', color: '#f59e0b' },
-  { value: '0.6-3.0', label: '0.6–3.0A — Normal',       color: '#10b981' },
-  { value: 'above3',  label: '>3.0A — Curto/anormal',   color: '#8b5cf6' },
-]
 
 // ─── Modal pós-salvamento ────────────────────────────────────
 function ModalSalvo({
-  osId, osNumero, clienteNome, clienteTelefone, defeito, modelo, valor,
+  osId, osNumero, clienteNome, clienteTelefone, defeito, modelo,
   onFechar
 }: {
   osId: string
@@ -90,7 +75,6 @@ function ModalSalvo({
   clienteTelefone: string | null
   defeito: string
   modelo: string
-  valor: string
   onFechar: () => void
 }) {
   const router = useRouter()
@@ -180,7 +164,6 @@ export default function NovaOSPage() {
   const [modeloSearch, setModeloSearch] = useState('')
   const [modeloResults, setModeloResults] = useState<ModelSpec[]>([])
   const [modeloSelecionado, setModeloSelecionado] = useState<ModelSpec | null>(null)
-  const [displayEscolhido, setDisplayEscolhido] = useState<string>('')
   const [imei, setImei] = useState('')
   const [imeiValido, setImeiValido] = useState<boolean | null>(null)
   const [cor, setCor] = useState('')
@@ -191,15 +174,6 @@ export default function NovaOSPage() {
   const [tipoSenha, setTipoSenha] = useState<'nenhuma' | 'pin' | 'senha' | 'padrao'>('nenhuma')
   const [senhaValor, setSenhaValor] = useState('')
   const [padrao, setPadrao] = useState<number[]>([])
-
-  // ── Diagnóstico
-  const [sintomasSelecionados, setSintomasSelecionados] = useState<string[]>([])
-  const [apresentaImagem, setApresentaImagem] = useState<boolean | null>(null)
-  const [usbReading, setUsbReading] = useState<USBReading | null>(null)
-  const [botaoPower, setBotaoPower] = useState<boolean | null>(null)
-  const [touchFunciona, setTouchFunciona] = useState<boolean | null>(null)
-  const [sugestoes, setSugestoes] = useState<RepairSuggestion[]>([])
-  const [sugestaoAtiva, setSugestaoAtiva] = useState<RepairSuggestion | null>(null)
 
   // ── Assinatura do cliente
   const clienteSigRef = useRef<HTMLCanvasElement>(null)
@@ -225,7 +199,6 @@ export default function NovaOSPage() {
 
   // ── OS
   const [defeito, setDefeito] = useState('')
-  const [valor, setValor] = useState('')
   const [observacoes, setObservacoes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -261,7 +234,7 @@ export default function NovaOSPage() {
     modeloTimer.current = setTimeout(() => setModeloResults(searchByModel(v)), 200)
   }
 
-  function selecionarModelo(m: ModelSpec) { setModeloSelecionado(m); setModeloSearch(`${m.marca} ${m.modelo}`); setDisplayEscolhido(m.displayTipo); setModeloResults([]) }
+  function selecionarModelo(m: ModelSpec) { setModeloSelecionado(m); setModeloSearch(`${m.marca} ${m.modelo}`); setModeloResults([]) }
 
   function onIMEIChange(v: string) {
     const raw = v.replace(/\D/g, '').slice(0, 15); setImei(raw)
@@ -270,21 +243,6 @@ export default function NovaOSPage() {
       if (valid) { const spec = searchByTAC(raw.slice(0, 8)); if (spec && !modeloSelecionado) selecionarModelo(spec) }
     } else { setImeiValido(null) }
   }
-
-  function toggleSintoma(s: string) {
-    const next = sintomasSelecionados.includes(s) ? sintomasSelecionados.filter(x => x !== s) : [...sintomasSelecionados, s]
-    setSintomasSelecionados(next)
-    const allSintomas = [...next]
-    if (apresentaImagem === false) allSintomas.push('sem imagem')
-    if (usbReading === '0') allSintomas.push('não carrega')
-    if (allSintomas.length > 0 && modeloSelecionado) {
-      const sug = suggestRepair(allSintomas, modeloSelecionado.modelo, modeloSelecionado.marca)
-      setSugestoes(sug)
-      if (!sugestaoAtiva && sug.length > 0) { setSugestaoAtiva(sug[0]); setValor(String(Math.round((sug[0].valorMin + sug[0].valorMax) / 2))); if (!defeito) setDefeito(sug[0].problema) }
-    }
-  }
-
-  function aplicarSugestao(s: RepairSuggestion) { setSugestaoAtiva(s); setValor(String(Math.round((s.valorMin + s.valorMax) / 2))); if (!defeito) setDefeito(s.problema) }
 
   // ─── Salvar OS — agora abre modal em vez de redirecionar
   async function salvar() {
@@ -322,9 +280,8 @@ export default function NovaOSPage() {
       acessorios: acessorios.length > 0 ? acessorios : null,
       senha_aparelho: senhaInfo,
       defeito_relatado: defeito.trim(),
-      valor_orcamento: valor ? parseFloat(valor) : null,
       observacoes: observacoes || null,
-      status: 'aberta',
+      status: 'aguardando_diagnostico',
       assinatura_cliente: assinaturaCliente || null,
     }).select('id, numero').single()
 
@@ -361,7 +318,6 @@ export default function NovaOSPage() {
           clienteTelefone={modalSalvo.clienteTelefone}
           defeito={defeito}
           modelo={modeloSelecionado ? `${modeloSelecionado.marca} ${modeloSelecionado.modelo}` : modeloSearch || 'Aparelho'}
-          valor={valor}
           onFechar={() => router.push('/os')}
         />
       )}
@@ -479,17 +435,6 @@ export default function NovaOSPage() {
                 </div>
               ))}
             </div>
-            <label style={lbl}>Display que será utilizado no reparo</label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {DISPLAY_TYPES.map(d => {
-                const isOriginal = d === modeloSelecionado.displayTipo, isSelected = displayEscolhido === d
-                return (
-                  <button key={d} onClick={() => setDisplayEscolhido(d)} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 20, border: '1px solid', cursor: 'pointer', background: isSelected ? '#e0e7ff' : '#fff', color: isSelected ? '#3730a3' : '#64748b', borderColor: isSelected ? '#818cf8' : '#e2e8f0' }}>
-                    {d}{isOriginal && <span style={{ marginLeft: 4, fontSize: 10, color: '#10b981', fontWeight: 600 }}>●original</span>}{isSelected && !isOriginal && <span style={{ marginLeft: 4, fontSize: 10, color: '#f59e0b', fontWeight: 600 }}>⚠ inferior</span>}
-                  </button>
-                )
-              })}
-            </div>
           </div>
         )}
       </div>
@@ -522,80 +467,13 @@ export default function NovaOSPage() {
         )}
       </div>
 
-      {/* ── 4. DIAGNÓSTICO */}
-      <div style={section}>
-        <div style={sectionTitle}><span>🔬</span> Diagnóstico inicial</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-          <div>
-            <label style={lbl}>Apresenta imagem?</label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {[{ v: true, l: '✅ Sim' }, { v: false, l: '❌ Não' }].map(({ v, l }) => (
-                <button key={String(v)} onClick={() => { setApresentaImagem(v); if (!v) toggleSintoma('sem imagem') }} style={{ flex: 1, padding: '8px', borderRadius: 7, fontSize: 12, cursor: 'pointer', border: '1px solid', background: apresentaImagem === v ? '#e0e7ff' : '#fff', color: apresentaImagem === v ? '#3730a3' : '#64748b', borderColor: apresentaImagem === v ? '#818cf8' : '#e2e8f0' }}>{l}</button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label style={lbl}>Botão power responde?</label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {[{ v: true, l: '✅ Sim' }, { v: false, l: '❌ Não' }].map(({ v, l }) => (
-                <button key={String(v)} onClick={() => setBotaoPower(v)} style={{ flex: 1, padding: '8px', borderRadius: 7, fontSize: 12, cursor: 'pointer', border: '1px solid', background: botaoPower === v ? '#e0e7ff' : '#fff', color: botaoPower === v ? '#3730a3' : '#64748b', borderColor: botaoPower === v ? '#818cf8' : '#e2e8f0' }}>{l}</button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label style={lbl}>Touch funciona?</label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {[{ v: true, l: '✅ Sim' }, { v: false, l: '❌ Não' }].map(({ v, l }) => (
-                <button key={String(v)} onClick={() => setTouchFunciona(v)} style={{ flex: 1, padding: '8px', borderRadius: 7, fontSize: 12, cursor: 'pointer', border: '1px solid', background: touchFunciona === v ? '#e0e7ff' : '#fff', color: touchFunciona === v ? '#3730a3' : '#64748b', borderColor: touchFunciona === v ? '#818cf8' : '#e2e8f0' }}>{l}</button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label style={lbl}>Leitura USB (amperímetro)</label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {USB_OPTIONS.map(opt => (
-                <button key={opt.value} onClick={() => { setUsbReading(opt.value); if (opt.value === '0') toggleSintoma('não carrega') }} style={{ padding: '7px 10px', borderRadius: 7, fontSize: 12, cursor: 'pointer', border: '1px solid', textAlign: 'left', background: usbReading === opt.value ? opt.color + '20' : '#fff', color: usbReading === opt.value ? opt.color : '#64748b', borderColor: usbReading === opt.value ? opt.color : '#e2e8f0', fontWeight: usbReading === opt.value ? 500 : 400 }}>{opt.label}</button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div style={{ marginBottom: 16 }}>
-          <label style={lbl}>Sintomas observados</label>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {SINTOMAS.map(s => (
-              <button key={s} onClick={() => toggleSintoma(s)} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 20, cursor: 'pointer', border: '1px solid', background: sintomasSelecionados.includes(s) ? '#e0e7ff' : '#f8fafc', color: sintomasSelecionados.includes(s) ? '#3730a3' : '#64748b', borderColor: sintomasSelecionados.includes(s) ? '#818cf8' : '#e2e8f0' }}>{s}</button>
-            ))}
-          </div>
-        </div>
-
-        {sugestoes.length > 0 && (
-          <div style={{ background: '#f8f7ff', border: '1px solid #e0e7ff', borderRadius: 8, padding: 14 }}>
-            <p style={{ fontSize: 12, fontWeight: 500, color: '#4338ca', marginBottom: 10 }}>💡 Sugestões de reparo</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {sugestoes.map((s, i) => (
-                <button key={i} onClick={() => aplicarSugestao(s)} style={{ padding: '10px 14px', borderRadius: 8, cursor: 'pointer', textAlign: 'left', border: '1px solid', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: sugestaoAtiva === s ? '#e0e7ff' : '#fff', borderColor: sugestaoAtiva === s ? '#818cf8' : '#e2e8f0' }}>
-                  <div><div style={{ fontSize: 13, fontWeight: 500, color: '#0f172a' }}>{s.sugestao}</div><div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{s.problema} · confiança {s.confianca}%</div></div>
-                  <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}><div style={{ fontSize: 13, fontWeight: 600, color: '#6366f1' }}>R$ {s.valorMin}–{s.valorMax}</div><div style={{ fontSize: 10, color: '#94a3b8' }}>estimado</div></div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ── 5. OS */}
+      {/* ── 4. OS */}
       <div style={section}>
         <div style={sectionTitle}><span>📋</span> Dados da OS</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div style={{ gridColumn: '1/-1' }}>
             <label style={lbl}>Defeito relatado pelo cliente *</label>
             <textarea style={{ ...inp, minHeight: 80, resize: 'vertical' }} value={defeito} onChange={e => setDefeito(e.target.value)} placeholder="Descreva o problema relatado pelo cliente..." />
-          </div>
-          <div>
-            <label style={lbl}>Valor do orçamento (R$)</label>
-            <input style={inp} type="number" value={valor} onChange={e => setValor(e.target.value)} placeholder="0,00" />
-            {sugestaoAtiva && <p style={{ fontSize: 11, color: '#6366f1', marginTop: 4 }}>Sugerido: R$ {sugestaoAtiva.valorMin}–{sugestaoAtiva.valorMax}</p>}
           </div>
           <div>
             <label style={lbl}>Observações internas</label>
