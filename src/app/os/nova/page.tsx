@@ -238,7 +238,10 @@ export default function NovaOSPage() {
     produtoTimer.current = setTimeout(() => buscarProduto(v), 250)
   }
 
-  function selecionarProduto(p: Produto) { setProdutoSelecionado(p); setProdutoSearch(p.nome); setProdutoResults([]) }
+  function selecionarProduto(p: Produto) {
+    setProdutoSelecionado(p); setProdutoSearch(p.nome); setProdutoResults([])
+    setValor(p.preco_venda > 0 ? p.preco_venda.toFixed(2) : '')
+  }
   function ativarNovoProduto() { setNomeProduto(produtoSearch); setNovoProduto(true); setProdutoResults([]) }
 
   // ── OS
@@ -408,12 +411,6 @@ export default function NovaOSPage() {
         <button onClick={() => router.back()} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#94a3b8', lineHeight: 1 }}>←</button>
         <h1 style={{ fontSize: 16, fontWeight: 600, color: '#0f172a', letterSpacing: '-0.02em' }}>Nova Ordem de Serviço</h1>
         {error && <span style={{ fontSize: 12, color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '3px 10px' }}>{error}</span>}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <button onClick={() => router.back()} style={{ padding: '7px 16px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, fontWeight: 500, background: '#fff', cursor: 'pointer', color: '#374151' }}>Cancelar</button>
-          <button onClick={salvar} disabled={saving} style={{ padding: '7px 22px', background: saving ? '#a5b4fc' : '#6366f1', color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer' }}>
-            {saving ? 'Salvando...' : 'Abrir OS'}
-          </button>
-        </div>
       </div>
 
       {/* Layout duas colunas */}
@@ -622,8 +619,10 @@ export default function NovaOSPage() {
                       <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
                         <button type="button" onClick={() => {
                           if (!nomeProduto.trim()) return
-                          setProdutoSelecionado({ id: '__novo__', nome: nomeProduto.trim(), preco_venda: precoProduto ? parseFloat(precoProduto) : 0, categoria: 'Peça' })
+                          const preco = precoProduto ? parseFloat(precoProduto) : 0
+                          setProdutoSelecionado({ id: '__novo__', nome: nomeProduto.trim(), preco_venda: preco, categoria: 'Peça' })
                           setProdutoSearch(nomeProduto.trim())
+                          if (preco > 0) setValor(preco.toFixed(2))
                           setNovoProduto(false)
                         }} style={{ padding: '6px 14px', background: '#0369a1', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                           Confirmar
@@ -652,16 +651,28 @@ export default function NovaOSPage() {
             </div>
           </div>
 
-          {/* Assinatura */}
+          {/* Assinatura + botão salvar */}
           <div style={card}>
             <div style={cardTitle}>Assinatura do cliente</div>
             <p style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>O cliente assina autorizando o serviço e confirmando as informações.</p>
-            <div style={{ position: 'relative', display: 'inline-block', border: '1px solid #e2e8f0', borderRadius: 7, background: '#fafafa' }}>
-              <canvas ref={clienteSigRef} width={460} height={80} style={{ display: 'block', cursor: 'crosshair', borderRadius: 7 }}
-                onMouseDown={onSigDown} onMouseMove={onSigMove} onMouseUp={onSigUp} onMouseLeave={onSigUp} />
-              {!assinaturaCliente && <p style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', color: '#cbd5e1', fontSize: 11, pointerEvents: 'none', userSelect: 'none' }}>Assinar aqui...</p>}
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ position: 'relative', display: 'inline-block', border: '1px solid #e2e8f0', borderRadius: 7, background: '#fafafa' }}>
+                  <canvas ref={clienteSigRef} width={340} height={74} style={{ display: 'block', cursor: 'crosshair', borderRadius: 7 }}
+                    onMouseDown={onSigDown} onMouseMove={onSigMove} onMouseUp={onSigUp} onMouseLeave={onSigUp} />
+                  {!assinaturaCliente && <p style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', color: '#cbd5e1', fontSize: 11, pointerEvents: 'none', userSelect: 'none' }}>Assinar aqui...</p>}
+                </div>
+                {assinaturaCliente && <button onClick={limparSig} style={{ marginTop: 4, fontSize: 11, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', display: 'block' }}>Limpar</button>}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 4 }}>
+                <button onClick={salvar} disabled={saving} style={{ padding: '10px 22px', background: saving ? '#a5b4fc' : '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>
+                  {saving ? 'Salvando...' : '💾 Salvar OS'}
+                </button>
+                <button onClick={() => router.back()} style={{ padding: '7px 16px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 12, fontWeight: 500, background: '#fff', cursor: 'pointer', color: '#64748b', textAlign: 'center' }}>
+                  Cancelar
+                </button>
+              </div>
             </div>
-            {assinaturaCliente && <button onClick={limparSig} style={{ marginLeft: 8, fontSize: 11, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}>Limpar</button>}
           </div>
         </div>
       </div>
