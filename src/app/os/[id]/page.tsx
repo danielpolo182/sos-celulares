@@ -41,6 +41,10 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string; 
   pronta:       { label: 'Pronta',       bg: '#ecfdf5', color: '#065f46', icon: '✅', waMensagem: 'Olá, {nome}! 🎉 Ótima notícia!\n\nSua *OS Nº {numero}* está *PRONTA* para retirada!\n\n📱 Aparelho: {modelo}\n💰 Valor: R$ {valor}\n\nPasse em nossa loja para retirar. Aguardamos você! 😊' },
   entregue:     { label: 'Entregue',     bg: '#f0fdf4', color: '#14532d', icon: '📦', waMensagem: 'Olá, {nome}! Confirmando a entrega do seu *{modelo}*. Obrigado pela preferência! 🙏\n\n*OS Nº {numero}* finalizada.' },
   cancelada:    { label: 'Cancelada',    bg: '#fef2f2', color: '#991b1b', icon: '❌', waMensagem: '' },
+  aguardando_diagnostico: { label: 'Aguard. diagnóstico', bg: '#f3e8ff', color: '#7c3aed', icon: '🔬', waMensagem: '' },
+  em_orcamento:           { label: 'Em orçamento',        bg: '#fef3c7', color: '#d97706', icon: '💰', waMensagem: '' },
+  em_reparo:              { label: 'Em reparo',            bg: '#fef3c7', color: '#92400e', icon: '🔧', waMensagem: 'Olá, {nome}! 👋 Sua *OS Nº {numero}* está em reparo!' },
+  aguardando_peca:        { label: 'Aguard. peça',         bg: '#fff7ed', color: '#c2410c', icon: '📦', waMensagem: '' },
 }
 
 const PAGAMENTOS = ['Dinheiro', 'PIX', 'Cartão débito', 'Cartão crédito', 'Transferência']
@@ -58,6 +62,17 @@ const CHECKLIST_ITEMS = [
 ]
 
 type ChecklistState = Record<string, 'ok' | 'falha' | 'nao_testado'>
+
+type CategoriaItens = Record<string, boolean>
+
+type DiagnosticoForm = {
+  tela: { selecionada: boolean; tipoDisplay: string; itens: CategoriaItens }
+  bateria: { selecionada: boolean; itens: CategoriaItens }
+  camera: { selecionada: boolean; itens: CategoriaItens }
+  placa: { selecionada: boolean; itens: CategoriaItens }
+  conector: { selecionada: boolean; itens: CategoriaItens }
+  estrutura: { selecionada: boolean; itens: CategoriaItens }
+}
 
 const QUALIDADE_CONFIG: Record<string, { label: string; bg: string; color: string }> = {
   original:       { label: 'Original',   bg: '#E1F5EE', color: '#085041' },
@@ -119,6 +134,19 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
   const [pixModal, setPixModal] = useState<{ cobrancaId: string; pixCopiaCola: string; valor: number; expiraEm: string; temTelefone: boolean } | null>(null)
   const [observacoes, setObservacoes] = useState('')
   const [checklist, setChecklist] = useState<ChecklistState>({})
+
+  const [showDiagnostico, setShowDiagnostico] = useState(false)
+  const [savingDiagnostico, setSavingDiagnostico] = useState(false)
+  const [valorOrcamento, setValorOrcamento] = useState('')
+  const [obsTecnica, setObsTecnica] = useState('')
+  const [diagForm, setDiagForm] = useState<DiagnosticoForm>({
+    tela:     { selecionada: false, tipoDisplay: '', itens: { toque: false, imagem: false, quebrado: false } },
+    bateria:  { selecionada: false, itens: { autonomia: false, naoCarrega: false, inchada: false } },
+    camera:   { selecionada: false, itens: { frontal: false, traseira: false, foco: false } },
+    placa:    { selecionada: false, itens: { naoLiga: false, travamentos: false, semSinal: false } },
+    conector: { selecionada: false, itens: { usb: false, audio: false } },
+    estrutura:{ selecionada: false, itens: { carcaca: false, botoes: false } },
+  })
 
   const [cfgLoja, setCfgLoja] = useState<Record<string, string>>({
     loja_nome: 'SOS Celulares', loja_telefone: '', loja_email: '',
@@ -273,6 +301,37 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
     const { data } = await supabase.from('ordens_servico').select('*,clientes(id,nome,telefone,cpf)').eq('id', id).single()
     if (data) setOs(data as unknown as OS)
     setSaving(false)
+  }
+
+  async function salvarDiagnostico() {
+    if (!os) return
+    setSavingDiagnostico(true)
+    const { error } = await supabase.from('ordens_servico').update({
+      diagnostico: diagForm,
+      obs_tecnica: obsTecnica || null,
+      tipo_display: diagForm.tela.selecionada && diagForm.tela.tipoDisplay
+        ? diagForm.tela.tipoDisplay
+        : null,
+      valor_orcamento: valorOrcamento ? parseFloat(valorOrcamento) : null,
+      status: 'em_orcamento',
+      updated_at: new Date().toISOString(),
+    }).eq('id', os.id)
+
+    if (error) {
+      alert(`Erro ao salvar diagnóstico: ${error.message}`)
+      setSavingDiagnostico(false)
+      return
+    }
+
+    setShowDiagnostico(false)
+    // Recarregar OS
+    const { data } = await supabase
+      .from('ordens_servico')
+      .select('*, clientes(id,nome,telefone,cpf)')
+      .eq('id', os.id)
+      .single()
+    if (data) setOs(data as OS)
+    setSavingDiagnostico(false)
   }
 
   function toggleChecklist(key: string, val: 'ok' | 'falha' | 'nao_testado') { setChecklist(c => ({ ...c, [key]: val })) }
@@ -770,6 +829,209 @@ ${itensOrc.length > 0 ? `<table><thead><tr><th>Item</th><th>Qtd</th><th>Unit.</t
       <div style={{ background: '#fefce8', border: '1px solid #fef08a', borderRadius: 8, padding: '10px 16px', marginBottom: 16, fontSize: 12, color: '#713f12', lineHeight: 1.6 }}>
         <strong>📋 Políticas:</strong> prazo de retirada {cfgLoja.retirada_prazo_dias || 90} dias · taxa R$ {cfgLoja.retirada_taxa_mensal || 10},00/mês após o prazo · garantia cobre apenas o serviço realizado.
       </div>
+
+      {os.status === 'aguardando_diagnostico' && !showDiagnostico && (
+        <button
+          onClick={() => setShowDiagnostico(true)}
+          style={{
+            padding: '10px 20px', background: '#6366f1', color: '#fff', border: 'none',
+            borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', marginBottom: 16,
+          }}
+        >
+          🔬 Iniciar Diagnóstico
+        </button>
+      )}
+
+      {showDiagnostico && (
+        <div style={{
+          background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12,
+          padding: '20px 24px', marginBottom: 16,
+        }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', marginBottom: 16 }}>
+            🔬 Diagnóstico Técnico
+          </h3>
+
+          {([
+            {
+              key: 'tela' as const,
+              label: 'Tela / Display',
+              itens: [
+                { key: 'toque', label: 'Toque com problema' },
+                { key: 'imagem', label: 'Imagem com problema' },
+                { key: 'quebrado', label: 'Display quebrado' },
+              ],
+            },
+            {
+              key: 'bateria' as const,
+              label: 'Bateria',
+              itens: [
+                { key: 'autonomia', label: 'Autonomia ruim' },
+                { key: 'naoCarrega', label: 'Não carrega' },
+                { key: 'inchada', label: 'Bateria inchada' },
+              ],
+            },
+            {
+              key: 'camera' as const,
+              label: 'Câmera',
+              itens: [
+                { key: 'frontal', label: 'Câmera frontal' },
+                { key: 'traseira', label: 'Câmera traseira' },
+                { key: 'foco', label: 'Problema de foco' },
+              ],
+            },
+            {
+              key: 'placa' as const,
+              label: 'Placa',
+              itens: [
+                { key: 'naoLiga', label: 'Não liga' },
+                { key: 'travamentos', label: 'Travamentos' },
+                { key: 'semSinal', label: 'Sem sinal de rede' },
+              ],
+            },
+            {
+              key: 'conector' as const,
+              label: 'Conector',
+              itens: [
+                { key: 'usb', label: 'USB / Carregamento' },
+                { key: 'audio', label: 'Áudio / P2' },
+              ],
+            },
+            {
+              key: 'estrutura' as const,
+              label: 'Estrutura',
+              itens: [
+                { key: 'carcaca', label: 'Carcaça danificada' },
+                { key: 'botoes', label: 'Botões físicos' },
+              ],
+            },
+          ] as const).map(cat => (
+            <div key={cat.key} style={{ marginBottom: 12, border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+              <div
+                onClick={() => setDiagForm(f => ({
+                  ...f,
+                  [cat.key]: { ...f[cat.key], selecionada: !f[cat.key].selecionada },
+                }))}
+                style={{
+                  padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
+                  background: diagForm[cat.key].selecionada ? '#f5f3ff' : '#f8fafc',
+                  borderBottom: diagForm[cat.key].selecionada ? '1px solid #e2e8f0' : 'none',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  readOnly
+                  checked={diagForm[cat.key].selecionada}
+                  style={{ width: 16, height: 16, accentColor: '#6366f1', cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: 14, fontWeight: 500, color: '#0f172a' }}>{cat.label}</span>
+              </div>
+              {diagForm[cat.key].selecionada && (
+                <div style={{ padding: '12px 14px', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {cat.itens.map(item => (
+                    <button
+                      key={item.key}
+                      onClick={() => setDiagForm(f => ({
+                        ...f,
+                        [cat.key]: {
+                          ...f[cat.key],
+                          itens: {
+                            ...f[cat.key].itens,
+                            [item.key]: !f[cat.key].itens[item.key],
+                          },
+                        },
+                      }))}
+                      style={{
+                        padding: '5px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: '1px solid',
+                        background: diagForm[cat.key].itens[item.key] ? '#fee2e2' : '#f8fafc',
+                        color: diagForm[cat.key].itens[item.key] ? '#dc2626' : '#64748b',
+                        borderColor: diagForm[cat.key].itens[item.key] ? '#fecaca' : '#e2e8f0',
+                      }}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                  {cat.key === 'tela' && (
+                    <div style={{ width: '100%', marginTop: 8 }}>
+                      <label style={{ fontSize: 12, color: '#64748b', display: 'block', marginBottom: 4 }}>
+                        Tipo de display para o reparo
+                      </label>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {(['original', 'incell', 'oled', 'amoled'] as const).map(tipo => (
+                          <button
+                            key={tipo}
+                            onClick={() => setDiagForm(f => ({
+                              ...f,
+                              tela: { ...f.tela, tipoDisplay: tipo },
+                            }))}
+                            style={{
+                              padding: '5px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: '1px solid',
+                              background: diagForm.tela.tipoDisplay === tipo ? '#e0e7ff' : '#fff',
+                              color: diagForm.tela.tipoDisplay === tipo ? '#3730a3' : '#64748b',
+                              borderColor: diagForm.tela.tipoDisplay === tipo ? '#818cf8' : '#e2e8f0',
+                              textTransform: 'capitalize',
+                            }}
+                          >
+                            {tipo}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+
+          {/* Valor e observações */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 8 }}>
+            <div>
+              <label style={{ fontSize: 12, color: '#64748b', display: 'block', marginBottom: 4 }}>
+                Valor do orçamento (R$)
+              </label>
+              <input
+                type="number"
+                value={valorOrcamento}
+                onChange={e => setValorOrcamento(e.target.value)}
+                placeholder="0,00"
+                style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, color: '#1e293b', background: '#fff', outline: 'none', fontFamily: 'inherit' }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, color: '#64748b', display: 'block', marginBottom: 4 }}>
+                Observações técnicas
+              </label>
+              <input
+                value={obsTecnica}
+                onChange={e => setObsTecnica(e.target.value)}
+                placeholder="Notas para o técnico..."
+                style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, color: '#1e293b', background: '#fff', outline: 'none', fontFamily: 'inherit' }}
+              />
+            </div>
+          </div>
+
+          {/* Botões */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
+            <button
+              onClick={() => setShowDiagnostico(false)}
+              style={{ padding: '9px 18px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, background: '#fff', cursor: 'pointer', color: '#374151' }}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={salvarDiagnostico}
+              disabled={savingDiagnostico}
+              style={{
+                padding: '9px 20px',
+                background: savingDiagnostico ? '#a5b4fc' : '#6366f1',
+                color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600,
+                cursor: savingDiagnostico ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {savingDiagnostico ? 'Salvando...' : 'Salvar Diagnóstico'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Abas */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid #e2e8f0' }}>
