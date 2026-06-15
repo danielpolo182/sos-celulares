@@ -33,27 +33,50 @@ type Historico = {
 
 type PixConfig = { mp_access_token: string; mp_webhook_secret: string; ativo: boolean }
 
-// ─── Menu lateral ─────────────────────────────────────────
-const MENU = [
-  { key: 'loja',         icon: '🏪', label: 'Dados da loja',       sub: [] },
-  { key: 'marca',        icon: '🎨', label: 'Marca & Logo',         sub: [] },
-  { key: 'operacional',  icon: '⚙️', label: 'Parâmetros',           sub: [] },
-  { key: 'impressao',    icon: '🖨', label: 'Impressão',            sub: [] },
-  { key: 'numeracao',    icon: '🔢', label: 'Numeração',            sub: [] },
-  { key: 'plano',        icon: '💎', label: 'Meu plano',            sub: [] },
-  { key: 'qualidades',   icon: '🏷',  label: 'Qualidades de peças',  sub: [] },
-  { key: 'whatsapp',     icon: '💬', label: 'WhatsApp API',           sub: [] },
-  { key: 'pdv_cfg',      icon: '💳', label: 'PDV',                  sub: [] },
-  { key: 'rotinas_cfg',  icon: '✅', label: 'Rotinas',              sub: [] },
-  { key: 'pix',          icon: '📱', label: 'PIX',                  sub: [] },
-  { key: 'assinatura',   icon: '✍️', label: 'Assinatura digital',   sub: [] },
-  { key: 'alertas',      icon: '🔔', label: 'Alertas',              sub: [] },
-  { key: 'formas_pgto',  icon: '💳', label: 'Formas de pagamento',  sub: [] },
-  { key: 'usuarios',     icon: '👥', label: 'Usuários',             sub: [] },
-  { key: 'permissoes',   icon: '🔐', label: 'Permissões',           sub: [] },
-  { key: 'historico',    icon: '📜', label: 'Histórico',            sub: [] },
-  { key: 'banco_aparelhos', icon: '📲', label: 'Banco de aparelhos',  sub: [] },
+// ─── Menu lateral com categorias ──────────────────────────
+const MENU_GRUPOS = [
+  {
+    label: 'Loja',
+    items: [
+      { key: 'loja',        icon: '🏪', label: 'Dados da loja' },
+      { key: 'marca',       icon: '🎨', label: 'Marca & Logo' },
+      { key: 'impressao',   icon: '🖨', label: 'Impressão' },
+      { key: 'assinatura',  icon: '✍️', label: 'Assinatura digital' },
+      { key: 'qualidades',  icon: '🏷',  label: 'Qualidades de peças' },
+      { key: 'numeracao',   icon: '🔢', label: 'Numeração' },
+    ],
+  },
+  {
+    label: 'Gestão',
+    items: [
+      { key: 'formas_pgto', icon: '💳', label: 'Formas de pagamento' },
+      { key: 'pdv_cfg',     icon: '🖥', label: 'PDV' },
+      { key: 'rotinas_cfg', icon: '✅', label: 'Rotinas' },
+      { key: 'alertas',     icon: '🔔', label: 'Alertas' },
+      { key: 'operacional', icon: '⚙️', label: 'Parâmetros' },
+    ],
+  },
+  {
+    label: 'Integrações',
+    items: [
+      { key: 'whatsapp',        icon: '💬', label: 'WhatsApp API' },
+      { key: 'pix',             icon: '📱', label: 'PIX / Mercado Pago' },
+      { key: 'banco_aparelhos', icon: '📲', label: 'Banco de aparelhos' },
+    ],
+  },
+  {
+    label: 'Sistema',
+    items: [
+      { key: 'usuarios',   icon: '👥', label: 'Usuários' },
+      { key: 'permissoes', icon: '🔐', label: 'Permissões' },
+      { key: 'plano',      icon: '💎', label: 'Meu plano' },
+      { key: 'historico',  icon: '📜', label: 'Histórico' },
+    ],
+  },
 ]
+
+// flat list para compatibilidade com activeMenu
+const MENU = MENU_GRUPOS.flatMap(g => g.items)
 
 const MARCAS_SCRAPING = [
   { slug: 'samsung',  label: 'Samsung',  icon: '🔷' },
@@ -730,23 +753,33 @@ export default function ConfiguracoesPage() {
           <p style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>Configurações</p>
         </div>
         <nav style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
-          {MENU.map(item => (
-            <button
-              key={item.key}
-              onClick={() => setActiveMenu(item.key)}
-              style={{
-                width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                padding: '8px 10px', borderRadius: 7, border: 'none', cursor: 'pointer',
-                textAlign: 'left', marginBottom: 2, fontSize: 13,
-                background: activeMenu === item.key ? '#dbeafe' : 'transparent',
-                color: activeMenu === item.key ? '#1d4ed8' : '#374151',
-                fontWeight: activeMenu === item.key ? 500 : 400,
-                fontFamily: 'inherit',
-              }}
-            >
-              <span style={{ fontSize: 14 }}>{item.icon}</span>
-              {item.label}
-            </button>
+          {MENU_GRUPOS.map((grupo, gi) => (
+            <div key={grupo.label} style={{ marginBottom: gi < MENU_GRUPOS.length - 1 ? 4 : 0 }}>
+              <div style={{ fontSize: 9.5, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '6px 10px 3px' }}>
+                {grupo.label}
+              </div>
+              {grupo.items.map(item => (
+                <button
+                  key={item.key}
+                  onClick={() => setActiveMenu(item.key)}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '7px 10px', borderRadius: 7, border: 'none', cursor: 'pointer',
+                    textAlign: 'left', marginBottom: 1, fontSize: 13,
+                    background: activeMenu === item.key ? '#dbeafe' : 'transparent',
+                    color: activeMenu === item.key ? '#1d4ed8' : '#374151',
+                    fontWeight: activeMenu === item.key ? 500 : 400,
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  <span style={{ fontSize: 14 }}>{item.icon}</span>
+                  {item.label}
+                </button>
+              ))}
+              {gi < MENU_GRUPOS.length - 1 && (
+                <div style={{ height: 1, background: '#e2e8f0', margin: '4px 8px 4px' }} />
+              )}
+            </div>
           ))}
         </nav>
       </div>
