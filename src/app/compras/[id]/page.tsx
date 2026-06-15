@@ -77,7 +77,7 @@ export default function PedidoRecebimentoPage({ params }: { params: { id: string
       .single()
 
     if (pedidoData) {
-      const forn = pedidoData.fornecedores as { nome: string } | null
+      const forn = (pedidoData.fornecedores as unknown) as { nome: string } | null
       setPedido({
         id: pedidoData.id,
         created_at: pedidoData.created_at,
