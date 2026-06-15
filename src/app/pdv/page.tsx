@@ -272,8 +272,11 @@ export default function PDVPage() {
     const preco = parseFloat(qaPreco.replace(',', '.')) || 0
     if (!nome || preco <= 0) return
     setQaSaving(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    const { data: perfil } = user ? await supabase.from('perfis').select('filial_id').eq('id', user.id).single() : { data: null }
     const { data: prod, error } = await supabase.from('produtos').insert({
       nome, preco_venda: preco, custo_unit: 0, ativo: true, unidade: 'un', movimenta_estoque: true, cadastro_rapido: true,
+      filial_id: (perfil as { filial_id: string } | null)?.filial_id ?? null,
     }).select('id, nome, preco_venda, custo_unit').single()
     if (prod && !error) {
       const p = prod as Produto
