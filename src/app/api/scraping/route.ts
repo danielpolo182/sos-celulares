@@ -147,7 +147,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ ok: true, resultados })
 }
 
-// Trigger manual — autenticado por sessão, restrito a danielcwpolo@gmail.com
+// Trigger manual por marca — autenticado por sessão, restrito a danielcwpolo@gmail.com
 export async function POST(req: NextRequest) {
   const cookieStore = await cookies()
   const supabase = createServerClient(
@@ -166,22 +166,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
   }
 
+  const body = await req.json().catch(() => ({})) as { marca?: string }
+  const marcaSlugAlvo = body.marca?.toLowerCase()
+
+  // Se marca especificada, só processa ela; senão todas
+  const slugsParaProcessar = marcaSlugAlvo && MARCAS.includes(marcaSlugAlvo)
+    ? [marcaSlugAlvo]
+    : MARCAS
+
   const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   )
 
   let novos = 0
+  let jaExistiam = 0
   const erros: string[] = []
 
-  for (const marcaSlug of MARCAS) {
+  for (const marcaSlug of slugsParaProcessar) {
     const marcaNome = MARCA_MAP[marcaSlug]
     try {
       const modelos = await fetchModelosMarca(marcaSlug)
       for (const { modelo, slug, url } of modelos) {
         const { data: existe } = await supabaseAdmin.from('dispositivos_modelos')
           .select('id').eq('marca', marcaNome).eq('modelo', modelo).maybeSingle()
-        if (existe) continue
+        if (existe) { jaExistiam++; continue }
 
         const specs = await fetchSpecs(url)
         const { error } = await supabaseAdmin.from('dispositivos_modelos').insert({
@@ -198,5 +207,5 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, novos, erros })
+  return NextResponse.json({ ok: true, novos, jaExistiam, erros })
 }

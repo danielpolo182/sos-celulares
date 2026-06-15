@@ -52,6 +52,20 @@ const MENU = [
   { key: 'usuarios',     icon: '👥', label: 'Usuários',             sub: [] },
   { key: 'permissoes',   icon: '🔐', label: 'Permissões',           sub: [] },
   { key: 'historico',    icon: '📜', label: 'Histórico',            sub: [] },
+  { key: 'banco_aparelhos', icon: '📲', label: 'Banco de aparelhos',  sub: [] },
+]
+
+const MARCAS_SCRAPING = [
+  { slug: 'samsung',  label: 'Samsung',  icon: '🔷' },
+  { slug: 'motorola', label: 'Motorola', icon: '〽️' },
+  { slug: 'xiaomi',   label: 'Xiaomi',   icon: '🟠' },
+  { slug: 'apple',    label: 'Apple',    icon: '🍎' },
+  { slug: 'realme',   label: 'Realme',   icon: '🟡' },
+  { slug: 'asus',     label: 'Asus',     icon: '🔵' },
+  { slug: 'nokia',    label: 'Nokia',    icon: '📞' },
+  { slug: 'tcl',      label: 'TCL',      icon: '🔴' },
+  { slug: 'positivo', label: 'Positivo', icon: '🟢' },
+  { slug: 'infinix',  label: 'Infinix',  icon: '⚡' },
 ]
 
 const CARGOS = ['admin', 'gerente', 'tecnico', 'atendente', 'caixa'] as const
@@ -192,6 +206,11 @@ export default function ConfiguracoesPage() {
   const [waSaving, setWaSaving] = useState(false)
   const [waMsg, setWaMsg] = useState('')
 
+  // Banco de aparelhos — scraping por marca
+  const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [marcaLoading, setMarcaLoading] = useState<string | null>(null)
+  const [marcaResultados, setMarcaResultados] = useState<Record<string, { novos: number; jaExistiam: number; erro?: string }>>({})
+
   // PIX
   const [pixConfig, setPixConfig] = useState<PixConfig>({ mp_access_token: '', mp_webhook_secret: '', ativo: false })
   const [pixSaving, setPixSaving] = useState(false)
@@ -204,6 +223,7 @@ export default function ConfiguracoesPage() {
   const fetchAll = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
+      setUserEmail(user.email ?? null)
       const { data: p } = await supabase.from('perfis').select('papel').eq('id', user.id).single()
       setAcesso(!p || ['admin','gerente'].includes(p?.papel))
       // Assinatura atual
@@ -445,6 +465,31 @@ export default function ConfiguracoesPage() {
       .update({ valor: h.valor_anterior })
       .eq('id', cfg.id)
     fetchAll(); fetchHistorico()
+  }
+
+  // ── Scraping por marca ───────────────────────────────────
+  async function scraperMarca(slug: string) {
+    setMarcaLoading(slug)
+    try {
+      const res = await fetch('/api/scraping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ marca: slug }),
+      })
+      const data = await res.json() as { novos?: number; jaExistiam?: number; erros?: string[]; error?: string }
+      if (!res.ok) throw new Error(data.error ?? 'Erro desconhecido')
+      setMarcaResultados(prev => ({
+        ...prev,
+        [slug]: { novos: data.novos ?? 0, jaExistiam: data.jaExistiam ?? 0 },
+      }))
+    } catch (err) {
+      setMarcaResultados(prev => ({
+        ...prev,
+        [slug]: { novos: 0, jaExistiam: 0, erro: String(err) },
+      }))
+    } finally {
+      setMarcaLoading(null)
+    }
   }
 
   // ── Qualidades ───────────────────────────────────────────
@@ -1616,6 +1661,55 @@ export default function ConfiguracoesPage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeMenu === 'banco_aparelhos' && (
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>📲 Banco de aparelhos</h2>
+            <p style={{ fontSize: 13, color: '#64748b', marginBottom: 20 }}>
+              Clique em uma marca para buscar os modelos no TudoCelular e importar para o banco de dados.
+            </p>
+            {userEmail !== 'danielcwpolo@gmail.com' ? (
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '20px 24px', color: '#991b1b', fontSize: 13 }}>
+                🔒 Esta funcionalidade é restrita ao administrador principal.
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
+                {MARCAS_SCRAPING.map(m => {
+                  const res = marcaResultados[m.slug]
+                  const loading = marcaLoading === m.slug
+                  return (
+                    <div key={m.slug} style={{
+                      background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12,
+                      padding: '16px 14px', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 8,
+                    }}>
+                      <div style={{ fontSize: 28 }}>{m.icon}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>{m.label}</div>
+                      {res && !res.erro && (
+                        <div style={{ fontSize: 11, color: '#059669' }}>
+                          +{res.novos} novos · {res.jaExistiam} já existiam
+                        </div>
+                      )}
+                      {res?.erro && (
+                        <div style={{ fontSize: 11, color: '#dc2626', wordBreak: 'break-all' }}>{res.erro}</div>
+                      )}
+                      <button
+                        disabled={!!marcaLoading}
+                        onClick={() => scraperMarca(m.slug)}
+                        style={{
+                          padding: '6px 10px', fontSize: 12, borderRadius: 7, cursor: marcaLoading ? 'not-allowed' : 'pointer',
+                          border: '1px solid #3b82f6', background: loading ? '#eff6ff' : '#2563eb',
+                          color: loading ? '#3b82f6' : '#fff', fontWeight: 500,
+                        }}
+                      >
+                        {loading ? '⏳ Buscando…' : 'Buscar'}
+                      </button>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
