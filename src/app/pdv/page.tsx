@@ -272,16 +272,20 @@ export default function PDVPage() {
     const preco = parseFloat(qaPreco.replace(',', '.')) || 0
     if (!nome || preco <= 0) return
     setQaSaving(true)
-    const { data: prod, error } = await supabase.from('produtos').insert({
-      nome, preco_venda: preco, custo_unit: 0, ativo: true, unidade: 'un', movimenta_estoque: true, cadastro_rapido: true,
-    }).select('id, nome, preco_venda, custo_unit').single()
-    if (prod && !error) {
-      const p = prod as Produto
-      setItens(prev => [...prev, { produto_id: p.id, descricao: p.nome, quantidade: 1, preco_unit: p.preco_venda, custo_unit: 0, subtotal: p.preco_venda }])
-      setProdutos(prev => [...prev, p])
+    try {
+      const res = await fetch('/api/produtos/criar-rapido', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome, preco_venda: preco }),
+      })
+      const data = await res.json() as Produto & { error?: string }
+      if (!res.ok || data.error) { alert(`Erro ao cadastrar: ${data.error}`); return }
+      setItens(prev => [...prev, { produto_id: data.id, descricao: data.nome, quantidade: 1, preco_unit: data.preco_venda, custo_unit: 0, subtotal: data.preco_venda }])
+      setProdutos(prev => [...prev, data])
       setShowQuickAdd(false); setQaPreco(''); setSearchProd(''); setDropdownOpen(false)
-    } else if (error) { alert(`Erro ao cadastrar: ${error.message}`) }
-    setQaSaving(false)
+    } finally {
+      setQaSaving(false)
+    }
   }
 
   function adicionarPagamento() {
