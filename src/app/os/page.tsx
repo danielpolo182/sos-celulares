@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -15,6 +15,7 @@ type OS = {
   defeito_relatado: string
   valor_orcamento: number | null
   created_at: string
+  imei: string | null
   clientes: { nome: string; telefone: string | null } | null
 }
 
@@ -42,11 +43,15 @@ const SUBGRUPO_CONFIG: Record<SubGrupo, { label: string; cor: string; corFundo: 
 }
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string; icon: string }> = {
-  aberta:       { label: 'Aberta',       bg: '#dbeafe', color: '#1d4ed8', icon: '📋' },
-  em_andamento: { label: 'Em andamento', bg: '#fef3c7', color: '#92400e', icon: '🔧' },
-  pronta:       { label: 'Pronta',       bg: '#d1fae5', color: '#065f46', icon: '✅' },
-  entregue:     { label: 'Entregue',     bg: '#d1fae5', color: '#14532d', icon: '📦' },
-  cancelada:    { label: 'Cancelada',    bg: '#fee2e2', color: '#991b1b', icon: '❌' },
+  aberta:                 { label: 'Aberta',             bg: '#dbeafe', color: '#1d4ed8', icon: '📋' },
+  em_andamento:           { label: 'Em andamento',       bg: '#fef3c7', color: '#92400e', icon: '⚙️' },
+  pronta:                 { label: 'Pronta',             bg: '#d1fae5', color: '#065f46', icon: '✅' },
+  entregue:               { label: 'Entregue',           bg: '#d1fae5', color: '#14532d', icon: '📦' },
+  cancelada:              { label: 'Cancelada',          bg: '#fee2e2', color: '#991b1b', icon: '❌' },
+  aguardando_diagnostico: { label: 'Aguard. diagnóstico',bg: '#f3e8ff', color: '#7c3aed', icon: '🔬' },
+  em_orcamento:           { label: 'Em orçamento',       bg: '#fef3c7', color: '#d97706', icon: '💰' },
+  em_reparo:              { label: 'Em reparo',          bg: '#fef3c7', color: '#92400e', icon: '🔧' },
+  aguardando_peca:        { label: 'Aguard. peça',       bg: '#fff7ed', color: '#c2410c', icon: '📦' },
 }
 
 const WA_MENSAGENS: Record<string, string> = {
@@ -203,6 +208,9 @@ export default function OSPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filtroStatus, setFiltroStatus] = useState('todos')
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({})
+  const [busca, setBusca] = useState('')
+  const buscaTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [prazoHoras, setPrazoHoras] = useState(4)
   const [prazoAlertaDias, setPrazoAlertaDias] = useState(3)
   const [snoozeModal, setSnoozeModal] = useState<{ os: Pendencia; data: string; motivo: string } | null>(null)
@@ -219,18 +227,42 @@ export default function OSPage() {
   const fetchOS = useCallback(async () => {
     setLoading(true)
     await carregarConfigs()
+
+    // Contagem por status para o kanban
+    const { data: todasOs } = await supabase
+      .from('ordens_servico')
+      .select('status')
+      .is('deleted_at', null)
+      .not('status', 'in', '(entregue,cancelada)')
+    const counts: Record<string, number> = {}
+    for (const row of todasOs ?? []) {
+      counts[row.status] = (counts[row.status] ?? 0) + 1
+    }
+    setStatusCounts(counts)
+
     let query = supabase
       .from('ordens_servico')
-      .select('id,numero,status,marca,modelo,defeito_relatado,valor_orcamento,created_at,clientes(nome,telefone)')
+      .select('id,numero,status,marca,modelo,defeito_relatado,valor_orcamento,created_at,imei,clientes(nome,telefone)')
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(100)
     if (filtroStatus !== 'todos') query = query.eq('status', filtroStatus)
     if (search.trim()) query = query.or(`modelo.ilike.%${search}%,defeito_relatado.ilike.%${search}%`)
+
+    // Filtro de busca avançada (kanban search bar)
+    if (busca.trim().length >= 2) {
+      const buscaNum = parseInt(busca.replace(/\D/g, ''))
+      if (!isNaN(buscaNum) && busca.replace(/\D/g, '').length > 0) {
+        query = query.eq('numero', buscaNum)
+      } else {
+        query = query.or(`modelo.ilike.%${busca}%,imei.ilike.%${busca}%`)
+      }
+    }
+
     const { data } = await query
     setItems((data as unknown as OS[]) ?? [])
     setLoading(false)
-  }, [supabase, filtroStatus, search, carregarConfigs])
+  }, [supabase, filtroStatus, search, busca, carregarConfigs])
 
   const fetchPendencias = useCallback(async () => {
     const { data } = await supabase
@@ -247,6 +279,12 @@ export default function OSPage() {
     fetchOS()
     fetchPendencias()
   }, [fetchOS, fetchPendencias])
+
+  function onBuscaChange(v: string) {
+    setBusca(v)
+    if (buscaTimer.current) clearTimeout(buscaTimer.current)
+    buscaTimer.current = setTimeout(() => fetchOS(), 300)
+  }
 
   async function salvarSnooze() {
     if (!snoozeModal) return
@@ -325,32 +363,70 @@ export default function OSPage() {
       {/* ═══ ABA VISÃO GERAL ═══ */}
       {aba === 'lista' && (
         <>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+          {/* Busca */}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16 }}>
             <input
-              style={{ flex: 1, minWidth: 200, padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, color: '#0f172a', background: '#fff', outline: 'none' }}
-              placeholder="🔍  Buscar por cliente, modelo, número..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && fetchOS()}
+              value={busca}
+              onChange={e => onBuscaChange(e.target.value)}
+              placeholder="Buscar por cliente, modelo, IMEI ou nº OS..."
+              style={{
+                flex: 1, padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: 8,
+                fontSize: 13, color: '#1e293b', background: '#fff', outline: 'none', fontFamily: 'inherit',
+              }}
             />
-            <div style={{ display: 'flex', gap: 6 }}>
-              {['todos', 'aberta', 'em_andamento', 'pronta', 'entregue'].map(s => (
+          </div>
+
+          {/* Kanban de status */}
+          {Object.keys(statusCounts).length > 0 && (
+            <div style={{
+              display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20,
+              padding: '16px', background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0',
+            }}>
+              {[
+                'aguardando_diagnostico',
+                'aberta',
+                'em_orcamento',
+                'em_andamento',
+                'em_reparo',
+                'aguardando_peca',
+                'pronta',
+              ].filter(s => (statusCounts[s] ?? 0) > 0).map(s => {
+                const cfg = STATUS_CONFIG[s] ?? { label: s, bg: '#f1f5f9', color: '#475569', icon: '?' }
+                const count = statusCounts[s] ?? 0
+                const ativo = filtroStatus === s
+                return (
+                  <button
+                    key={s}
+                    onClick={() => setFiltroStatus(ativo ? 'todos' : s)}
+                    style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'center',
+                      padding: '10px 16px', borderRadius: 10, cursor: 'pointer', border: '2px solid',
+                      background: ativo ? cfg.bg : '#f8fafc',
+                      borderColor: ativo ? cfg.color : '#e2e8f0',
+                      minWidth: 90,
+                    }}
+                  >
+                    <span style={{ fontSize: 18 }}>{cfg.icon}</span>
+                    <span style={{ fontSize: 20, fontWeight: 700, color: cfg.color, marginTop: 2 }}>{count}</span>
+                    <span style={{ fontSize: 11, color: '#64748b', textAlign: 'center', marginTop: 2, lineHeight: 1.3 }}>
+                      {cfg.label}
+                    </span>
+                  </button>
+                )
+              })}
+              {filtroStatus !== 'todos' && (
                 <button
-                  key={s}
-                  onClick={() => setFiltroStatus(s)}
+                  onClick={() => setFiltroStatus('todos')}
                   style={{
-                    padding: '8px 14px', borderRadius: 7, fontSize: 12, cursor: 'pointer', border: '1px solid',
-                    fontWeight: filtroStatus === s ? 600 : 400,
-                    background: filtroStatus === s ? '#dbeafe' : '#fff',
-                    color: filtroStatus === s ? '#1d4ed8' : '#475569',
-                    borderColor: filtroStatus === s ? '#bfdbfe' : '#e2e8f0',
+                    padding: '6px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
+                    border: '1px solid #e2e8f0', background: '#fff', color: '#64748b', alignSelf: 'center',
                   }}
                 >
-                  {s === 'todos' ? 'Todas' : STATUS_CONFIG[s]?.label}
+                  ✕ Limpar filtro
                 </button>
-              ))}
+              )}
             </div>
-          </div>
+          )}
 
           {loading ? (
             <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8', fontSize: 13 }}>Carregando...</div>
@@ -361,43 +437,67 @@ export default function OSPage() {
               <Link href="/os/nova" style={{ display: 'inline-block', marginTop: 16, padding: '9px 18px', background: '#2563eb', color: '#fff', borderRadius: 8, textDecoration: 'none', fontSize: 13, fontWeight: 600 }}>+ Nova OS</Link>
             </div>
           ) : (
-            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead>
-                  <tr>
-                    {['#', 'Cliente', 'Aparelho', 'Defeito', 'Valor', 'Status', 'Data', ''].map(h => (
-                      <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map(os => {
-                    const st = STATUS_CONFIG[os.status] ?? STATUS_CONFIG.aberta
-                    return (
-                      <tr
-                        key={os.id}
-                        onClick={() => router.push(`/os/${os.id}`)}
-                        style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer', transition: 'background 0.1s' }}
-                        onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc' }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
-                      >
-                        <td style={{ padding: '11px 14px', fontWeight: 700, color: '#2563eb' }}>#{os.numero}</td>
-                        <td style={{ padding: '11px 14px', fontWeight: 500, color: '#0f172a' }}>{os.clientes?.nome ?? '—'}</td>
-                        <td style={{ padding: '11px 14px', color: '#475569' }}>{os.modelo ?? '—'}</td>
-                        <td style={{ padding: '11px 14px', color: '#94a3b8', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{os.defeito_relatado}</td>
-                        <td style={{ padding: '11px 14px', fontWeight: 500, color: '#0f172a' }}>{os.valor_orcamento ? `R$ ${os.valor_orcamento.toFixed(2).replace('.', ',')}` : '—'}</td>
-                        <td style={{ padding: '11px 14px' }}>
-                          <span style={{ fontSize: 10, fontWeight: 600, padding: '3px 9px', borderRadius: 20, background: st.bg, color: st.color }}>{st.label}</span>
-                        </td>
-                        <td style={{ padding: '11px 14px', color: '#94a3b8', fontSize: 12 }}>{new Date(os.created_at).toLocaleDateString('pt-BR')}</td>
-                        <td style={{ padding: '11px 14px' }}>
-                          <span style={{ fontSize: 11, color: '#2563eb', fontWeight: 600 }}>Abrir →</span>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+            <div>
+              {items.map(os => (
+                <Link key={os.id} href={`/os/${os.id}`} style={{ textDecoration: 'none', display: 'block' }}>
+                  <div
+                    style={{
+                      background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10,
+                      padding: '14px 16px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12,
+                      cursor: 'pointer',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.borderColor = '#c7d2fe')}
+                    onMouseLeave={e => (e.currentTarget.style.borderColor = '#e2e8f0')}
+                  >
+                    {/* Número */}
+                    <div style={{
+                      minWidth: 52, height: 52, borderRadius: 10, background: '#f5f3ff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 13, fontWeight: 700, color: '#6366f1', flexShrink: 0,
+                    }}>
+                      #{os.numero}
+                    </div>
+
+                    {/* Info principal */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>
+                        {(os.clientes as { nome: string } | null)?.nome ?? '—'}
+                      </div>
+                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                        {os.modelo ?? 'Modelo não informado'}
+                      </div>
+                      <div style={{
+                        fontSize: 12, color: '#94a3b8', marginTop: 2,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 400,
+                      }}>
+                        {os.defeito_relatado}
+                      </div>
+                    </div>
+
+                    {/* Valor + Status + Tempo */}
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      {os.valor_orcamento != null && (
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+                          R$ {os.valor_orcamento.toFixed(2).replace('.', ',')}
+                        </div>
+                      )}
+                      <div style={{
+                        display: 'inline-block', padding: '3px 8px', borderRadius: 20, fontSize: 11, fontWeight: 500,
+                        background: STATUS_CONFIG[os.status]?.bg ?? '#f1f5f9',
+                        color: STATUS_CONFIG[os.status]?.color ?? '#475569',
+                        marginTop: 4,
+                      }}>
+                        {STATUS_CONFIG[os.status]?.label ?? os.status}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                        {diasAberto(os.created_at) === 0
+                          ? 'hoje'
+                          : `há ${diasAberto(os.created_at)} dia${diasAberto(os.created_at) > 1 ? 's' : ''}`}
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              ))}
             </div>
           )}
         </>
