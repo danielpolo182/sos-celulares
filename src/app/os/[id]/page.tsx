@@ -305,6 +305,11 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
 
   async function salvarDiagnostico() {
     if (!os) return
+    const algumaSelecionada = Object.values(diagForm).some(cat => cat.selecionada)
+    if (!algumaSelecionada) {
+      alert('Selecione pelo menos uma categoria para diagnosticar.')
+      return
+    }
     setSavingDiagnostico(true)
     const { error } = await supabase.from('ordens_servico').update({
       diagnostico: diagForm,
@@ -324,6 +329,16 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
     }
 
     setShowDiagnostico(false)
+    setDiagForm({
+      tela:     { selecionada: false, tipoDisplay: '', itens: { toque: false, imagem: false, quebrado: false } },
+      bateria:  { selecionada: false, itens: { autonomia: false, naoCarrega: false, inchada: false } },
+      camera:   { selecionada: false, itens: { frontal: false, traseira: false, foco: false } },
+      placa:    { selecionada: false, itens: { naoLiga: false, travamentos: false, semSinal: false } },
+      conector: { selecionada: false, itens: { usb: false, audio: false } },
+      estrutura:{ selecionada: false, itens: { carcaca: false, botoes: false } },
+    })
+    setValorOrcamento('')
+    setObsTecnica('')
     // Recarregar OS
     const { data } = await supabase
       .from('ordens_servico')
