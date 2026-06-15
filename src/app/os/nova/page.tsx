@@ -10,6 +10,13 @@ import { searchByModel, searchByTAC, validateIMEI, type ModelSpec } from '@/lib/
 type Cliente = { id: string; nome: string; telefone: string | null; cpf: string | null; data_nascimento: string | null }
 type PatternCell = number
 
+const SINTOMAS = [
+  'Tela trincada', 'Vidro quebrado', 'Sem imagem', 'Tela preta',
+  'Não carrega', 'Carregando lento', 'Não liga', 'Desligando sozinho',
+  'Sem áudio', 'Som baixo', 'Câmera', 'Molhado', 'Caiu na água',
+  'Falante', 'Botão power', 'Touch',
+]
+
 
 function formatPhone(v: string) {
   return v.replace(/\D/g, '').slice(0, 11)
@@ -198,10 +205,16 @@ export default function NovaOSPage() {
   }
 
   // ── OS
+  const [sintomasSelecionados, setSintomasSelecionados] = useState<string[]>([])
+  const [valor, setValor] = useState('')
   const [defeito, setDefeito] = useState('')
   const [observacoes, setObservacoes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  function toggleSintoma(s: string) {
+    setSintomasSelecionados(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])
+  }
 
   // ── Modal pós-salvamento
   const [modalSalvo, setModalSalvo] = useState<{
@@ -279,8 +292,11 @@ export default function NovaOSPage() {
       cor: cor || null,
       acessorios: acessorios.length > 0 ? acessorios : null,
       senha_aparelho: senhaInfo,
-      defeito_relatado: defeito.trim(),
+      defeito_relatado: sintomasSelecionados.length > 0
+        ? `[${sintomasSelecionados.join(', ')}] ${defeito.trim()}`
+        : defeito.trim(),
       observacoes: observacoes || null,
+      valor_orcamento: valor ? parseFloat(valor) : null,
       status: 'aguardando_diagnostico',
       assinatura_cliente: assinaturaCliente || null,
     }).select('id, numero').single()
@@ -471,6 +487,25 @@ export default function NovaOSPage() {
       <div style={section}>
         <div style={sectionTitle}><span>📋</span> Dados da OS</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          {/* Sintomas */}
+          <div style={{ gridColumn: '1/-1' }}>
+            <label style={lbl}>Sintomas relatados</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {SINTOMAS.map(s => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => toggleSintoma(s)}
+                  style={{
+                    padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: 'pointer', border: '1px solid',
+                    background: sintomasSelecionados.includes(s) ? '#6366f1' : '#f8fafc',
+                    color: sintomasSelecionados.includes(s) ? '#fff' : '#475569',
+                    borderColor: sintomasSelecionados.includes(s) ? '#6366f1' : '#e2e8f0',
+                  }}
+                >{s}</button>
+              ))}
+            </div>
+          </div>
           <div style={{ gridColumn: '1/-1' }}>
             <label style={lbl}>Defeito relatado pelo cliente *</label>
             <textarea style={{ ...inp, minHeight: 80, resize: 'vertical' }} value={defeito} onChange={e => setDefeito(e.target.value)} placeholder="Descreva o problema relatado pelo cliente..." />
@@ -478,6 +513,10 @@ export default function NovaOSPage() {
           <div>
             <label style={lbl}>Observações internas</label>
             <input style={inp} value={observacoes} onChange={e => setObservacoes(e.target.value)} placeholder="Anotações para o técnico..." />
+          </div>
+          <div>
+            <label style={lbl}>Valor do orçamento (R$)</label>
+            <input style={inp} type="number" min="0" step="0.01" value={valor} onChange={e => setValor(e.target.value)} placeholder="0,00" />
           </div>
         </div>
       </div>
