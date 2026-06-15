@@ -204,6 +204,7 @@ export default function NovaOSPage() {
       .replace(new RegExp(marca, 'gi'), '')
       .replace(/\([^)]*\)/g, '')
       .replace(/\b(5G|4G|3G|2G)\b/gi, '')
+      .replace(/\b(Galaxy|Moto|Redmi|Note|Poco|Edge|Find|Reno|Nord)\b/gi, '')
       .toLowerCase().replace(/\s+/g, ' ').trim()
   }
 
