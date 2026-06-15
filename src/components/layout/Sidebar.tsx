@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import WhatsAppModal from '@/components/WhatsAppModal'
 
 type NavItem = {
   href: string
@@ -150,6 +151,7 @@ export default function Sidebar() {
   const [usuario, setUsuario] = useState({ nome: '', papel: '' })
   const [pendOS, setPendOS] = useState(0)
   const [pendWA, setPendWA] = useState(0)
+  const [waModalAberto, setWaModalAberto] = useState(false)
   const [modulosPermitidos, setModulosPermitidos] = useState<Set<string> | null>(null)
 
   useEffect(() => {
@@ -204,6 +206,7 @@ export default function Sidebar() {
 
   return (
     <>
+      <WhatsAppModal open={waModalAberto} onClose={() => setWaModalAberto(false)} />
       <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" />
 
@@ -269,7 +272,23 @@ export default function Sidebar() {
                 <div style={{ fontSize: 9.5, fontWeight: 600, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '6px 10px 3px' }}>
                   {section.label}
                 </div>
-                {visibleChildren.map(item => <NavItem key={item.href} item={item} />)}
+                {visibleChildren.map(item =>
+                  item.href === '/whatsapp' ? (
+                    <button
+                      key={item.href}
+                      onClick={() => setWaModalAberto(true)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '6px 10px 6px 28px', borderRadius: 8, marginBottom: 1, background: 'transparent', cursor: 'pointer', border: 'none', width: '100%', textAlign: 'left', fontFamily: "'DM Sans', -apple-system, sans-serif", fontSize: 12.5, fontWeight: 400, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', transition: 'background 0.12s, color 0.12s' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = '#e2e8f0' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94a3b8' }}
+                    >
+                      <i className="ti ti-brand-whatsapp" style={{ fontSize: 13, color: '#6ee7b7', flexShrink: 0 }} aria-hidden="true" />
+                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>Inbox WhatsApp</span>
+                      {pendWA > 0 && <span style={{ fontSize: 10, background: '#16a34a', color: '#fff', borderRadius: 10, padding: '1px 6px', fontWeight: 600 }}>{pendWA}</span>}
+                    </button>
+                  ) : (
+                    <NavItem key={item.href} item={item} />
+                  )
+                )}
                 {si < NAV.length - 1 && (
                   <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '6px 10px 2px' }} />
                 )}
