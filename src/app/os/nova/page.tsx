@@ -8,6 +8,7 @@ import { searchByModel, searchByTAC, validateIMEI, type ModelSpec } from '@/lib/
 
 // ─── Types ───────────────────────────────────────────────────
 type Cliente = { id: string; nome: string; telefone: string | null; cpf: string | null; data_nascimento: string | null }
+type Produto = { id: string; nome: string; preco_venda: number; categoria: string | null }
 type PatternCell = number
 
 const SINTOMAS = [
@@ -204,6 +205,30 @@ export default function NovaOSPage() {
     c.getContext('2d')!.clearRect(0, 0, c.width, c.height); setAssinaturaCliente('')
   }
 
+  // ── Produto / peça
+  const [produtoSearch, setProdutoSearch] = useState('')
+  const [produtoResults, setProdutoResults] = useState<Produto[]>([])
+  const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null)
+  const [novoProduto, setNovoProduto] = useState(false)
+  const [nomeProduto, setNomeProduto] = useState('')
+  const [precoProduto, setPrecoProduto] = useState('')
+  const produtoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  async function buscarProduto(q: string) {
+    if (!q || q.length < 2) { setProdutoResults([]); return }
+    const { data } = await supabase.from('produtos').select('id,nome,preco_venda,categoria').eq('ativo', true).ilike('nome', `%${q}%`).is('deleted_at', null).limit(6).order('nome')
+    setProdutoResults(data ?? [])
+  }
+
+  function onProdutoSearchChange(v: string) {
+    setProdutoSearch(v); setProdutoSelecionado(null); setNovoProduto(false)
+    if (produtoTimer.current) clearTimeout(produtoTimer.current)
+    produtoTimer.current = setTimeout(() => buscarProduto(v), 250)
+  }
+
+  function selecionarProduto(p: Produto) { setProdutoSelecionado(p); setProdutoSearch(p.nome); setProdutoResults([]) }
+  function ativarNovoProduto() { setNomeProduto(produtoSearch); setNovoProduto(true); setProdutoResults([]) }
+
   // ── OS
   const [sintomasSelecionados, setSintomasSelecionados] = useState<string[]>([])
   const [valor, setValor] = useState('')
@@ -302,6 +327,34 @@ export default function NovaOSPage() {
     }).select('id, numero').single()
 
     if (err) { setError(`Erro: ${err.message}`); setSaving(false); return }
+
+    // Produto/peça vinculado à OS
+    let produtoId = produtoSelecionado?.id ?? null
+    let produtoNomeFinal = produtoSelecionado?.nome ?? null
+    let produtoPrecoFinal = produtoSelecionado?.preco_venda ?? null
+
+    if (novoProduto && nomeProduto.trim()) {
+      const preco = precoProduto ? parseFloat(precoProduto) : 0
+      const { data: pData } = await supabase.from('produtos').insert({
+        nome: nomeProduto.trim(),
+        preco_venda: preco,
+        categoria: 'Peça',
+        estoque_atual: 0,
+      }).select('id,nome,preco_venda').single()
+      produtoId = pData?.id ?? null
+      produtoNomeFinal = pData?.nome ?? nomeProduto.trim()
+      produtoPrecoFinal = pData?.preco_venda ?? preco
+    }
+
+    if (produtoId && produtoNomeFinal) {
+      await supabase.from('os_itens').insert({
+        os_id: osData.id,
+        produto_id: produtoId,
+        descricao: produtoNomeFinal,
+        quantidade: 1,
+        preco_unit: produtoPrecoFinal ?? 0,
+      })
+    }
 
     try { await supabase.from('events').insert({ type: 'OS_CRIADA', entity: 'os', payload: { clienteId, defeito, modelo: modeloSelecionado?.modelo } }) } catch { /* non-critical */ }
 
@@ -506,6 +559,62 @@ export default function NovaOSPage() {
               ))}
             </div>
           </div>
+          {/* Produto / peça */}
+          <div style={{ gridColumn: '1/-1' }}>
+            <label style={lbl}>Produto / peça a utilizar</label>
+            <div style={{ position: 'relative' }}>
+              <input
+                style={{ ...inp, background: produtoSelecionado ? '#f0fdf4' : '#fff', borderColor: produtoSelecionado ? '#86efac' : '#e2e8f0' }}
+                value={produtoSearch}
+                onChange={e => onProdutoSearchChange(e.target.value)}
+                placeholder="Buscar peça ou produto no estoque..."
+              />
+              {produtoSelecionado && (
+                <button type="button" onClick={() => { setProdutoSelecionado(null); setProdutoSearch(''); setNovoProduto(false) }}
+                  style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 16 }}>×</button>
+              )}
+              {produtoResults.length > 0 && !produtoSelecionado && (
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', zIndex: 50, marginTop: 4, overflow: 'hidden' }}>
+                  {produtoResults.map(p => (
+                    <button key={p.id} type="button" onClick={() => selecionarProduto(p)}
+                      style={{ display: 'block', width: '100%', padding: '10px 14px', textAlign: 'left', background: 'none', border: 'none', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', fontSize: 13, color: '#1e293b' }}>
+                      <span style={{ fontWeight: 500 }}>{p.nome}</span>
+                      {p.categoria && <span style={{ marginLeft: 8, fontSize: 11, color: '#94a3b8' }}>{p.categoria}</span>}
+                      <span style={{ float: 'right', fontSize: 12, color: '#059669', fontWeight: 600 }}>R$ {p.preco_venda.toFixed(2)}</span>
+                    </button>
+                  ))}
+                  <button type="button" onClick={ativarNovoProduto}
+                    style={{ display: 'block', width: '100%', padding: '10px 14px', textAlign: 'left', background: '#f8fafc', border: 'none', cursor: 'pointer', fontSize: 13, color: '#6366f1', fontWeight: 500 }}>
+                    + Cadastrar &quot;{produtoSearch}&quot;
+                  </button>
+                </div>
+              )}
+              {produtoSearch.length >= 2 && produtoResults.length === 0 && !produtoSelecionado && !novoProduto && (
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', zIndex: 50, marginTop: 4 }}>
+                  <button type="button" onClick={ativarNovoProduto}
+                    style={{ display: 'block', width: '100%', padding: '10px 14px', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#6366f1', fontWeight: 500 }}>
+                    + Cadastrar &quot;{produtoSearch}&quot;
+                  </button>
+                </div>
+              )}
+            </div>
+            {novoProduto && (
+              <div style={{ marginTop: 10, padding: '12px 14px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8 }}>
+                <p style={{ fontSize: 12, fontWeight: 600, color: '#0369a1', marginBottom: 10 }}>Novo produto</p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div style={{ gridColumn: '1/-1' }}>
+                    <label style={lbl}>Nome *</label>
+                    <input style={inp} value={nomeProduto} onChange={e => setNomeProduto(e.target.value)} placeholder="Ex: Tela Samsung A54 Incell" />
+                  </div>
+                  <div>
+                    <label style={lbl}>Preço de venda (R$)</label>
+                    <input style={inp} type="number" min="0" step="0.01" value={precoProduto} onChange={e => setPrecoProduto(e.target.value)} placeholder="0,00" />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div style={{ gridColumn: '1/-1' }}>
             <label style={lbl}>Defeito relatado pelo cliente *</label>
             <textarea style={{ ...inp, minHeight: 80, resize: 'vertical' }} value={defeito} onChange={e => setDefeito(e.target.value)} placeholder="Descreva o problema relatado pelo cliente..." />
