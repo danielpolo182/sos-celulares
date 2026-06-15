@@ -3,6 +3,12 @@
   "devCommand": "next dev",
   "installCommand": "npm install",
   "framework": "nextjs",
-  "outputDirectory": ".next"
+  "outputDirectory": ".next",
+  "crons": [
+    {
+      "path": "/api/scraping",
+      "schedule": "0 6 * * *"
+    }
+  ]
 }
 

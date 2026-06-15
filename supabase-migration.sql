@@ -275,7 +275,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DO $$ 
+DO $$
 DECLARE t TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY[
@@ -289,3 +289,39 @@ BEGIN
     ', t, t);
   END LOOP;
 END $$;
+
+-- ============================================================
+-- OS REDESIGN MIGRATION
+-- ============================================================
+
+-- Coluna global em dispositivos_modelos
+ALTER TABLE dispositivos_modelos
+  ADD COLUMN IF NOT EXISTS global BOOLEAN NOT NULL DEFAULT true;
+
+-- Colunas de diagnóstico em ordens_servico
+ALTER TABLE ordens_servico
+  ADD COLUMN IF NOT EXISTS diagnostico JSONB,
+  ADD COLUMN IF NOT EXISTS obs_tecnica TEXT,
+  ADD COLUMN IF NOT EXISTS tipo_display TEXT CHECK (
+    tipo_display IN ('original','incell','oled','amoled')
+  );
+
+-- Novos status para ordens_servico
+ALTER TABLE ordens_servico
+  DROP CONSTRAINT IF EXISTS ordens_servico_status_check;
+
+ALTER TABLE ordens_servico
+  ADD CONSTRAINT ordens_servico_status_check
+  CHECK (status IN (
+    'aberta',
+    'aguardando_diagnostico',
+    'em_orcamento',
+    'aguardando_aprovacao_cliente',
+    'em_andamento',
+    'em_reparo',
+    'aguardando_peca',
+    'aguardando',
+    'pronta',
+    'entregue',
+    'cancelada'
+  ));
