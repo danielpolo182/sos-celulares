@@ -29,26 +29,19 @@ export async function POST(request: NextRequest) {
     const filial_id = (perfil as { filial_id: string } | null)?.filial_id
     if (!filial_id) return NextResponse.json({ error: 'Filial não encontrada para este usuário' }, { status: 400 })
 
-    const body = await request.json() as { nome: string; preco_venda: number }
-    if (!body.nome?.trim() || !body.preco_venda) {
-      return NextResponse.json({ error: 'Nome e preço são obrigatórios' }, { status: 400 })
-    }
+    const body = await request.json() as Record<string, unknown>
+    if (!body.nome) return NextResponse.json({ error: 'Nome é obrigatório' }, { status: 400 })
 
     const admin = createServiceClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
-    const { data: produto, error } = await admin.from('produtos').insert({
-      nome: body.nome.trim(),
-      preco_venda: body.preco_venda,
-      custo_unit: 0,
-      ativo: true,
-      unidade: 'un',
-      movimenta_estoque: true,
-      cadastro_rapido: true,
-      filial_id,
-    }).select('id, nome, preco_venda, custo_unit').single()
+    const { data: produto, error } = await admin
+      .from('produtos')
+      .insert({ ...body, filial_id })
+      .select()
+      .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

@@ -263,8 +263,12 @@ export default function EstoquePage() {
       const { error } = await supabase.from('produtos').update(payload).eq('id', fEditId)
       if (error) { alert(`Erro: ${error.message}`); setFSaving(false); return }
     } else {
-      const { error } = await supabase.from('produtos').insert(payload)
-      if (error) { alert(`Erro: ${error.message}`); setFSaving(false); return }
+      const res = await fetch('/api/produtos/criar-rapido', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json() as { error?: string }
+      if (!res.ok || data.error) { alert(`Erro: ${data.error}`); setFSaving(false); return }
     }
     setFSaving(false); setShowModalRapido(false); fetchProdutos()
   }
@@ -312,8 +316,12 @@ export default function EstoquePage() {
       const { error } = await supabase.from('produtos').update(payload).eq('id', fEditId)
       if (error) { alert(`Erro: ${error.message}`); setFSaving(false); return }
     } else {
-      const { error } = await supabase.from('produtos').insert(payload)
-      if (error) { alert(`Erro: ${error.message}`); setFSaving(false); return }
+      const res = await fetch('/api/produtos/criar-rapido', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json() as { error?: string }
+      if (!res.ok || data.error) { alert(`Erro: ${data.error}`); setFSaving(false); return }
     }
     setFSaving(false); setShowModalCompleto(false); fetchProdutos()
   }
