@@ -48,6 +48,16 @@ export async function POST(req: NextRequest) {
     const { query } = await req.json() as { query: string }
     if (!query?.trim()) return NextResponse.json({ error: 'query obrigatória' }, { status: 400 })
 
+    async function continueChat(sessionId: string, message: string) {
+      const res = await fetch(`${BOT_BASE}/sessions/${sessionId}/continueChat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message }),
+      })
+      if (!res.ok) throw new Error(`continueChat falhou: ${res.status}`)
+      return res.json() as Promise<{ messages?: unknown[] }>
+    }
+
     // 1. Inicia sessão
     const startRes = await fetch(`${BOT_BASE}/typebots/${BOT_ID}/startChat`, {
       method: 'POST',
@@ -55,29 +65,20 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({}),
     })
 
-    const startText = await startRes.text()
     if (!startRes.ok) {
-      return NextResponse.json({ error: `startChat falhou: ${startRes.status} — ${startText.slice(0, 300)}` }, { status: 502 })
+      const t = await startRes.text()
+      return NextResponse.json({ error: `startChat falhou: ${startRes.status} — ${t.slice(0, 300)}` }, { status: 502 })
     }
 
-    let startData: { sessionId?: string; messages?: unknown[] }
-    try { startData = JSON.parse(startText) } catch { return NextResponse.json({ error: `startChat resposta inválida: ${startText.slice(0, 300)}` }, { status: 502 }) }
-
+    const startData = await startRes.json() as { sessionId?: string }
     const sessionId = startData.sessionId
-    if (!sessionId) return NextResponse.json({ error: `sessionId ausente. Resposta: ${startText.slice(0, 400)}` }, { status: 502 })
+    if (!sessionId) return NextResponse.json({ error: 'sessionId ausente no startChat' }, { status: 502 })
 
-    // 2. Envia a busca
-    const chatRes = await fetch(`${BOT_BASE}/sessions/${sessionId}/continueChat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: query.trim() }),
-    })
+    // 2. Bot pede "Digite iplay para continuar" — respondemos automaticamente
+    await continueChat(sessionId, 'iplay')
 
-    if (!chatRes.ok) {
-      return NextResponse.json({ error: `continueChat falhou: ${chatRes.status}` }, { status: 502 })
-    }
-
-    const chatData = await chatRes.json() as { messages?: unknown[] }
+    // 3. Agora enviamos a busca real
+    const chatData = await continueChat(sessionId, query.trim())
     const produtos = parseProducts(chatData.messages ?? [])
 
     return NextResponse.json({ produtos, total: produtos.length })
