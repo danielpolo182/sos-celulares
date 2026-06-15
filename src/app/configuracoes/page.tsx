@@ -174,6 +174,9 @@ const MODULOS_NUM: Record<string, string> = {
 const CORES_PADRAO = ['#065f46','#1d4ed8','#92400e','#991b1b','#6b21a8','#0369a1','#374151','#b45309','#166534','#7c2d12']
 const WA_VARS = ['{nome}','{modelo}','{numero}','{valor}','{dias}','{defeito}']
 const WA_PREVIEW: Record<string,string> = { '{nome}':'João', '{modelo}':'Samsung A32', '{numero}':'42', '{valor}':'180,00', '{dias}':'95', '{defeito}':'Tela quebrada' }
+const CONFIG_LABELS: Record<string, string> = {
+  'compras_periodo_dias': 'Período padrão da lista de compras',
+}
 
 // ─── Componente principal ─────────────────────────────────
 export default function ConfiguracoesPage() {
@@ -320,6 +323,22 @@ export default function ConfiguracoesPage() {
       })
     }
   }, [activeMenu, supabase])
+
+  useEffect(() => {
+    if (activeMenu === 'operacional') {
+      // Garante que a config compras_periodo_dias existe com default '60'
+      const existing = configs.find(c => c.chave === 'compras_periodo_dias')
+      if (!existing) {
+        supabase.from('sistema_config').upsert({
+          chave: 'compras_periodo_dias',
+          valor: '60',
+          categoria: 'compras',
+          descricao: 'Período padrão da lista de compras em dias',
+          escopo: 'global',
+        }, { onConflict: 'chave' }).then(() => fetchAll())
+      }
+    }
+  }, [activeMenu, configs, supabase, fetchAll])
 
   // ── Usuários ─────────────────────────────────────────────
   function abrirUModal(u?: UsuarioPerfil) {
@@ -663,7 +682,7 @@ export default function ConfiguracoesPage() {
     return (
       <div key={chave} style={{ marginBottom: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-          <label style={lbl}>{c.descricao ?? c.chave}</label>
+          <label style={lbl}>{CONFIG_LABELS[chave] ?? c.descricao ?? c.chave}</label>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             {saved === chave && (
               <span style={{ fontSize: 11, color: '#065f46', background: '#ecfdf5', padding: '1px 8px', borderRadius: 20 }}>✓ Salvo</span>
@@ -897,6 +916,13 @@ export default function ConfiguracoesPage() {
               {renderField('retirada_taxa_mensal', 'number')}
               {renderField('os_pronta_alerta_dias', 'number')}
               {renderField('cliente_inativo_dias', 'number')}
+              {renderField('compras_periodo_dias', 'text', [
+                { v: '30', l: '30 dias' },
+                { v: '60', l: '60 dias' },
+                { v: '90', l: '90 dias' },
+                { v: '180', l: '180 dias' },
+                { v: '365', l: '365 dias' },
+              ])}
             </div>
           </div>
         )}
