@@ -222,6 +222,19 @@ export default function NovaOSPage() {
     })
   }
 
+  const VARIANTES_SUFIXO = ['pro max', 'pro', 'ultra', 'plus', 'fe', 'lite', 'mini', 'edge']
+
+  function filtrarPorVariante(produtos: IPlayProduto[], modelo: string): IPlayProduto[] {
+    const modeloLower = modelo.toLowerCase()
+    const varianteModelo = VARIANTES_SUFIXO.find(v => new RegExp(`\\b${v}\\b`).test(modeloLower))
+    return produtos.filter(p => {
+      const nomeLower = p.nome.toLowerCase()
+      const varianteProduto = VARIANTES_SUFIXO.find(v => new RegExp(`\\b${v}\\b`).test(nomeLower))
+      if (varianteModelo) return varianteProduto === varianteModelo
+      return !varianteProduto
+    })
+  }
+
   function categorizarIPlay(produtos: IPlayProduto[]): IPlayGrupos {
     const QUALIDADES = ['Super AMOLED', 'Soft OLED', 'Dynamic AMOLED', 'AMOLED', 'OLED', 'Incell', 'LCD']
     function agrupar(items: IPlayProduto[]): Record<string, IPlayProduto[]> {
@@ -251,7 +264,6 @@ export default function NovaOSPage() {
     const nomeBase = extrairNomeBaseIPlay(modeloSelecionado.modelo, modeloSelecionado.marca)
     const prefixo = tipo === 'display' ? 'frontal' : tipo === 'carga' ? 'carga' : 'bateria'
     const query = `${prefixo} ${nomeBase}`
-    console.log('[iPlay] query:', query, '| geracaoRede:', modeloSelecionado.geracaoRede)
     try {
       const res = await fetch('/api/fornecedor/buscar', {
         method: 'POST',
@@ -259,10 +271,9 @@ export default function NovaOSPage() {
         body: JSON.stringify({ query }),
       })
       const json = await res.json()
-      console.log('[iPlay] resposta:', json)
       if (!res.ok || !json.produtos) { setIplayErro(json.error ?? 'Erro na busca'); return }
-      const filtrados = filtrarPorGeracao(json.produtos, modeloSelecionado.geracaoRede)
-      console.log('[iPlay] filtrados:', filtrados.length, '/', json.produtos.length)
+      const porGeracao = filtrarPorGeracao(json.produtos, modeloSelecionado.geracaoRede)
+      const filtrados = filtrarPorVariante(porGeracao, modeloSelecionado.modelo)
       if (filtrados.length === 0) { setIplayErro('Nenhum resultado encontrado'); return }
       setIplayGrupos(categorizarIPlay(filtrados))
     } catch (e) {
