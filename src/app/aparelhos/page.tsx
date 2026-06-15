@@ -752,38 +752,53 @@ section { margin-bottom:12pt; }
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
-  const carregarPendentes = useCallback(async () => {
-    const { data } = await supabase
-      .from('dispositivos_modelos')
-      .select('*')
-      .eq('verificado', false)
-      .eq('ativo', true)
-      .order('created_at', { ascending: false })
-    setPendentes(data ?? [])
-  }, [supabase])
-
   useEffect(() => {
-    if (aba === 'aprovacoes') carregarPendentes()
-  }, [aba, carregarPendentes])
+    if (aba !== 'aprovacoes') return
+    const load = async () => {
+      const { data } = await supabase
+        .from('dispositivos_modelos')
+        .select('*')
+        .eq('verificado', false)
+        .eq('ativo', true)
+        .order('created_at', { ascending: false })
+      setPendentes(data ?? [])
+    }
+    load()
+  }, [aba, supabase])
 
   async function aprovar(id: string) {
-    await supabase.from('dispositivos_modelos').update({ verificado: true }).eq('id', id)
+    const { error } = await supabase.from('dispositivos_modelos').update({ verificado: true }).eq('id', id)
+    if (error) { alert(`Erro ao aprovar: ${error.message}`); return }
     setPendentes(p => p.filter(x => x.id !== id))
   }
 
   async function rejeitar(id: string) {
-    await supabase.from('dispositivos_modelos').update({ ativo: false }).eq('id', id)
+    const { error } = await supabase.from('dispositivos_modelos').update({ ativo: false }).eq('id', id)
+    if (error) { alert(`Erro ao rejeitar: ${error.message}`); return }
     setPendentes(p => p.filter(x => x.id !== id))
   }
 
   async function sincronizar() {
     setSyncLoading(true)
     setSyncResult(null)
-    const res = await fetch('/api/scraping', { method: 'POST' })
-    const json = await res.json()
-    setSyncResult(json)
-    setSyncLoading(false)
-    await carregarPendentes()
+    try {
+      const res = await fetch('/api/scraping', { method: 'POST' })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const json = await res.json()
+      setSyncResult(json)
+      // Recarregar pendentes após sync
+      const { data } = await supabase
+        .from('dispositivos_modelos')
+        .select('*')
+        .eq('verificado', false)
+        .eq('ativo', true)
+        .order('created_at', { ascending: false })
+      setPendentes(data ?? [])
+    } catch (err) {
+      setSyncResult({ ok: false, novos: 0, erros: [`Erro: ${err instanceof Error ? err.message : 'desconhecido'}`] })
+    } finally {
+      setSyncLoading(false)
+    }
   }
 
   useEffect(() => {
