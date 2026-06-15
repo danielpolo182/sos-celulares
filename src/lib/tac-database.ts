@@ -8,6 +8,8 @@ export type ModelSpec = {
   processador: string
   ram: string
   camera: string
+  geracaoRede?: string
+  cargaMaximaW?: number
 }
 
 // TAC prefixes → model specs (8 first digits of IMEI)

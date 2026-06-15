@@ -190,6 +190,84 @@ export default function NovaOSPage() {
   const [acessorios, setAcessorios] = useState<string[]>([])
   const modeloTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // ── iPlay
+  type IPlayTipo = 'display' | 'carga' | 'bateria'
+  type IPlayProduto = { codigo: string; nome: string; preco: number }
+  type IPlayGrupos = { comAro: Record<string, IPlayProduto[]>; semAro: Record<string, IPlayProduto[]> }
+  const [iplayTipo, setIplayTipo] = useState<IPlayTipo | null>(null)
+  const [iplayLoading, setIplayLoading] = useState(false)
+  const [iplayGrupos, setIplayGrupos] = useState<IPlayGrupos | null>(null)
+  const [iplayErro, setIplayErro] = useState<string | null>(null)
+
+  function extrairNomeBaseIPlay(modelo: string, marca: string): string {
+    return modelo
+      .replace(new RegExp(marca, 'gi'), '')
+      .replace(/\([^)]*\)/g, '')
+      .replace(/\b(5G|4G|3G|2G)\b/gi, '')
+      .toLowerCase().replace(/\s+/g, ' ').trim()
+  }
+
+  function filtrarPorGeracao(produtos: IPlayProduto[], geracao?: string): IPlayProduto[] {
+    if (!geracao) return produtos
+    const gen = geracao.toUpperCase()
+    return produtos.filter(p => {
+      const n = p.nome.toLowerCase()
+      const tem4g = /\b4g\b/.test(n)
+      const tem5g = /\b5g\b/.test(n)
+      if (!tem4g && !tem5g) return true
+      if (gen === '5G') return tem5g
+      if (gen === '4G') return tem4g
+      return true
+    })
+  }
+
+  function categorizarIPlay(produtos: IPlayProduto[]): IPlayGrupos {
+    const QUALIDADES = ['Super AMOLED', 'Soft OLED', 'Dynamic AMOLED', 'AMOLED', 'OLED', 'Incell', 'LCD']
+    function agrupar(items: IPlayProduto[]): Record<string, IPlayProduto[]> {
+      const grupos: Record<string, IPlayProduto[]> = {}
+      for (const item of items) {
+        let qualidade = 'Padrão'
+        for (const q of QUALIDADES) {
+          if (new RegExp(q, 'i').test(item.nome)) { qualidade = q; break }
+        }
+        if (!grupos[qualidade]) grupos[qualidade] = []
+        grupos[qualidade].push(item)
+      }
+      for (const g of Object.values(grupos)) g.sort((a, b) => a.preco - b.preco)
+      return grupos
+    }
+    const comAro = produtos.filter(p => /com\s*aro/i.test(p.nome))
+    const semAro = produtos.filter(p => !/com\s*aro/i.test(p.nome))
+    return { comAro: agrupar(comAro), semAro: agrupar(semAro) }
+  }
+
+  async function buscarIPlay(tipo: IPlayTipo) {
+    if (!modeloSelecionado) return
+    setIplayTipo(tipo)
+    setIplayLoading(true)
+    setIplayGrupos(null)
+    setIplayErro(null)
+    const nomeBase = extrairNomeBaseIPlay(modeloSelecionado.modelo, modeloSelecionado.marca)
+    const prefixo = tipo === 'display' ? 'frontal' : tipo === 'carga' ? 'carga' : 'bateria'
+    const query = `${prefixo} ${nomeBase}`
+    try {
+      const res = await fetch('/api/fornecedor/buscar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+      })
+      const json = await res.json()
+      if (!res.ok || !json.produtos) { setIplayErro(json.error ?? 'Erro na busca'); return }
+      const filtrados = filtrarPorGeracao(json.produtos, modeloSelecionado.geracaoRede)
+      if (filtrados.length === 0) { setIplayErro('Nenhum resultado encontrado'); return }
+      setIplayGrupos(categorizarIPlay(filtrados))
+    } catch (e) {
+      setIplayErro(String(e))
+    } finally {
+      setIplayLoading(false)
+    }
+  }
+
   // ── Senha
   const [tipoSenha, setTipoSenha] = useState<'nenhuma' | 'pin' | 'senha' | 'padrao'>('nenhuma')
   const [senhaValor, setSenhaValor] = useState('')
@@ -328,7 +406,7 @@ export default function NovaOSPage() {
     modeloTimer.current = setTimeout(async () => {
       const { data } = await supabase
         .from('dispositivos_modelos')
-        .select('marca, modelo, numero_modelo, tela, display_tipo, bateria, processador, ram')
+        .select('marca, modelo, numero_modelo, tela, display_tipo, bateria, processador, ram, geracao_rede, carga_maxima_w')
         .or(`marca.ilike.%${v}%,modelo.ilike.%${v}%,numero_modelo.ilike.%${v}%`)
         .eq('ativo', true)
         .limit(12)
@@ -338,6 +416,8 @@ export default function NovaOSPage() {
           display: d.tela ?? '', displayTipo: (d.display_tipo ?? '') as string,
           resolucao: '', bateria: d.bateria ?? '',
           processador: d.processador ?? '', ram: d.ram ?? '', camera: '',
+          geracaoRede: d.geracao_rede ?? undefined,
+          cargaMaximaW: d.carga_maxima_w ?? undefined,
         })))
       } else {
         // fallback para busca local (TAC database)
@@ -346,7 +426,14 @@ export default function NovaOSPage() {
     }, 250)
   }
 
-  function selecionarModelo(m: ModelSpec) { setModeloSelecionado(m); setModeloSearch(`${m.marca} ${m.modelo}`); setModeloResults([]) }
+  function selecionarModelo(m: ModelSpec) {
+    setModeloSelecionado(m)
+    setModeloSearch(`${m.marca} ${m.modelo}`)
+    setModeloResults([])
+    setIplayTipo(null)
+    setIplayGrupos(null)
+    setIplayErro(null)
+  }
 
   function onIMEIChange(v: string) {
     const raw = v.replace(/\D/g, '').slice(0, 15); setImei(raw)
@@ -568,14 +655,69 @@ export default function NovaOSPage() {
             {modeloSelecionado && (
               <div style={{ marginTop: 8, background: '#f8fafc', borderRadius: 7, padding: '8px 10px', border: '1px solid #e2e8f0' }}>
                 <p style={{ fontSize: 10, fontWeight: 500, color: '#64748b', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Especificações</p>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
-                  {[{ label: 'Display', value: modeloSelecionado.display }, { label: 'Original', value: modeloSelecionado.displayTipo }, { label: 'Bateria', value: modeloSelecionado.bateria }, { label: 'Processador', value: modeloSelecionado.processador }].map(s => (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: 6 }}>
+                  {[{ label: 'Display', value: modeloSelecionado.display }, { label: 'Original', value: modeloSelecionado.displayTipo }, { label: 'Bateria', value: modeloSelecionado.bateria }, { label: 'Processador', value: modeloSelecionado.processador }, { label: 'Carga Máx.', value: modeloSelecionado.cargaMaximaW ? `${modeloSelecionado.cargaMaximaW}W` : '' }].filter(s => s.value).map(s => (
                     <div key={s.label} style={{ background: '#fff', borderRadius: 5, padding: '5px 8px', border: '1px solid #e2e8f0' }}>
                       <div style={{ fontSize: 9, color: '#94a3b8', marginBottom: 1 }}>{s.label}</div>
                       <div style={{ fontSize: 11, fontWeight: 500, color: '#0f172a' }}>{s.value}</div>
                     </div>
                   ))}
                 </div>
+
+                {/* Botões iPlay */}
+                <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                  {([
+                    { tipo: 'display' as const, label: '📱 Display iPlay' },
+                    { tipo: 'carga' as const,   label: '⚡ Placa Carga iPlay' },
+                    { tipo: 'bateria' as const,  label: '🔋 Bateria iPlay' },
+                  ]).map(({ tipo, label }) => (
+                    <button key={tipo} onClick={() => buscarIPlay(tipo)}
+                      style={{ flex: 1, padding: '6px 0', borderRadius: 6, fontSize: 11, fontWeight: 500, cursor: 'pointer', border: '1px solid', transition: 'all .15s',
+                        background: iplayTipo === tipo ? '#e0e7ff' : '#fff',
+                        color: iplayTipo === tipo ? '#3730a3' : '#475569',
+                        borderColor: iplayTipo === tipo ? '#818cf8' : '#e2e8f0',
+                      }}>
+                      {iplayLoading && iplayTipo === tipo ? '⏳ Buscando...' : label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Resultados iPlay */}
+                {iplayErro && (
+                  <p style={{ fontSize: 11, color: '#ef4444', marginTop: 8 }}>{iplayErro}</p>
+                )}
+                {iplayGrupos && (() => {
+                  const temAro = Object.keys(iplayGrupos.comAro).length > 0
+                  const colunas = temAro
+                    ? [{ titulo: 'Sem Aro', grupos: iplayGrupos.semAro }, { titulo: 'Com Aro', grupos: iplayGrupos.comAro }]
+                    : [{ titulo: '', grupos: iplayGrupos.semAro }]
+                  return (
+                    <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: temAro ? '1fr 1fr' : '1fr', gap: 10 }}>
+                      {colunas.map(({ titulo, grupos }) => (
+                        <div key={titulo}>
+                          {titulo && <p style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6 }}>{titulo}</p>}
+                          {Object.entries(grupos).map(([qualidade, produtos]) => (
+                            <div key={qualidade} style={{ marginBottom: 8 }}>
+                              {qualidade !== 'Padrão' && (
+                                <p style={{ fontSize: 9, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 4 }}>{qualidade}</p>
+                              )}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                {produtos.map(p => (
+                                  <div key={p.codigo} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                                    <span style={{ fontSize: 11, color: '#334155', flex: 1, lineHeight: 1.3 }}>{p.nome}</span>
+                                    <span style={{ fontSize: 12, fontWeight: 700, color: '#16a34a', whiteSpace: 'nowrap' }}>
+                                      {p.preco.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })()}
               </div>
             )}
           </div>
