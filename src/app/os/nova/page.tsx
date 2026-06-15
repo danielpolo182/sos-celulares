@@ -324,7 +324,26 @@ export default function NovaOSPage() {
   function onModeloChange(v: string) {
     setModeloSearch(v); setModeloSelecionado(null)
     if (modeloTimer.current) clearTimeout(modeloTimer.current)
-    modeloTimer.current = setTimeout(() => setModeloResults(searchByModel(v)), 200)
+    if (!v || v.length < 2) { setModeloResults([]); return }
+    modeloTimer.current = setTimeout(async () => {
+      const { data } = await supabase
+        .from('dispositivos_modelos')
+        .select('marca, modelo, tela, bateria, processador, ram')
+        .or(`marca.ilike.%${v}%,modelo.ilike.%${v}%`)
+        .eq('ativo', true)
+        .limit(12)
+      if (data && data.length > 0) {
+        setModeloResults(data.map(d => ({
+          marca: d.marca, modelo: d.modelo,
+          display: d.tela ?? '', displayTipo: 'IPS LCD' as const,
+          resolucao: '', bateria: d.bateria ?? '',
+          processador: d.processador ?? '', ram: d.ram ?? '', camera: '',
+        })))
+      } else {
+        // fallback para busca local (TAC database)
+        setModeloResults(searchByModel(v))
+      }
+    }, 250)
   }
 
   function selecionarModelo(m: ModelSpec) { setModeloSelecionado(m); setModeloSearch(`${m.marca} ${m.modelo}`); setModeloResults([]) }

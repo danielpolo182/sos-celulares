@@ -16,6 +16,10 @@ next-env.d.ts
 # Sprint management (local only)
 sprint/
 
+# Seeds gerados localmente
+seed-dispositivos.sql
+scripts/
+
 # OS / editor
 .DS_Store
 Thumbs.db
