@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 
 // Marcas monitoradas — top 10 Brasil
 const MARCAS = ['samsung','motorola','xiaomi','apple','realme','asus','nokia','tcl','positivo','infinix']
@@ -145,42 +147,56 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ ok: true, resultados })
 }
 
-// Endpoint POST para busca manual de specs (usado pelo frontend)
+// Trigger manual — autenticado por sessão, restrito a danielcwpolo@gmail.com
 export async function POST(req: NextRequest) {
-  const { modelo } = await req.json()
-  if (!modelo) return NextResponse.json({ error: 'modelo requerido' }, { status: 400 })
+  const cookieStore = await cookies()
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll: (values: Array<{ name: string; value: string; options?: Record<string, unknown> }>) =>
+          values.forEach(({ name, value, options }) => cookieStore.set(name, value, options)),
+      },
+    }
+  )
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user || user.email !== 'danielcwpolo@gmail.com') {
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
+  }
 
-  const supabase = createClient(
+  const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   )
 
-  // 1. Buscar no banco local primeiro
-  const { data: local } = await supabase.from('dispositivos_modelos')
-    .select('*').ilike('modelo', `%${modelo}%`).eq('ativo', true)
-    .order('verificado', { ascending: false }).limit(5)
-  if (local && local.length > 0) return NextResponse.json({ source: 'db', results: local })
+  let novos = 0
+  const erros: string[] = []
 
-  // 2. Se não achou, usar Claude como fallback
-  const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
-      messages: [{ role: 'user', content: `Retorne as especificações técnicas do aparelho "${modelo}" em JSON puro (sem markdown). Formato: {"marca":"","modelo":"","tela":"","resolucao":"","processador":"","ram":"","armazenamento":"","camera_principal":"","camera_frontal":"","bateria":"","sistema":"","dimensoes":"","peso":"","lancamento":""}. Se houver variantes de memória, use barra: "64GB/128GB". Se não conhecer, retorne null.` }]
-    })
-  })
-  const claudeData = await claudeRes.json()
-  const text = claudeData.content?.[0]?.text?.trim()
-  if (!text || text === 'null') return NextResponse.json({ source: 'none', results: [] })
+  for (const marcaSlug of MARCAS) {
+    const marcaNome = MARCA_MAP[marcaSlug]
+    try {
+      const modelos = await fetchModelosMarca(marcaSlug)
+      for (const { modelo, slug, url } of modelos) {
+        const { data: existe } = await supabaseAdmin.from('dispositivos_modelos')
+          .select('id').eq('marca', marcaNome).eq('modelo', modelo).maybeSingle()
+        if (existe) continue
 
-  try {
-    const specs = JSON.parse(text)
-    // Salvar no banco para próximas buscas
-    await supabase.from('dispositivos_modelos').upsert({ ...specs, fonte: 'api', verificado: false }, { onConflict: 'marca,modelo' })
-    return NextResponse.json({ source: 'api', results: [specs] })
-  } catch {
-    return NextResponse.json({ source: 'none', results: [] })
+        const specs = await fetchSpecs(url)
+        const { error } = await supabaseAdmin.from('dispositivos_modelos').insert({
+          marca: marcaNome, modelo, slug,
+          ...specs, fonte: 'scraping', verificado: false, ativo: true,
+        })
+        if (!error) novos++
+        else erros.push(`${marcaNome} ${modelo}: ${error.message}`)
+
+        await new Promise(r => setTimeout(r, 800))
+      }
+    } catch (err: unknown) {
+      erros.push(`${marcaNome}: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
+
+  return NextResponse.json({ ok: true, novos, erros })
 }
