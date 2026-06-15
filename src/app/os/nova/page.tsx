@@ -251,6 +251,7 @@ export default function NovaOSPage() {
     const nomeBase = extrairNomeBaseIPlay(modeloSelecionado.modelo, modeloSelecionado.marca)
     const prefixo = tipo === 'display' ? 'frontal' : tipo === 'carga' ? 'carga' : 'bateria'
     const query = `${prefixo} ${nomeBase}`
+    console.log('[iPlay] query:', query, '| geracaoRede:', modeloSelecionado.geracaoRede)
     try {
       const res = await fetch('/api/fornecedor/buscar', {
         method: 'POST',
@@ -258,8 +259,10 @@ export default function NovaOSPage() {
         body: JSON.stringify({ query }),
       })
       const json = await res.json()
+      console.log('[iPlay] resposta:', json)
       if (!res.ok || !json.produtos) { setIplayErro(json.error ?? 'Erro na busca'); return }
       const filtrados = filtrarPorGeracao(json.produtos, modeloSelecionado.geracaoRede)
+      console.log('[iPlay] filtrados:', filtrados.length, '/', json.produtos.length)
       if (filtrados.length === 0) { setIplayErro('Nenhum resultado encontrado'); return }
       setIplayGrupos(categorizarIPlay(filtrados))
     } catch (e) {
