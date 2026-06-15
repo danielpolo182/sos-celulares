@@ -107,6 +107,7 @@ const MODULOS_PERM: { key: string; label: string; icon: string }[] = [
   { key: 'crm',          label: 'CRM',                icon: '📣' },
   { key: 'pdv',          label: 'PDV / Vendas',       icon: '💳' },
   { key: 'estoque',      label: 'Estoque',            icon: '📦' },
+  { key: 'compras',      label: 'Lista de compras',   icon: '🛒' },
   { key: 'contratos',    label: 'Contratos',          icon: '📄' },
   { key: 'aparelhos',    label: 'Compra & Venda',     icon: '📱' },
   { key: 'relatorios',   label: 'Relatórios',         icon: '📈' },

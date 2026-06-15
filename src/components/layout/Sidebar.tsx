@@ -24,6 +24,7 @@ const HREF_MODULO: Record<string, string> = {
   '/pdv':          'pdv',
   '/estoque':      'estoque',
   '/fornecedores': 'estoque',
+  '/compras':      'compras',
   '/contratos':    'contratos',
   '/rotinas':      'rotinas',
   '/fechamento':   'fechamento',
@@ -55,6 +56,7 @@ const NAV: NavItem[] = [
     children: [
       { href: '/pdv',          icon: 'ti-receipt',          label: 'PDV / Vendas' },
       { href: '/estoque',      icon: 'ti-package',          label: 'Produtos & Estoque' },
+      { href: '/compras',      icon: 'ti-shopping-cart',    label: 'Lista de compras' },
       { href: '/fornecedores', icon: 'ti-building-store',   label: 'Fornecedores' },
       { href: '/contratos',    icon: 'ti-file-description', label: 'Contratos' },
     ],
