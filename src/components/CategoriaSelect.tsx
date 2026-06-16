@@ -16,7 +16,6 @@ const inp: React.CSSProperties = {
 export default function CategoriaSelect({ value, onChange, placeholder = 'Ex: Display, Bateria...' }: Props) {
   const [sugestoes, setSugestoes] = useState<string[]>([])
   const [aberto, setAberto] = useState(false)
-  const [digitando, setDigitando] = useState(false)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -45,7 +44,6 @@ export default function CategoriaSelect({ value, onChange, placeholder = 'Ex: Di
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const v = e.target.value
     onChange(v)
-    setDigitando(true)
     buscar(v)
   }
 
@@ -56,10 +54,9 @@ export default function CategoriaSelect({ value, onChange, placeholder = 'Ex: Di
   function selecionar(cat: string) {
     onChange(cat)
     setAberto(false)
-    setDigitando(false)
   }
 
-  const mostrarCriar = digitando && value.trim() && !sugestoes.includes(value.trim())
+  const mostrarCriar = value.trim().length > 0 && !sugestoes.includes(value.trim())
 
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
