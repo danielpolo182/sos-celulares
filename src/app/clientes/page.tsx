@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { validarCPF, validarTelefone, formatarCPF, formatarTelefone } from '@/lib/validators'
+import CamposPersonalizadosForm from '@/components/CamposPersonalizadosForm'
 
 type Cliente = {
   id: string
@@ -148,6 +149,7 @@ export default function ClientesPage() {
   const [cpfErro, setCpfErro] = useState('')
   const [telErro, setTelErro] = useState('')
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
+  const [camposValores, setCamposValores] = useState<Record<string, string>>({})
   const [waMensagens, setWaMensagens] = useState<{ id: string; direcao: string; conteudo: string; criado_em: string }[]>([])
 
   // Dropdown state per field
@@ -278,12 +280,14 @@ export default function ClientesPage() {
   function openNew() {
     setForm(emptyForm); setEditId(null)
     setError(''); setCpfErro(''); setTelErro('')
+    setCamposValores({})
     setDropdown(null); setShowModal(true)
   }
 
   function openEdit(c: Cliente) {
     setForm(clienteToForm(c)); setEditId(c.id)
     setError(''); setCpfErro(''); setTelErro('')
+    setCamposValores((c as unknown as { campos_extras?: { custom?: Record<string, string> } }).campos_extras?.custom ?? {})
     setDropdown(null); setShowModal(true)
   }
 
@@ -293,7 +297,7 @@ export default function ClientesPage() {
     setSaving(true)
     setError('')
 
-    const payload = {
+    const basePayload = {
       nome: form.nome.trim(),
       telefone: rawPhone(form.telefone) || null,
       cpf: rawCPF(form.cpf) || null,
@@ -311,9 +315,13 @@ export default function ClientesPage() {
     }
 
     if (editId) {
+      const existing = clientes.find(c => c.id === editId)
+      const existingCamposExtras = (existing as unknown as { campos_extras?: Record<string, unknown> })?.campos_extras ?? {}
+      const payload = { ...basePayload, campos_extras: { ...existingCamposExtras, custom: camposValores } }
       const { error: err } = await supabase.from('clientes').update(payload).eq('id', editId)
       if (err) { setError(`Erro ao atualizar: ${err.message} (${err.code})`); setSaving(false); return }
     } else {
+      const payload = { ...basePayload, campos_extras: { custom: camposValores } }
       const { error: err } = await supabase.from('clientes').insert(payload)
       if (err) { setError(`Erro ao salvar: ${err.message} (${err.code})`); setSaving(false); return }
     }
@@ -634,6 +642,12 @@ export default function ClientesPage() {
                   </div>
                 </div>
               </div>
+
+              <CamposPersonalizadosForm
+                entidade="cliente"
+                valores={camposValores}
+                onChange={setCamposValores}
+              />
             </div>
 
             <div style={{ padding: '14px 24px', borderTop: '1px solid #f1f5f9', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
