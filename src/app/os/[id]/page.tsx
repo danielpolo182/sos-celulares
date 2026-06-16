@@ -5,6 +5,7 @@ import { useState, useEffect, use, useRef, useCallback, Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, useSearchParams } from 'next/navigation'
 import ModalPixRemoto from '@/components/pix/ModalPixRemoto'
+import CamposPersonalizadosForm from '@/components/CamposPersonalizadosForm'
 
 type OS = {
   id: string; numero: number; status: string; marca: string | null; modelo: string | null
@@ -134,6 +135,7 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
   const [pixModal, setPixModal] = useState<{ cobrancaId: string; pixCopiaCola: string; valor: number; expiraEm: string; temTelefone: boolean } | null>(null)
   const [observacoes, setObservacoes] = useState('')
   const [checklist, setChecklist] = useState<ChecklistState>({})
+  const [camposValores, setCamposValores] = useState<Record<string, string>>({})
 
   const [showDiagnostico, setShowDiagnostico] = useState(false)
   const [savingDiagnostico, setSavingDiagnostico] = useState(false)
@@ -176,6 +178,8 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
       setValorFinal(d.valor_final ? String(d.valor_final) : d.valor_orcamento ? String(d.valor_orcamento) : '')
       setDesconto(d.desconto ? String(d.desconto) : ''); setFormaPagamento(d.forma_pagamento ?? ''); setPago(d.pago ?? false)
       try { const obs = JSON.parse(d.observacoes ?? '{}'); setObservacoes(obs.texto ?? d.observacoes ?? ''); if (obs.__checklist) setChecklist(obs.__checklist) } catch { setObservacoes(d.observacoes ?? '') }
+      const dataAny = data as unknown as Record<string, unknown>
+      setCamposValores((dataAny.campos_extras as Record<string, Record<string, string>> | null)?.custom ?? {})
     }
   }, [id, supabase])
 
@@ -287,6 +291,7 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
       valor_final: valorFinal ? parseFloat(valorFinal) : null,
       desconto: desconto ? parseFloat(desconto) : 0,
       forma_pagamento: formaPagamento || null, pago, observacoes: obsPayload,
+      campos_extras: { ...((os as unknown as Record<string, unknown>).campos_extras as Record<string, unknown> ?? {}), custom: camposValores },
       ...(fechandoOS ? { entregue_em: new Date().toISOString() } : {}),
     }).eq('id', id)
     if (fechandoOS && itensOrc.length > 0) await baixarEstoque()
@@ -1155,6 +1160,12 @@ ${itensOrc.length > 0 ? `<table><thead><tr><th>Item</th><th>Qtd</th><th>Unit.</t
           )}
 
           <div style={card}><div style={cardTitle}><span>📝</span> Observações internas</div><textarea style={{ ...inp, minHeight: 80, resize: 'vertical' }} value={observacoes} onChange={e => setObservacoes(e.target.value)} placeholder="Anotações internas..." /></div>
+
+          <CamposPersonalizadosForm
+            entidade="os"
+            valores={camposValores}
+            onChange={setCamposValores}
+          />
         </>
       )}
 
