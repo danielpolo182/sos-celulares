@@ -1,11 +1,13 @@
 'use client'
 export const dynamic = 'force-dynamic'
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ReportLayout, periodoToDates } from '../ReportLayout'
 
 export default function RelVendas() {
   const supabase = createClient()
+  const router = useRouter()
   const [periodo, setPeriodo] = useState('30d')
   const [dataInicio, setDataInicio] = useState(''); const [dataFim, setDataFim] = useState(new Date().toISOString().split('T')[0])
   const [filtroForma, setFiltroForma] = useState('todos')
@@ -59,7 +61,7 @@ export default function RelVendas() {
             </tr></thead>
             <tbody>
               {dados.map((v:any)=>(
-                <tr key={v.id} style={{ borderBottom:'1px solid #f1f5f9' }}>
+                <tr key={v.id} onClick={() => router.push('/vendas/' + v.id)} style={{ borderBottom:'1px solid #f1f5f9', cursor:'pointer', transition:'background 0.15s' }} onMouseEnter={e=>(e.currentTarget.style.background='#f8fafc')} onMouseLeave={e=>(e.currentTarget.style.background='')}>
                   <td style={{ padding:'9px 14px',fontWeight:600,color:'#6366f1' }}>#{v.numero}</td>
                   <td style={{ padding:'9px 14px',color:'#94a3b8',fontSize:12 }}>{new Date(v.created_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</td>
                   <td style={{ padding:'9px 14px',color:'#374151',textTransform:'capitalize' }}>{v.forma_pagamento??'—'}</td>

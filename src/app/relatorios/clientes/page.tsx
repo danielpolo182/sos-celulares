@@ -1,11 +1,13 @@
 'use client'
 export const dynamic = 'force-dynamic'
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ReportLayout, periodoToDates } from '../ReportLayout'
 
 export default function RelClientes() {
   const supabase = createClient()
+  const router = useRouter()
   const [periodo, setPeriodo] = useState('30d')
   const [dataInicio, setDataInicio] = useState(''); const [dataFim, setDataFim] = useState(new Date().toISOString().split('T')[0])
   const [filtroStatus, setFiltroStatus] = useState('todos')
@@ -50,7 +52,7 @@ export default function RelClientes() {
               {['Nome','Telefone','Email','CPF','Status','Cadastrado'].map(h=><th key={h} style={{ padding:'9px 14px',textAlign:'left',fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.04em' }}>{h}</th>)}
             </tr></thead>
             <tbody>{dados.map((c:any)=>(
-              <tr key={c.id} style={{ borderBottom:'1px solid #f1f5f9' }}>
+              <tr key={c.id} onClick={() => router.push('/clientes?id=' + c.id)} style={{ borderBottom:'1px solid #f1f5f9', cursor:'pointer', transition:'background 0.15s' }} onMouseEnter={e=>(e.currentTarget.style.background='#f8fafc')} onMouseLeave={e=>(e.currentTarget.style.background='')}>
                 <td style={{ padding:'9px 14px',fontWeight:500,color:'#0f172a' }}>{c.nome}</td>
                 <td style={{ padding:'9px 14px',color:'#64748b',fontSize:12 }}>{c.telefone??'—'}</td>
                 <td style={{ padding:'9px 14px',color:'#64748b',fontSize:12 }}>{c.email??'—'}</td>
