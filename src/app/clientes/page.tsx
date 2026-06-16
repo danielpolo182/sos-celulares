@@ -5,6 +5,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { validarCPF, validarTelefone, formatarCPF, formatarTelefone } from '@/lib/validators'
 import CamposPersonalizadosForm from '@/components/CamposPersonalizadosForm'
+import ClienteDetalheModal from '@/components/ClienteDetalheModal'
 
 type Cliente = {
   id: string
@@ -151,6 +152,7 @@ export default function ClientesPage() {
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
   const [camposValores, setCamposValores] = useState<Record<string, string>>({})
   const [waMensagens, setWaMensagens] = useState<{ id: string; direcao: string; conteudo: string; criado_em: string }[]>([])
+  const [modalClienteId, setModalClienteId] = useState<string | null>(null)
 
   // Dropdown state per field
   const [dropdown, setDropdown] = useState<{ field: 'nome' | 'cpf' | 'telefone'; results: Cliente[] } | null>(null)
@@ -424,6 +426,11 @@ export default function ClientesPage() {
                 fontSize: 20, fontWeight: 600,
               }}>{selectedCliente.nome.charAt(0).toUpperCase()}</div>
               <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => setModalClienteId(selectedCliente.id)} style={{
+                  padding: '7px 14px', fontSize: 12, fontWeight: 500,
+                  border: '1px solid #dbeafe', borderRadius: 7,
+                  background: '#eff6ff', cursor: 'pointer', color: '#2563eb',
+                }}>Ver histórico</button>
                 <button onClick={() => openEdit(selectedCliente)} style={{
                   padding: '7px 14px', fontSize: 12, fontWeight: 500,
                   border: '1px solid #e2e8f0', borderRadius: 7,
@@ -496,6 +503,9 @@ export default function ClientesPage() {
           </div>
         )}
       </div>
+
+      {/* MODAL DETALHE */}
+      {modalClienteId && <ClienteDetalheModal clienteId={modalClienteId} onClose={() => setModalClienteId(null)} />}
 
       {/* MODAL */}
       {showModal && (

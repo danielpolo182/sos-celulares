@@ -1,13 +1,13 @@
 'use client'
 export const dynamic = 'force-dynamic'
 import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ReportLayout, periodoToDates } from '../ReportLayout'
+import ProdutoDetalheModal from '@/components/ProdutoDetalheModal'
 export default function RelEstoque() {
   const supabase = createClient()
-  const router = useRouter()
   const [periodo, setPeriodo] = useState('30d'); const [dataInicio, setDataInicio] = useState(''); const [dataFim, setDataFim] = useState(new Date().toISOString().split('T')[0])
+  const [produtoSelecionado, setProdutoSelecionado] = useState<string | null>(null)
   const [dados, setDados] = useState<any[]>([]); const [loading, setLoading] = useState(true); const [filtroTipo, setFiltroTipo] = useState('todos')
   const fetch = useCallback(async () => {
     setLoading(true)
@@ -25,6 +25,7 @@ export default function RelEstoque() {
     const csv=rows.map(r=>r.map(c=>`"${c}"`).join(',')).join('\n'); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='relatorio-estoque.csv'; a.click()
   }
   return (
+    <>
     <ReportLayout title="Movimentações de Estoque" subtitle={`${dados.length} movimentos`} periodo={periodo} setPeriodo={setPeriodo} dataInicio={dataInicio} setDataInicio={setDataInicio} dataFim={dataFim} setDataFim={setDataFim} onExport={exportCSV}>
       <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:12,marginBottom:20 }}>
         {[{l:'Total movimentos',v:dados.length,c:'#6366f1'},{l:'Entradas (un)',v:entradas,c:'#10b981'},{l:'Saídas (un)',v:saidas,c:'#ef4444'}].map(m=>(
@@ -44,7 +45,7 @@ export default function RelEstoque() {
               {['Produto','Tipo','Quantidade','Custo unit','Data'].map(h=><th key={h} style={{ padding:'9px 14px',textAlign:'left',fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.04em' }}>{h}</th>)}
             </tr></thead>
             <tbody>{dados.map((m:any,i:number)=>(
-              <tr key={i} onClick={() => router.push('/estoque' + (m.produto_id ? '?id=' + m.produto_id : ''))} style={{ borderBottom:'1px solid #f1f5f9', cursor:'pointer', transition:'background 0.15s' }} onMouseEnter={e=>(e.currentTarget.style.background='#f8fafc')} onMouseLeave={e=>(e.currentTarget.style.background='')}>
+              <tr key={i} onClick={() => { if (m.produto_id) setProdutoSelecionado(m.produto_id) }} style={{ borderBottom:'1px solid #f1f5f9', cursor:'pointer', transition:'background 0.15s' }} onMouseEnter={e=>(e.currentTarget.style.background='#f8fafc')} onMouseLeave={e=>(e.currentTarget.style.background='')}>
                 <td style={{ padding:'9px 14px',fontWeight:500,color:'#0f172a' }}>{m.produtos?.nome??'—'}</td>
                 <td style={{ padding:'9px 14px' }}><span style={{ fontSize:11,fontWeight:500,padding:'2px 8px',borderRadius:20,background:m.tipo==='entrada'?'#ecfdf5':m.tipo==='ajuste'?'#eff6ff':'#fef2f2',color:m.tipo==='entrada'?'#065f46':m.tipo==='ajuste'?'#1d4ed8':'#991b1b' }}>{m.tipo}</span></td>
                 <td style={{ padding:'9px 14px',fontWeight:600,color:m.tipo==='entrada'?'#065f46':'#991b1b' }}>{m.tipo==='entrada'?'+':'-'}{m.quantidade}</td>
@@ -56,5 +57,7 @@ export default function RelEstoque() {
         </div>
       )}
     </ReportLayout>
+    {produtoSelecionado && <ProdutoDetalheModal produtoId={produtoSelecionado} onClose={() => setProdutoSelecionado(null)} />}
+    </>
   )
 }
