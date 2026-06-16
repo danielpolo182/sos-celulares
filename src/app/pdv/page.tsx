@@ -303,12 +303,13 @@ export default function PDVPage() {
   async function finalizarVenda() {
     if (itens.length === 0 || faltaPagar > 0.01) return
     setSalvando(true)
-    const { data: venda } = await supabase.from('vendas').insert({
-      status: 'finalizada', tipo: 'pdv', subtotal, desconto, total, taxa_pagamento: taxaFormaAtual > 0 ? taxaFormaAtual : null,
+    const { data: venda, error: vendaErr } = await supabase.from('vendas').insert({
+      status: 'finalizada', tipo: 'pdv', subtotal, desconto, total,
       valor_recebido: totalPago, troco, pagamentos,
       forma_pagamento: pagamentos.length === 1 ? pagamentos[0].forma : 'misto',
       pago: true, observacoes: obs || null,
     }).select('id, numero').single()
+    if (vendaErr) { console.error('[finalizarVenda]', vendaErr); alert('Erro ao finalizar venda: ' + vendaErr.message); setSalvando(false); return }
 
     if (venda) {
       await supabase.from('venda_itens').insert(itens.map(i => ({ venda_id: venda.id, produto_id: i.produto_id, descricao: i.descricao, quantidade: i.quantidade, preco_unit: i.preco_unit })))
