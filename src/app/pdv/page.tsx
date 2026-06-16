@@ -964,21 +964,31 @@ function HotKey({ k, label }: { k: string; label: string }) {
 
 function HistoricoCaixa({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [loading, setLoading] = useState(true)
-  const [periodos, setPeriodos] = useState<{ data: string; abertura: MCx | null; fechamento: MCx | null; totalVendas: number; sangrias: number; suprimentos: number }[]>([])
   type MCx = { id: string; tipo: string; valor: number; forma: string | null; observacoes: string | null; created_at: string; data_ref: string }
+  type Periodo = { data: string; abertura: MCx | null; fechamento: MCx | null; totalVendas: number; sangrias: number; suprimentos: number; vendas: MCx[] }
+  const [periodos, setPeriodos] = useState<Periodo[]>([])
+  const [diasAbertos, setDiasAbertos] = useState<Record<string, boolean>>({})
   function fmt(v: number) { return `R$ ${v.toFixed(2).replace('.', ',')}` }
+
+  const formaLabel: Record<string, string> = {
+    dinheiro: '💵 Dinheiro', credito: '💳 Crédito', debito: '💳 Débito',
+    pix: '📱 PIX', misto: '🔀 Misto', voucher: '🎫 Voucher',
+  }
 
   useEffect(() => {
     async function load() {
-      const { data: movs } = await supabase.from('caixa_movimentos').select('*').order('created_at', { ascending: false }).limit(200)
+      const { data: movs } = await supabase.from('caixa_movimentos').select('*').order('created_at', { ascending: false }).limit(500)
       if (!movs) { setLoading(false); return }
       const porData: Record<string, MCx[]> = {}
       movs.forEach((m: MCx) => { const d = m.data_ref ?? m.created_at?.split('T')[0]; if (d) { porData[d] = porData[d] ?? []; porData[d].push(m) } })
       setPeriodos(Object.entries(porData).sort(([a], [b]) => b.localeCompare(a)).slice(0, 30).map(([data, lista]) => ({
-        data, abertura: lista.find(m => m.tipo === 'abertura') ?? null, fechamento: lista.find(m => m.tipo === 'fechamento') ?? null,
+        data,
+        abertura: lista.find(m => m.tipo === 'abertura') ?? null,
+        fechamento: lista.find(m => m.tipo === 'fechamento') ?? null,
         totalVendas: lista.filter(m => m.tipo === 'venda').reduce((s, m) => s + Number(m.valor), 0),
         sangrias: lista.filter(m => m.tipo === 'sangria').reduce((s, m) => s + Number(m.valor), 0),
         suprimentos: lista.filter(m => m.tipo === 'suprimento').reduce((s, m) => s + Number(m.valor), 0),
+        vendas: lista.filter(m => m.tipo === 'venda').sort((a, b) => a.created_at.localeCompare(b.created_at)),
       })))
       setLoading(false)
     }
@@ -996,6 +1006,7 @@ function HistoricoCaixa({ supabase }: { supabase: ReturnType<typeof createClient
         const fc = p.fechamento ? Number(p.fechamento.valor) : null
         const esperado = ab + p.totalVendas + p.suprimentos - p.sangrias
         const diff = fc !== null ? fc - esperado : null
+        const expandido = !!diasAbertos[p.data]
         return (
           <div key={p.data} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '14px 18px', marginBottom: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -1006,9 +1017,19 @@ function HistoricoCaixa({ supabase }: { supabase: ReturnType<typeof createClient
                   {p.fechamento ? ` · Fechamento: ${new Date(p.fechamento.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ' · Ainda aberto'}
                 </p>
               </div>
-              <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20, background: p.fechamento ? '#f1f5f9' : '#ecfdf5', color: p.fechamento ? '#475569' : '#065f46' }}>
-                {p.fechamento ? 'Fechado' : '🟢 Aberto'}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20, background: p.fechamento ? '#f1f5f9' : '#ecfdf5', color: p.fechamento ? '#475569' : '#065f46' }}>
+                  {p.fechamento ? 'Fechado' : '🟢 Aberto'}
+                </span>
+                {p.vendas.length > 0 && (
+                  <button
+                    onClick={() => setDiasAbertos(prev => ({ ...prev, [p.data]: !prev[p.data] }))}
+                    style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, border: '1px solid #e2e8f0', background: expandido ? '#eff6ff' : '#f8fafc', color: expandido ? '#2563eb' : '#64748b', cursor: 'pointer', fontWeight: 600 }}
+                  >
+                    {expandido ? '▲ Ocultar vendas' : `▼ Ver ${p.vendas.length} venda${p.vendas.length > 1 ? 's' : ''}`}
+                  </button>
+                )}
+              </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
               {[
@@ -1027,6 +1048,36 @@ function HistoricoCaixa({ supabase }: { supabase: ReturnType<typeof createClient
               <div style={{ display: 'flex', gap: 12, marginTop: 8, fontSize: 11, color: '#64748b' }}>
                 {p.sangrias > 0 && <span>💸 Sangria: {fmt(p.sangrias)}</span>}
                 {p.suprimentos > 0 && <span>💵 Suprimento: {fmt(p.suprimentos)}</span>}
+              </div>
+            )}
+            {expandido && p.vendas.length > 0 && (
+              <div style={{ marginTop: 12, borderTop: '1px solid #f1f5f9', paddingTop: 12 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc' }}>
+                      <th style={{ padding: '6px 10px', textAlign: 'left', color: '#64748b', fontWeight: 600, fontSize: 11 }}>Horário</th>
+                      <th style={{ padding: '6px 10px', textAlign: 'left', color: '#64748b', fontWeight: 600, fontSize: 11 }}>Venda</th>
+                      <th style={{ padding: '6px 10px', textAlign: 'left', color: '#64748b', fontWeight: 600, fontSize: 11 }}>Pagamento</th>
+                      <th style={{ padding: '6px 10px', textAlign: 'right', color: '#64748b', fontWeight: 600, fontSize: 11 }}>Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {p.vendas.map((v, i) => (
+                      <tr key={v.id} style={{ borderTop: i > 0 ? '1px solid #f1f5f9' : 'none' }}>
+                        <td style={{ padding: '7px 10px', color: '#64748b' }}>{new Date(v.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</td>
+                        <td style={{ padding: '7px 10px', color: '#374151' }}>{v.observacoes ?? '—'}</td>
+                        <td style={{ padding: '7px 10px', color: '#374151' }}>{formaLabel[v.forma ?? ''] ?? v.forma ?? '—'}</td>
+                        <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 600, color: '#065f46' }}>{fmt(Number(v.valor))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ borderTop: '2px solid #e2e8f0' }}>
+                      <td colSpan={3} style={{ padding: '7px 10px', fontWeight: 600, color: '#374151', fontSize: 12 }}>Total do dia</td>
+                      <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: '#065f46', fontSize: 13 }}>{fmt(p.totalVendas)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
             )}
           </div>
