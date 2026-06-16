@@ -245,12 +245,22 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
     }, 250)
   }
 
+  function calcularPrecoVendaOrc(custo: number): number {
+    if (custo <= 80) return 180
+    if (custo <= 130) return 230
+    if (custo <= 180) return 280
+    if (custo <= 230) return 350
+    if (custo <= 290) return 420
+    return Math.round(custo * 1.65)
+  }
+
   function adicionarProdOrc(p: ProdutoOrc) {
     const exist = itensOrc.findIndex(i => i.produto_id === p.id)
     if (exist >= 0) {
       const novo = [...itensOrc]; novo[exist].quantidade++; novo[exist].subtotal = novo[exist].quantidade * novo[exist].preco_unit; setItensOrc(novo)
     } else {
-      setItensOrc(prev => [...prev, { produto_id: p.id, fornecedor_id: null, descricao: p.nome, qualidade: p.qualidade, quantidade: 1, custo_unit: p.custo_medio, preco_unit: p.preco_venda, subtotal: p.preco_venda, tipo: 'peca' }])
+      const precoCalc = calcularPrecoVendaOrc(p.custo_medio)
+      setItensOrc(prev => [...prev, { produto_id: p.id, fornecedor_id: null, descricao: p.nome, qualidade: p.qualidade, quantidade: 1, custo_unit: p.custo_medio, preco_unit: precoCalc, subtotal: precoCalc, tipo: 'peca' }])
     }
     setSearchOrc(''); setProdResultsOrc([])
   }
@@ -1225,7 +1235,10 @@ ${itensOrc.length > 0 ? `<table><thead><tr><th>Item</th><th>Qtd</th><th>Unit.</t
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                    {['Descrição', 'Qualidade', 'Fornecedor', 'Qtd', 'Custo unit', 'Preço unit', 'Subtotal', ''].map(h => <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>)}
+                    {['Descrição', 'Qualidade', 'Fornecedor', 'Qtd'].map(h => <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>)}
+                    <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.04em' }}>💰 Custo unit</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>💵 Preço venda</th>
+                    {['Subtotal', ''].map(h => <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>)}
                   </tr>
                 </thead>
                 <tbody>
@@ -1235,8 +1248,8 @@ ${itensOrc.length > 0 ? `<table><thead><tr><th>Item</th><th>Qtd</th><th>Unit.</t
                       <td style={{ padding: '8px 10px' }}><select style={{ ...inp, fontSize: 11, padding: '4px 8px' }} value={item.qualidade} onChange={e => atualizarItemOrc(i, 'qualidade', e.target.value)}>{Object.entries(QUALIDADE_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></td>
                       <td style={{ padding: '8px 10px' }}><select style={{ ...inp, fontSize: 11, padding: '4px 8px' }} value={item.fornecedor_id ?? ''} onChange={e => atualizarItemOrc(i, 'fornecedor_id', e.target.value || null)}><option value="">—</option>{fornecedoresOrc.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}</select></td>
                       <td style={{ padding: '8px 10px' }}><input style={{ ...inp, width: 60, padding: '4px 8px', fontSize: 12, textAlign: 'center' }} type="number" min="1" value={item.quantidade} onChange={e => atualizarItemOrc(i, 'quantidade', parseInt(e.target.value) || 1)} /></td>
-                      <td style={{ padding: '8px 10px' }}><input style={{ ...inp, width: 80, padding: '4px 8px', fontSize: 12 }} type="number" step="0.01" value={item.custo_unit} onChange={e => atualizarItemOrc(i, 'custo_unit', parseFloat(e.target.value) || 0)} /></td>
-                      <td style={{ padding: '8px 10px' }}><input style={{ ...inp, width: 80, padding: '4px 8px', fontSize: 12 }} type="number" step="0.01" value={item.preco_unit} onChange={e => atualizarItemOrc(i, 'preco_unit', parseFloat(e.target.value) || 0)} /></td>
+                      <td style={{ padding: '8px 10px' }}><input style={{ ...inp, width: 80, padding: '4px 8px', fontSize: 12, border: '1px solid #fca5a5', color: '#dc2626' }} type="number" step="0.01" value={item.custo_unit} onChange={e => atualizarItemOrc(i, 'custo_unit', parseFloat(e.target.value) || 0)} /></td>
+                      <td style={{ padding: '8px 10px' }}><input style={{ ...inp, width: 80, padding: '4px 8px', fontSize: 12, border: '1px solid #86efac', color: '#16a34a', fontWeight: 600 }} type="number" step="0.01" value={item.preco_unit} onChange={e => atualizarItemOrc(i, 'preco_unit', parseFloat(e.target.value) || 0)} /></td>
                       <td style={{ padding: '8px 10px', fontWeight: 600, color: '#6366f1', whiteSpace: 'nowrap' }}>R$ {item.subtotal.toFixed(2).replace('.', ',')}</td>
                       <td style={{ padding: '8px 10px' }}><button onClick={() => removerItemOrc(i)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 18 }}>×</button></td>
                     </tr>
