@@ -8,7 +8,7 @@ import ModalPixRemoto from '@/components/pix/ModalPixRemoto'
 
 type Produto = {
   id: string; nome: string; categoria?: string | null
-  preco_venda: number; custo_unit: number; estoque_atual?: number
+  preco_venda: number; custo_unit: number; estoque_atual?: number; filial_id?: string | null
 }
 
 type ItemVenda = {
@@ -316,8 +316,11 @@ export default function PDVPage() {
       for (const item of itens) {
         if (item.produto_id) {
           const prod = produtos.find(p => p.id === item.produto_id)
-          if (prod && prod.estoque_atual != null)
+          if (prod && prod.estoque_atual != null) {
             await supabase.from('produtos').update({ estoque_atual: Math.max(0, prod.estoque_atual - item.quantidade) }).eq('id', item.produto_id)
+            if (prod.filial_id)
+              await supabase.from('movimentacoes_estoque').insert({ filial_id: prod.filial_id, produto_id: item.produto_id, tipo: 'saida', quantidade: item.quantidade, motivo: `Venda PDV #${venda.numero}` })
+          }
         }
       }
       await supabase.from('caixa_movimentos').insert({ tipo: 'venda', valor: total, forma: pagamentos.length === 1 ? pagamentos[0].forma : 'misto', referencia_id: venda.id, observacoes: `Venda #${venda.numero}`, data_ref: hoje() })
@@ -343,8 +346,11 @@ export default function PDVPage() {
       for (const item of itens) {
         if (item.produto_id) {
           const prod = produtos.find(p => p.id === item.produto_id)
-          if (prod && prod.estoque_atual != null)
+          if (prod && prod.estoque_atual != null) {
             await supabase.from('produtos').update({ estoque_atual: Math.max(0, prod.estoque_atual - item.quantidade) }).eq('id', item.produto_id)
+            if (prod.filial_id)
+              await supabase.from('movimentacoes_estoque').insert({ filial_id: prod.filial_id, produto_id: item.produto_id, tipo: 'saida', quantidade: item.quantidade, motivo: `Venda PDV #${venda.numero}` })
+          }
         }
       }
       await supabase.from('caixa_movimentos').insert({ tipo: 'venda', valor: total, forma: 'pix', referencia_id: venda.id, observacoes: `Venda #${venda.numero} (PIX pendente)`, data_ref: hoje() })
