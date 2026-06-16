@@ -152,7 +152,7 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
 
   const [cfgLoja, setCfgLoja] = useState<Record<string, string>>({
     loja_nome: 'SOS Celulares', loja_telefone: '', loja_email: '',
-    loja_endereco: '', loja_cnpj: '', recibo_os_formato: 'a4',
+    loja_endereco: '', loja_cnpj: '', recibo_os_formato: '',
     garantia_dias: '90', retirada_prazo_dias: '90', retirada_taxa_mensal: '10',
   })
   const [assinaturaLoja, setAssinaturaLoja] = useState('')
@@ -204,7 +204,7 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
     loadOS().finally(() => setLoading(false))
 
     supabase.from('sistema_config').select('chave,valor')
-      .in('chave', ['loja_nome', 'loja_telefone', 'loja_email', 'loja_endereco', 'loja_cnpj', 'recibo_os_formato', 'garantia_dias', 'retirada_prazo_dias', 'retirada_taxa_mensal'])
+      .in('chave', ['loja_nome', 'loja_telefone', 'loja_email', 'loja_endereco', 'loja_cnpj', 'recibo_os_formato', 'garantia_dias', 'retirada_prazo_dias', 'retirada_taxa_mensal', 'assinatura_responsavel'])
       .then(({ data }) => {
         if (data) { const m: Record<string, string> = {}; data.forEach((c: { chave: string; valor: string }) => { m[c.chave] = c.valor }); setCfgLoja(prev => ({ ...prev, ...m })) }
       })
@@ -393,6 +393,7 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
 
   function gerarHTMLContrato(contrato: Contrato): string {
     if (!os) return ''
+    const assinatura = assinaturaLoja || cfgLoja.assinatura_responsavel || ''
     const nomeLoja = cfgLoja.loja_nome || 'SOS Celulares'
     const cnpjLoja = cfgLoja.loja_cnpj || ''
     const garantiaDias = cfgLoja.garantia_dias || '90'
@@ -449,7 +450,7 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
 <div class="conteudo">${conteudoPreenchido}</div>
 <div class="assinaturas">
   ${contrato.requer_assinatura_cliente ? `<div class="ass-box"><div style="height:48px"></div><div class="ass-linha"></div><div class="ass-label">Assinatura do cliente<br>${os.clientes?.nome ?? ''}</div></div>` : ''}
-  ${contrato.requer_assinatura_gestor ? `<div class="ass-box">${assinaturaLoja ? `<img src="${assinaturaLoja}" class="ass-img" />` : '<div style="height:48px"></div>'}<div class="ass-linha"></div><div class="ass-label">Responsável técnico<br>${nomeLoja}</div></div>` : ''}
+  ${contrato.requer_assinatura_gestor ? `<div class="ass-box">${assinatura ? `<img src="${assinatura}" class="ass-img" />` : '<div style="height:48px"></div>'}<div class="ass-linha"></div><div class="ass-label">Responsável técnico<br>${nomeLoja}</div></div>` : ''}
 </div>
 <div class="footer">${nomeLoja}${cnpjLoja ? ` · CNPJ ${cnpjLoja}` : ''} · OS #${os.numero} · ${new Date().toLocaleDateString('pt-BR')}</div>
 <script>window.onload = () => { window.print(); }<\/script>
@@ -459,6 +460,7 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
   function gerarHTMLOS(): string {
     if (!os) return ''
     const formato = cfgLoja.recibo_os_formato || 'a4'
+    const assinatura = assinaturaLoja || cfgLoja.assinatura_responsavel || ''
     const nomeLoja = cfgLoja.loja_nome || 'SOS Celulares'
     const telLoja = cfgLoja.loja_telefone || ''
     const emailLoja = cfgLoja.loja_email || ''
@@ -593,7 +595,7 @@ ${itensOrc.length > 0 ? `<table><thead><tr><th>Item</th><th>Qtd</th><th>Unit.</t
 <div class="aviso-box"><b>Retirada:</b> ${prazoRetirada}d · Até ${dataLimite}<br><b>Armazenamento:</b> R$ ${taxaMensal},00/mês<br><b>Garantia:</b> ${garantiaDias} dias</div>
 <div class="ass-line">
   <div class="ass-box"><div style="height:20mm"></div><div class="ass-l"></div><div class="ass-label">Assinatura do cliente</div></div>
-  <div class="ass-box">${assinaturaLoja ? `<img src="${assinaturaLoja}" style="max-height:20mm;max-width:80pt;display:block;margin-bottom:1pt" />` : '<div style="height:20mm"></div>'}<div class="ass-l"></div><div class="ass-label">Técnico responsável</div></div>
+  <div class="ass-box">${assinatura ? `<img src="${assinatura}" style="max-height:20mm;max-width:80pt;display:block;margin-bottom:1pt" />` : '<div style="height:20mm"></div>'}<div class="ass-l"></div><div class="ass-label">Técnico responsável</div></div>
 </div>
 <div class="footer">CDC (Lei 8.078/90) · ${nomeLoja}${cnpjLoja ? ' · CNPJ ' + cnpjLoja : ''}</div>
 <script>window.onload = () => { window.print(); }<\/script>
@@ -676,7 +678,7 @@ ${itensOrc.length > 0 ? `<table><thead><tr><th>Item</th><th>Qtd</th><th>Unit.</t
         <div class="sig-label">Assinatura do cliente<br>${os.clientes?.nome ?? ''}</div>
       </div>
       <div class="sig-box">
-        ${assinaturaLoja ? `<img src="${assinaturaLoja}" class="sig-img" />` : '<div class="sig-space"></div>'}
+        ${assinatura ? `<img src="${assinatura}" class="sig-img" />` : '<div class="sig-space"></div>'}
         <div class="sig-line"></div>
         <div class="sig-label">Técnico responsável<br>${nomeLoja}</div>
       </div>
