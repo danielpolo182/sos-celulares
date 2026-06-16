@@ -96,6 +96,9 @@ export default function PDVPage() {
   const [pixCriando, setPixCriando] = useState(false)
   const [pixModal, setPixModal] = useState<{ cobrancaId: string; pixCopiaCola: string; valor: number; expiraEm: string; temTelefone: boolean } | null>(null)
 
+  // Config da loja (para recibo)
+  const [cfgLoja, setCfgLoja] = useState<Record<string, string>>({})
+
   // Caixa
   const [caixaHoje, setCaixaHoje] = useState<CaixaHoje | null>(null)
   const [movimentos, setMovimentos] = useState<MovimentoCaixa[]>([])
@@ -160,6 +163,18 @@ export default function PDVPage() {
     setCaixaHoje(caixa as CaixaHoje | null)
     const { data: movs } = await supabase.from('caixa_movimentos').select('*').eq('data_ref', d).order('created_at', { ascending: false })
     setMovimentos((movs ?? []) as MovimentoCaixa[])
+  }, [supabase])
+
+  useEffect(() => {
+    supabase.from('sistema_config').select('chave,valor')
+      .in('chave', ['loja_nome','loja_telefone','loja_email','loja_endereco','loja_cnpj','recibo_pdv_formato','loja_slogan'])
+      .then(({ data }) => {
+        if (data) {
+          const m: Record<string, string> = {}
+          data.forEach((c: { chave: string; valor: string }) => { m[c.chave] = c.valor })
+          setCfgLoja(m)
+        }
+      })
   }, [supabase])
 
   useEffect(() => {
@@ -422,22 +437,100 @@ export default function PDVPage() {
 
   function imprimir() {
     if (!ultimaVenda) return
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Recibo</title>
-    <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:12px;max-width:300px;margin:0 auto;padding:16px}
-    .center{text-align:center}.bold{font-weight:bold}.line{border-top:1px dashed #000;margin:8px 0}.row{display:flex;justify-content:space-between;margin:3px 0}</style></head><body>
-    <div class="center bold" style="font-size:15px">SOS Celulares</div>
-    <div class="center" style="font-size:10px;margin-bottom:8px">${new Date().toLocaleString('pt-BR')}</div>
-    <div class="line"></div><div class="bold">Venda #${ultimaVenda.numero}</div><div class="line"></div>
-    ${itens.map(i => `<div class="row"><span>${i.descricao} x${i.quantidade}</span><span>R$ ${i.subtotal.toFixed(2).replace('.', ',')}</span></div>`).join('')}
-    <div class="line"></div>
-    ${desconto > 0 ? `<div class="row"><span>Desconto</span><span>- R$ ${desconto.toFixed(2).replace('.', ',')}</span></div>` : ''}
-    <div class="row bold"><span>TOTAL</span><span>R$ ${ultimaVenda.total.toFixed(2).replace('.', ',')}</span></div>
-    ${pagamentos.map(p => `<div class="row"><span>${p.forma}</span><span>R$ ${p.valor.toFixed(2).replace('.', ',')}</span></div>`).join('')}
-    ${ultimaVenda.troco > 0 ? `<div class="row bold"><span>Troco</span><span>R$ ${ultimaVenda.troco.toFixed(2).replace('.', ',')}</span></div>` : ''}
-    <div class="line"></div><div class="center">Obrigado pela preferência!</div>
-    <script>window.onload=()=>{window.print()}<\/script></body></html>`
-    const b = new Blob([html], { type: 'text/html;charset=utf-8' }); const u = URL.createObjectURL(b)
-    const w = window.open(u, '_blank'); if (w) w.onload = () => URL.revokeObjectURL(u)
+    const formato = cfgLoja.recibo_pdv_formato || '80mm'
+    const nomeLoja = cfgLoja.loja_nome || 'SOS Celulares'
+    const endLoja = cfgLoja.loja_endereco || ''
+    const telLoja = cfgLoja.loja_telefone || ''
+    const cnpjLoja = cfgLoja.loja_cnpj || ''
+    const slogan = cfgLoja.loja_slogan || 'Especialistas em smartphones'
+    const dataHora = new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+
+    const pageSize = formato === '58mm' ? '58mm' : '80mm'
+    const bodyWidth = formato === '58mm' ? '54mm' : '76mm'
+    const fontBase = formato === '58mm' ? '8pt' : '9.5pt'
+
+    const itensHtml = itens.map(it =>
+      `<div class="item">
+        <div class="item-desc">${it.descricao}</div>
+        <div class="item-calc">
+          <span>${it.quantidade} x R$&nbsp;${it.preco_unit.toFixed(2).replace('.',',')}</span>
+          <span class="item-total">R$&nbsp;${it.subtotal.toFixed(2).replace('.',',')}</span>
+        </div>
+      </div>`
+    ).join('')
+
+    const pgtsHtml = pagamentos.map((p: { forma: string; valor: number }) =>
+      `<div class="row-pagto"><span>${p.forma}</span><span>R$&nbsp;${p.valor.toFixed(2).replace('.',',')}</span></div>`
+    ).join('')
+
+    const subtotalBruto = itens.reduce((s: number, i: { subtotal: number }) => s + i.subtotal, 0)
+
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+<title>Recibo #${ultimaVenda.numero}</title>
+<style>
+  @page { size: ${pageSize} auto; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Courier New', Courier, monospace; font-size: ${fontBase}; width: ${bodyWidth}; padding: 4mm 3mm; color: #000; background: #fff; }
+  .nome-loja { font-size: 14pt; font-weight: 900; text-align: center; letter-spacing: 0.5px; margin-bottom: 1mm; }
+  .sub { font-size: 7.5pt; text-align: center; color: #333; line-height: 1.5; margin-bottom: 0.5mm; }
+  .solid { border-top: 2px solid #000; margin: 2mm 0; }
+  .dashed { border-top: 1px dashed #000; margin: 2mm 0; }
+  .cupom { text-align: center; font-size: 8pt; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; padding: 1.5mm 0; margin: 1mm 0; background: #000; color: #fff; }
+  .venda-info { text-align: center; margin: 1.5mm 0; }
+  .venda-num { font-size: 16pt; font-weight: 900; }
+  .venda-data { font-size: 7.5pt; color: #444; }
+  .section-title { font-size: 7pt; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: #555; margin-bottom: 1.5mm; }
+  .item { margin-bottom: 1.5mm; padding-bottom: 1.5mm; border-bottom: 1px dotted #bbb; }
+  .item:last-child { border-bottom: none; }
+  .item-desc { font-size: 8.5pt; font-weight: bold; margin-bottom: 0.5mm; }
+  .item-calc { display: flex; justify-content: space-between; font-size: 8pt; color: #333; }
+  .item-total { font-weight: bold; color: #000; }
+  .row { display: flex; justify-content: space-between; font-size: 8.5pt; margin-bottom: 1mm; }
+  .row-total { display: flex; justify-content: space-between; font-size: 14pt; font-weight: 900; padding: 1.5mm 0; border-top: 2px solid #000; border-bottom: 2px solid #000; margin: 1.5mm 0; }
+  .row-pagto { display: flex; justify-content: space-between; font-size: 8.5pt; margin-bottom: 0.8mm; background: #f0f0f0; padding: 1mm 1.5mm; border-radius: 1mm; }
+  .troco { font-size: 10pt; font-weight: bold; display: flex; justify-content: space-between; padding: 1mm 0; color: #1a1a1a; }
+  .obrigado { text-align: center; font-size: 9pt; font-weight: bold; margin: 2mm 0 0.5mm; }
+  .slogan { text-align: center; font-size: 7.5pt; color: #555; font-style: italic; }
+  .footer { text-align: center; font-size: 6.5pt; color: #777; margin-top: 2mm; border-top: 1px dashed #ccc; padding-top: 1.5mm; }
+</style></head><body>
+
+<div class="nome-loja">${nomeLoja}</div>
+${endLoja ? `<div class="sub">${endLoja}</div>` : ''}
+${telLoja ? `<div class="sub">Tel: ${telLoja}</div>` : ''}
+${cnpjLoja ? `<div class="sub">CNPJ: ${cnpjLoja}</div>` : ''}
+
+<div class="solid"></div>
+<div class="cupom">&#9670; Recibo de Venda &#9670;</div>
+<div class="venda-info">
+  <div class="venda-num">#${ultimaVenda.numero}</div>
+  <div class="venda-data">${dataHora}</div>
+</div>
+<div class="dashed"></div>
+
+<div class="section-title">&#9658; Itens</div>
+${itensHtml}
+
+<div class="dashed"></div>
+${desconto > 0 ? `<div class="row"><span>Subtotal</span><span>R$&nbsp;${subtotalBruto.toFixed(2).replace('.',',')}</span></div><div class="row"><span>Desconto</span><span>- R$&nbsp;${desconto.toFixed(2).replace('.',',')}</span></div>` : ''}
+<div class="row-total"><span>TOTAL</span><span>R$&nbsp;${ultimaVenda.total.toFixed(2).replace('.',',')}</span></div>
+
+<div class="section-title" style="margin-top:1.5mm">&#9658; Pagamento</div>
+${pgtsHtml}
+${ultimaVenda.troco > 0 ? `<div class="troco"><span>Troco</span><span>R$&nbsp;${ultimaVenda.troco.toFixed(2).replace('.',',')}</span></div>` : ''}
+
+<div class="dashed"></div>
+<div class="obrigado">&#10022; Obrigado pela prefer&ecirc;ncia! &#10022;</div>
+<div class="slogan">${slogan}</div>
+<div class="footer">${nomeLoja}${cnpjLoja ? ' &middot; CNPJ ' + cnpjLoja : ''}<br>CDC (Lei 8.078/90) &middot; Venda #${ultimaVenda.numero} &middot; ${dataHora}</div>
+
+<script>window.onload = () => { window.print(); }<\/script>
+</body></html>`
+
+    const b = new Blob([html], { type: 'text/html;charset=utf-8' })
+    const u = URL.createObjectURL(b)
+    const w = window.open(u, '_blank')
+    if (w) w.onafterprint = () => { w.close(); URL.revokeObjectURL(u) }
+    setTimeout(() => URL.revokeObjectURL(u), 30000)
   }
 
   const showDropdown = dropdownOpen && searchProd.trim().length > 0
