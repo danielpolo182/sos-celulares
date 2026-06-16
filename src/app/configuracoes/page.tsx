@@ -355,6 +355,22 @@ export default function ConfiguracoesPage() {
     }
   }, [activeMenu, configs, supabase, fetchAll])
 
+  useEffect(() => {
+    if (activeMenu === 'impressao') {
+      const defaultConfigs = [
+        { chave: 'recibo_os_formato', valor: 'a4', categoria: 'impressao', descricao: 'Formato do recibo de OS' },
+        { chave: 'recibo_pdv_formato', valor: '80mm', categoria: 'impressao', descricao: 'Formato do recibo do PDV' },
+        { chave: 'recibo_garantia_formato', valor: '80mm', categoria: 'impressao', descricao: 'Formato do recibo de garantia' },
+      ]
+      const missingKeys = defaultConfigs.filter(dc => !configs.find(c => c.chave === dc.chave))
+      if (missingKeys.length > 0) {
+        Promise.all(missingKeys.map(dc =>
+          supabase.from('sistema_config').upsert({ ...dc, escopo: 'global' }, { onConflict: 'chave' })
+        )).then(() => fetchAll())
+      }
+    }
+  }, [activeMenu, configs, supabase, fetchAll])
+
   // ── Usuários ─────────────────────────────────────────────
   function abrirUModal(u?: UsuarioPerfil) {
     if (u) { setUEditId(u.id); setUNome(u.nome); setUEmail(u.email ?? ''); setUPapel(u.papel as Cargo); setUAtivo(u.ativo) }
