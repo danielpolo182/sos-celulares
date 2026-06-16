@@ -4,6 +4,8 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import CategoriaSelect from '@/components/CategoriaSelect'
+import CamposPersonalizadosForm from '@/components/CamposPersonalizadosForm'
 
 type EntradaHistorico = {
   id: string; produto_id: string; produto_nome?: string
@@ -118,6 +120,7 @@ export default function EstoquePage() {
   const [fcCategoria, setFcCategoria] = useState('')
   const [fcEstoqueMinimo, setFcEstoqueMinimo] = useState('')
   const [fcUploadando, setFcUploadando] = useState(false)
+  const [camposValores, setCamposValores] = useState<Record<string, string>>({})
 
   // ── Form entrada
   const [eQtd, setEQtd] = useState('1')
@@ -192,6 +195,7 @@ export default function EstoquePage() {
     setFcFornecedorId(p.fornecedor_id ?? '')
     setFcCategoria(p.categoria ?? '')
     setFcEstoqueMinimo(p.estoque_minimo ? String(p.estoque_minimo) : '')
+    setCamposValores((p.campos_extras as Record<string, unknown> & { custom?: Record<string, string> } | null)?.custom ?? {})
   }
 
   function resetBase() {
@@ -210,7 +214,7 @@ export default function EstoquePage() {
 
   function abrirNovo() { setShowModalEscolha(true) }
   function abrirNovoRapido() { resetBase(); setShowModalEscolha(false); setShowModalRapido(true) }
-  function abrirNovoCompleto() { resetBase(); resetCompleto(); setShowModalEscolha(false); setShowModalCompleto(true) }
+  function abrirNovoCompleto() { resetBase(); resetCompleto(); setCamposValores({}); setShowModalEscolha(false); setShowModalCompleto(true) }
 
   function abrirRapido(p: Produto) { popularFormBase(p); setShowModalRapido(true) }
 
@@ -310,7 +314,10 @@ export default function EstoquePage() {
       fornecedor_id: fcFornecedorId || null,
       categoria: fcCategoria || null,
       estoque_minimo: parseFloat(fcEstoqueMinimo) || null,
-      campos_extras: fotosFinais.length > 0 ? { fotos: fotosFinais } : null,
+      campos_extras: {
+        ...(fotosFinais.length > 0 ? { fotos: fotosFinais } : {}),
+        custom: camposValores,
+      },
     }
     if (fEditId) {
       const { error } = await supabase.from('produtos').update(payload).eq('id', fEditId)
@@ -804,7 +811,11 @@ export default function EstoquePage() {
                     </div>
                     <div>
                       <label style={lbl}>Categoria</label>
-                      <input style={inp} value={fcCategoria} onChange={e => setFcCategoria(e.target.value)} placeholder="Ex: Display, Bateria, Carcaça..." />
+                      <CategoriaSelect
+                        value={fcCategoria}
+                        onChange={v => setFcCategoria(v)}
+                        placeholder="Ex: Display, Bateria, Carcaça..."
+                      />
                     </div>
                   </div>
                   <div>
@@ -828,6 +839,11 @@ export default function EstoquePage() {
                     <Toggle value={fMovEstoque} onChange={setFMovEstoque} label="Movimenta estoque" />
                     <Toggle value={fcHabNf} onChange={setFcHabNf} label="Habilitar NF-e" />
                   </div>
+                  <CamposPersonalizadosForm
+                    entidade="produto"
+                    valores={camposValores}
+                    onChange={setCamposValores}
+                  />
                 </>
               )}
 
