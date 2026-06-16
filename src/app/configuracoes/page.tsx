@@ -33,6 +33,8 @@ type Historico = {
 
 type PixConfig = { mp_access_token: string; mp_webhook_secret: string; ativo: boolean }
 
+type CampoPersonalizado = { id: string; nome: string; tipo: 'texto'|'numero'|'lista'; opcoes: string[]; obrigatorio: boolean; ordem: number; entidade: string }
+
 // ─── Menu lateral com categorias ──────────────────────────
 const MENU_GRUPOS = [
   {
@@ -71,6 +73,7 @@ const MENU_GRUPOS = [
       { key: 'permissoes', icon: '🔐', label: 'Permissões' },
       { key: 'plano',      icon: '💎', label: 'Meu plano' },
       { key: 'historico',  icon: '📜', label: 'Histórico' },
+      { key: 'campos_personalizados', icon: '📋', label: 'Campos personalizados' },
     ],
   },
 ]
@@ -240,6 +243,14 @@ export default function ConfiguracoesPage() {
 
   // PIX
   const [pixConfig, setPixConfig] = useState<PixConfig>({ mp_access_token: '', mp_webhook_secret: '', ativo: false })
+
+  // Campos personalizados
+  const [camposEntidade, setCamposEntidade] = useState<'produto'|'venda'|'os'|'cliente'>('produto')
+  const [listaCampos, setListaCampos] = useState<CampoPersonalizado[]>([])
+  const [showModalCampo, setShowModalCampo] = useState(false)
+  const [editandoCampo, setEditandoCampo] = useState<CampoPersonalizado | null>(null)
+  const [campForm, setCampForm] = useState({ nome: '', tipo: 'texto' as 'texto'|'numero'|'lista', opcoes: '', obrigatorio: false, ordem: 0 })
+  const [campSaving, setCampSaving] = useState(false)
   const [pixSaving, setPixSaving] = useState(false)
   const [pixMsg, setPixMsg] = useState('')
   const [pixShowToken, setPixShowToken] = useState(false)
@@ -323,6 +334,10 @@ export default function ConfiguracoesPage() {
       })
     }
   }, [activeMenu, supabase])
+
+  useEffect(() => {
+    if (activeMenu === 'campos_personalizados') fetchCampos(camposEntidade)
+  }, [camposEntidade, activeMenu])
 
   useEffect(() => {
     if (activeMenu === 'operacional') {
@@ -590,6 +605,35 @@ export default function ConfiguracoesPage() {
       .upsert({ usuario_id: user.id, assinatura: assNova }, { onConflict: 'usuario_id' })
     setAssAtual(assNova); setAssSaving(false); setAssSaved(true)
     setTimeout(() => setAssSaved(false), 2500)
+  }
+
+  // ── Campos personalizados ────────────────────────────────
+  async function fetchCampos(entidade: 'produto'|'venda'|'os'|'cliente') {
+    const res = await fetch(`/api/campos-personalizados?entidade=${entidade}`)
+    const d = await res.json()
+    setListaCampos(d.campos ?? [])
+  }
+
+  async function salvarCampo() {
+    setCampSaving(true)
+    const opcoesArr = campForm.opcoes.split('\n').map((s: string) => s.trim()).filter(Boolean)
+    const body = { entidade: camposEntidade, nome: campForm.nome, tipo: campForm.tipo, opcoes: opcoesArr, obrigatorio: campForm.obrigatorio, ordem: campForm.ordem }
+    if (editandoCampo) {
+      await fetch(`/api/campos-personalizados/${editandoCampo.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    } else {
+      await fetch('/api/campos-personalizados', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    }
+    setCampSaving(false)
+    setShowModalCampo(false)
+    setEditandoCampo(null)
+    setCampForm({ nome: '', tipo: 'texto', opcoes: '', obrigatorio: false, ordem: 0 })
+    fetchCampos(camposEntidade)
+  }
+
+  async function excluirCampo(id: string) {
+    if (!confirm('Excluir este campo? Os valores já salvos serão mantidos nos registros existentes.')) return
+    await fetch(`/api/campos-personalizados/${id}`, { method: 'DELETE' })
+    fetchCampos(camposEntidade)
   }
 
   // ── Upload de logo ───────────────────────────────────────
@@ -1721,6 +1765,108 @@ export default function ConfiguracoesPage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeMenu === 'campos_personalizados' && (
+          <div>
+            <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 16 }}>Campos personalizados</p>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+              {(['produto','venda','os','cliente'] as const).map(e => (
+                <button key={e} onClick={() => setCamposEntidade(e)}
+                  style={{ padding: '6px 14px', borderRadius: 20, border: '1px solid #e2e8f0', fontSize: 12, fontWeight: 600, cursor: 'pointer', background: camposEntidade === e ? '#2563eb' : '#fff', color: camposEntidade === e ? '#fff' : '#64748b' }}>
+                  {{ produto: 'Produtos', venda: 'Vendas', os: 'OS', cliente: 'Clientes' }[e]}
+                </button>
+              ))}
+            </div>
+            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden', marginBottom: 12 }}>
+              {listaCampos.length === 0 ? (
+                <p style={{ padding: 20, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Nenhum campo criado para este módulo.</p>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                      {['Nome','Tipo','Opções','Obrigatório','Ordem','Ações'].map(h => (
+                        <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {listaCampos.map(c => (
+                      <tr key={c.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '9px 14px', fontWeight: 500, color: '#1e293b' }}>{c.nome}</td>
+                        <td style={{ padding: '9px 14px', color: '#64748b', textTransform: 'capitalize' }}>{c.tipo}</td>
+                        <td style={{ padding: '9px 14px', color: '#64748b', fontSize: 12 }}>{c.opcoes?.join(', ') || '—'}</td>
+                        <td style={{ padding: '9px 14px' }}>{c.obrigatorio ? '✅' : '—'}</td>
+                        <td style={{ padding: '9px 14px', color: '#64748b' }}>{c.ordem}</td>
+                        <td style={{ padding: '9px 14px' }}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button onClick={() => { setEditandoCampo(c); setCampForm({ nome: c.nome, tipo: c.tipo, opcoes: c.opcoes?.join('\n') ?? '', obrigatorio: c.obrigatorio, ordem: c.ordem }); setShowModalCampo(true) }}
+                              style={{ padding: '4px 10px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 11, cursor: 'pointer', background: '#fff', color: '#374151' }}>Editar</button>
+                            <button onClick={() => excluirCampo(c.id)}
+                              style={{ padding: '4px 10px', border: '1px solid #fecaca', borderRadius: 6, fontSize: 11, cursor: 'pointer', background: '#fff', color: '#dc2626' }}>Excluir</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <button onClick={() => { setEditandoCampo(null); setCampForm({ nome: '', tipo: 'texto', opcoes: '', obrigatorio: false, ordem: 0 }); setShowModalCampo(true) }}
+              style={{ padding: '8px 18px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
+              + Novo campo
+            </button>
+            {showModalCampo && (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ background: '#fff', borderRadius: 14, padding: 28, width: 420, maxWidth: '90vw' }}>
+                  <p style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', marginBottom: 18 }}>{editandoCampo ? 'Editar campo' : 'Novo campo'}</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 500, color: '#64748b', marginBottom: 3, textTransform: 'uppercase' as const }}>Nome do campo</label>
+                      <input value={campForm.nome} onChange={e => setCampForm(p => ({ ...p, nome: e.target.value }))}
+                        style={{ width: '100%', padding: '8px 11px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' as const }} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 500, color: '#64748b', marginBottom: 3, textTransform: 'uppercase' as const }}>Tipo</label>
+                      <select value={campForm.tipo} onChange={e => setCampForm(p => ({ ...p, tipo: e.target.value as 'texto'|'numero'|'lista' }))}
+                        style={{ width: '100%', padding: '8px 11px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, outline: 'none', background: '#fff' }}>
+                        <option value="texto">Texto</option>
+                        <option value="numero">Número</option>
+                        <option value="lista">Lista (seleção)</option>
+                      </select>
+                    </div>
+                    {campForm.tipo === 'lista' && (
+                      <div>
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 500, color: '#64748b', marginBottom: 3, textTransform: 'uppercase' as const }}>Opções (uma por linha)</label>
+                        <textarea value={campForm.opcoes} onChange={e => setCampForm(p => ({ ...p, opcoes: e.target.value }))} rows={4}
+                          style={{ width: '100%', padding: '8px 11px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, outline: 'none', resize: 'vertical' as const, fontFamily: 'inherit', boxSizing: 'border-box' as const }}
+                          placeholder={'Natal\nPáscoa\nDia das Mães'} />
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: 12 }}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 500, color: '#64748b', marginBottom: 3, textTransform: 'uppercase' as const }}>Ordem</label>
+                        <input type="number" value={campForm.ordem} onChange={e => setCampForm(p => ({ ...p, ordem: parseInt(e.target.value) || 0 }))}
+                          style={{ width: '100%', padding: '8px 11px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' as const }} />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 18 }}>
+                        <input type="checkbox" id="obrig" checked={campForm.obrigatorio} onChange={e => setCampForm(p => ({ ...p, obrigatorio: e.target.checked }))} />
+                        <label htmlFor="obrig" style={{ fontSize: 13, color: '#374151' }}>Obrigatório</label>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
+                    <button onClick={() => setShowModalCampo(false)}
+                      style={{ padding: '8px 18px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, cursor: 'pointer', background: '#fff', color: '#374151' }}>Cancelar</button>
+                    <button onClick={salvarCampo} disabled={campSaving || !campForm.nome.trim()}
+                      style={{ padding: '8px 18px', background: campSaving ? '#93c5fd' : '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: campSaving ? 'not-allowed' : 'pointer' }}>
+                      {campSaving ? 'Salvando...' : 'Salvar'}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
