@@ -523,6 +523,9 @@ export default function ConfiguracoesPage() {
     await supabase.from('sistema_config')
       .update({ valor: editando[c.id], atualizado_por: user?.id })
       .eq('id', c.id)
+    if (chave === 'recibo_os_formato' || chave === 'recibo_pdv_formato') {
+      localStorage.setItem(chave, editando[c.id])
+    }
     setSaving(null); setSaved(chave)
     setTimeout(() => setSaved(null), 2000)
     fetchAll()

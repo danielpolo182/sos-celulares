@@ -50,7 +50,7 @@ export default function ProdutoDetalheModal({ produtoId, onClose }: Props) {
     load()
   }, [produtoId])
 
-  const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  const fmt = (v: number | null | undefined) => (v ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
   const fmtDate = (d: string) => new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 
   const tipoConfig: Record<string, { icon: string; color: string; sinal: string }> = {

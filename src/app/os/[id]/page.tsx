@@ -206,7 +206,7 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
     supabase.from('sistema_config').select('chave,valor')
       .in('chave', ['loja_nome', 'loja_telefone', 'loja_email', 'loja_endereco', 'loja_cnpj', 'recibo_os_formato', 'garantia_dias', 'retirada_prazo_dias', 'retirada_taxa_mensal', 'assinatura_responsavel'])
       .then(({ data }) => {
-        if (data) { const m: Record<string, string> = {}; data.forEach((c: { chave: string; valor: string }) => { m[c.chave] = c.valor }); setCfgLoja(prev => ({ ...prev, ...m })) }
+        if (data) { const m: Record<string, string> = {}; data.forEach((c: { chave: string; valor: string }) => { m[c.chave] = c.valor }); setCfgLoja(prev => ({ ...prev, ...m })); const lsFormato = localStorage.getItem('recibo_os_formato'); if (lsFormato) setCfgLoja(prev => ({ ...prev, recibo_os_formato: lsFormato })) }
       })
 
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -459,7 +459,7 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
 
   function gerarHTMLOS(): string {
     if (!os) return ''
-    const formato = cfgLoja.recibo_os_formato || 'a4'
+    const formato = (cfgLoja.recibo_os_formato || 'a4').trim()
     const assinatura = assinaturaLoja || cfgLoja.assinatura_responsavel || ''
     const nomeLoja = cfgLoja.loja_nome || 'SOS Celulares'
     const telLoja = cfgLoja.loja_telefone || ''
