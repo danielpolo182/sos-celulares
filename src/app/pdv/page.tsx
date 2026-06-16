@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import ModalPixRemoto from '@/components/pix/ModalPixRemoto'
+import CamposPersonalizadosForm from '@/components/CamposPersonalizadosForm'
 
 type Produto = {
   id: string; nome: string; categoria?: string | null
@@ -77,6 +78,9 @@ export default function PDVPage() {
   const [itens, setItens] = useState<ItemVenda[]>([])
   const [desconto, setDesconto] = useState(0)
   const [obs, setObs] = useState('')
+
+  // Campos personalizados da venda
+  const [camposVendaValores, setCamposVendaValores] = useState<Record<string, string>>({})
 
   // Pagamento
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([])
@@ -308,6 +312,7 @@ export default function PDVPage() {
       valor_recebido: totalPago, troco, pagamentos,
       forma_pagamento: pagamentos.length === 1 ? pagamentos[0].forma : 'misto',
       pago: true, observacoes: obs || null,
+      campos_extras: { custom: camposVendaValores },
     }).select('id, numero').single()
     if (vendaErr) { console.error('[finalizarVenda]', vendaErr); alert('Erro ao finalizar venda: ' + vendaErr.message); setSalvando(false); return }
 
@@ -326,7 +331,7 @@ export default function PDVPage() {
       await supabase.from('caixa_movimentos').insert({ tipo: 'venda', valor: total, forma: pagamentos.length === 1 ? pagamentos[0].forma : 'misto', referencia_id: venda.id, observacoes: `Venda #${venda.numero}`, data_ref: hoje() })
       setUltimaVenda({ numero: venda.numero, total, troco })
       setVendaOk(true)
-      setItens([]); setPagamentos([]); setDesconto(0); setObs('')
+      setItens([]); setPagamentos([]); setDesconto(0); setObs(''); setCamposVendaValores({})
       setEtapa('produtos')
       fetchProdutos(); fetchCaixa()
     }
@@ -338,6 +343,7 @@ export default function PDVPage() {
     setSalvando(true)
     const { data: venda, error: vendaErr } = await supabase.from('vendas').insert({
       status: 'finalizada', subtotal, desconto, total, forma_pagamento: 'pix', pago: false, observacoes: obs || null,
+      campos_extras: { custom: camposVendaValores },
     }).select('id, numero').single()
 
     if (vendaErr) { console.error('[criarVendaParaPix]', vendaErr); alert('Erro ao criar venda: ' + vendaErr.message); setSalvando(false); return null }
@@ -828,6 +834,15 @@ export default function PDVPage() {
                         <span>💵 Troco</span><span>{formatMoeda(troco)}</span>
                       </div>
                     )}
+                  </div>
+
+                  {/* Campos personalizados da venda */}
+                  <div style={{ padding: '0 24px 8px' }}>
+                    <CamposPersonalizadosForm
+                      entidade="venda"
+                      valores={camposVendaValores}
+                      onChange={setCamposVendaValores}
+                    />
                   </div>
 
                   {/* Botão de finalizar (fixo na base) */}
