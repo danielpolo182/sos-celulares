@@ -6,11 +6,10 @@ import { createClient } from '@/lib/supabase/client'
 
 type VendaItem = {
   id: string
-  produto_id: string
-  produto_nome: string
+  produto_id: string | null
+  descricao: string
   quantidade: number
-  preco_unitario: number
-  subtotal: number
+  preco_unit: number
 }
 
 type Venda = {
@@ -34,7 +33,6 @@ type Venda = {
 type CampoPersonalizado = {
   id: string
   nome: string
-  chave: string
   tipo: string
 }
 
@@ -100,7 +98,7 @@ export default function VendaDetailPage({ params }: { params: Promise<{ id: stri
   const statusBg = statusColor[venda.status] ?? '#64748b'
   const dataFormatada = new Date(venda.created_at).toLocaleString('pt-BR')
   const customFields = venda.campos_extras?.custom ?? {}
-  const camposComValor = campos.filter((c) => customFields[c.chave])
+  const camposComValor = campos.filter((c) => customFields[c.id])
 
   return (
     <div style={{ padding: 32, fontFamily: 'Inter, sans-serif', color: '#1e293b', maxWidth: 900, margin: '0 auto' }}>
@@ -200,10 +198,10 @@ export default function VendaDetailPage({ params }: { params: Promise<{ id: stri
                 {venda.venda_itens.map((item, idx) => (
                   <tr key={item.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={{ padding: '12px 16px', color: '#64748b' }}>{idx + 1}</td>
-                    <td style={{ padding: '12px 16px', fontWeight: 500 }}>{item.produto_nome}</td>
+                    <td style={{ padding: '12px 16px', fontWeight: 500 }}>{item.descricao}</td>
                     <td style={{ padding: '12px 16px' }}>{item.quantidade}</td>
-                    <td style={{ padding: '12px 16px' }}>{fmt(item.preco_unitario)}</td>
-                    <td style={{ padding: '12px 16px', fontWeight: 600 }}>{fmt(item.subtotal)}</td>
+                    <td style={{ padding: '12px 16px' }}>{fmt(item.preco_unit)}</td>
+                    <td style={{ padding: '12px 16px', fontWeight: 600 }}>{fmt(item.quantidade * item.preco_unit)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -247,7 +245,7 @@ export default function VendaDetailPage({ params }: { params: Promise<{ id: stri
             {camposComValor.map((campo) => (
               <div key={campo.id}>
                 <p style={{ margin: '0 0 4px', fontSize: 12, color: '#64748b', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{campo.nome}</p>
-                <p style={{ margin: 0, fontWeight: 500 }}>{customFields[campo.chave]}</p>
+                <p style={{ margin: 0, fontWeight: 500 }}>{customFields[campo.id]}</p>
               </div>
             ))}
           </div>
