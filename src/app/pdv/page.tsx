@@ -304,7 +304,7 @@ export default function PDVPage() {
     if (itens.length === 0 || faltaPagar > 0.01) return
     setSalvando(true)
     const { data: venda, error: vendaErr } = await supabase.from('vendas').insert({
-      status: 'finalizada', tipo: 'pdv', subtotal, desconto, total,
+      status: 'finalizada', tipo: 'pdv', subtotal, desconto, total, taxa_pagamento: taxaFormaAtual > 0 ? taxaFormaAtual : null,
       valor_recebido: totalPago, troco, pagamentos,
       forma_pagamento: pagamentos.length === 1 ? pagamentos[0].forma : 'misto',
       pago: true, observacoes: obs || null,
