@@ -14,7 +14,9 @@ type OS = {
   modelo: string | null
   defeito_relatado: string
   valor_orcamento: number | null
+  valor_final?: number | null
   created_at: string
+  entregue_em?: string | null
   imei: string | null
   clientes: { nome: string; telefone: string | null } | null
 }
@@ -199,13 +201,85 @@ function SubGrupoSection({
   )
 }
 
+function LinhaOS({ os }: { os: OS }) {
+  const concluida = os.status === 'entregue' || os.status === 'cancelada'
+  const valor = os.valor_final ?? os.valor_orcamento
+  const dias = diasAberto(os.created_at)
+
+  return (
+    <Link href={`/os/${os.id}`} style={{ textDecoration: 'none', display: 'block' }}>
+      <div
+        style={{
+          background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10,
+          padding: '14px 16px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12,
+          cursor: 'pointer',
+        }}
+        onMouseEnter={e => (e.currentTarget.style.borderColor = '#c7d2fe')}
+        onMouseLeave={e => (e.currentTarget.style.borderColor = '#e2e8f0')}
+      >
+        {/* Número */}
+        <div style={{
+          minWidth: 52, height: 52, borderRadius: 10, background: '#f5f3ff',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 13, fontWeight: 700, color: '#6366f1', flexShrink: 0,
+        }}>
+          #{os.numero}
+        </div>
+
+        {/* Info principal */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>
+            {os.clientes?.nome ?? '—'}
+          </div>
+          <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+            {os.modelo ?? 'Modelo não informado'}
+          </div>
+          <div style={{
+            fontSize: 12, color: '#94a3b8', marginTop: 2,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 400,
+          }}>
+            {os.defeito_relatado}
+          </div>
+        </div>
+
+        {/* Valor + Status + Tempo */}
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          {valor != null && (
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+              R$ {valor.toFixed(2).replace('.', ',')}
+            </div>
+          )}
+          <div style={{
+            display: 'inline-block', padding: '3px 8px', borderRadius: 20, fontSize: 11, fontWeight: 500,
+            background: STATUS_CONFIG[os.status]?.bg ?? '#f1f5f9',
+            color: STATUS_CONFIG[os.status]?.color ?? '#475569',
+            marginTop: 4,
+          }}>
+            {STATUS_CONFIG[os.status]?.label ?? os.status}
+          </div>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+            {concluida && os.entregue_em
+              ? `✔ ${new Date(os.entregue_em).toLocaleDateString('pt-BR')}`
+              : dias === 0 ? 'hoje' : `há ${dias} dia${dias > 1 ? 's' : ''}`}
+          </div>
+        </div>
+      </div>
+    </Link>
+  )
+}
+
 export default function OSPage() {
   const supabase = createClient()
   const router = useRouter()
-  const [aba, setAba] = useState<'lista' | 'pendencias'>('pendencias')
+  const [aba, setAba] = useState<'lista' | 'pendencias' | 'concluidas'>('pendencias')
   const [items, setItems] = useState<OS[]>([])
   const [pendencias, setPendencias] = useState<Pendencia[]>([])
   const [loading, setLoading] = useState(true)
+  const [concluidas, setConcluidas] = useState<OS[]>([])
+  const [loadingConcluidas, setLoadingConcluidas] = useState(false)
+  const [filtroConcluidas, setFiltroConcluidas] = useState<'todas' | 'entregue' | 'cancelada'>('todas')
+  const [concluidasCounts, setConcluidasCounts] = useState<Record<string, number>>({})
+  const [limiteConcluidas, setLimiteConcluidas] = useState(100)
   const [search, setSearch] = useState('')
   const [filtroStatus, setFiltroStatus] = useState('todos')
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({})
@@ -224,6 +298,30 @@ export default function OSPage() {
       if (c.chave === 'alerta_os_pronta_1') setPrazoAlertaDias(Number(c.valor) || 3)
     })
   }, [supabase])
+
+  // Monta o filtro de busca por nome/telefone/CPF do cliente, modelo, marca, IMEI ou nº da OS
+  const montarFiltroBusca = useCallback(async (): Promise<string | null> => {
+    if (buscaDebounced.trim().length < 2) return null
+    const termo = buscaDebounced.trim().replace(/[,()]/g, ' ').trim()
+    const digitos = termo.replace(/\D/g, '')
+
+    // Localiza clientes que batem com nome, telefone ou CPF
+    const orsCliente: string[] = [`nome.ilike.%${termo}%`]
+    if (digitos.length >= 3) orsCliente.push(`telefone.ilike.%${digitos}%`, `cpf.ilike.%${digitos}%`)
+    const { data: clientesMatch } = await supabase
+      .from('clientes')
+      .select('id')
+      .is('deleted_at', null)
+      .or(orsCliente.join(','))
+      .limit(100)
+    const idsClientes = (clientesMatch ?? []).map((c: { id: string }) => c.id)
+
+    const ors: string[] = [`modelo.ilike.%${termo}%`, `marca.ilike.%${termo}%`]
+    if (digitos.length >= 5) ors.push(`imei.ilike.%${digitos}%`)
+    if (digitos.length > 0 && digitos.length <= 6 && digitos === termo) ors.push(`numero.eq.${parseInt(digitos)}`)
+    if (idsClientes.length > 0) ors.push(`cliente_id.in.(${idsClientes.join(',')})`)
+    return ors.join(',')
+  }, [supabase, buscaDebounced])
 
   const fetchOS = useCallback(async () => {
     setLoading(true)
@@ -250,33 +348,13 @@ export default function OSPage() {
     if (filtroStatus !== 'todos') query = query.eq('status', filtroStatus)
     if (search.trim()) query = query.or(`modelo.ilike.%${search}%,defeito_relatado.ilike.%${search}%`)
 
-    // Busca por nome/telefone/CPF do cliente, modelo, marca, IMEI ou nº da OS
-    if (buscaDebounced.trim().length >= 2) {
-      const termo = buscaDebounced.trim().replace(/[,()]/g, ' ').trim()
-      const digitos = termo.replace(/\D/g, '')
-
-      // Localiza clientes que batem com nome, telefone ou CPF
-      const orsCliente: string[] = [`nome.ilike.%${termo}%`]
-      if (digitos.length >= 3) orsCliente.push(`telefone.ilike.%${digitos}%`, `cpf.ilike.%${digitos}%`)
-      const { data: clientesMatch } = await supabase
-        .from('clientes')
-        .select('id')
-        .is('deleted_at', null)
-        .or(orsCliente.join(','))
-        .limit(100)
-      const idsClientes = (clientesMatch ?? []).map((c: { id: string }) => c.id)
-
-      const ors: string[] = [`modelo.ilike.%${termo}%`, `marca.ilike.%${termo}%`]
-      if (digitos.length >= 5) ors.push(`imei.ilike.%${digitos}%`)
-      if (digitos.length > 0 && digitos.length <= 6 && digitos === termo) ors.push(`numero.eq.${parseInt(digitos)}`)
-      if (idsClientes.length > 0) ors.push(`cliente_id.in.(${idsClientes.join(',')})`)
-      query = query.or(ors.join(','))
-    }
+    const filtroBusca = await montarFiltroBusca()
+    if (filtroBusca) query = query.or(filtroBusca)
 
     const { data } = await query
     setItems((data as unknown as OS[]) ?? [])
     setLoading(false)
-  }, [supabase, filtroStatus, search, buscaDebounced, carregarConfigs])
+  }, [supabase, filtroStatus, search, montarFiltroBusca, carregarConfigs])
 
   const fetchPendencias = useCallback(async () => {
     const { data } = await supabase
@@ -289,10 +367,45 @@ export default function OSPage() {
     setPendencias((data as unknown as Pendencia[]) ?? [])
   }, [supabase])
 
+  const fetchConcluidas = useCallback(async () => {
+    setLoadingConcluidas(true)
+
+    // Contagem por status (entregues x canceladas)
+    const { data: todas } = await supabase
+      .from('ordens_servico')
+      .select('status')
+      .is('deleted_at', null)
+      .in('status', ['entregue', 'cancelada'])
+    const counts: Record<string, number> = {}
+    for (const row of todas ?? []) {
+      counts[row.status] = (counts[row.status] ?? 0) + 1
+    }
+    setConcluidasCounts(counts)
+
+    let query = supabase
+      .from('ordens_servico')
+      .select('id,numero,status,marca,modelo,defeito_relatado,valor_orcamento,valor_final,created_at,entregue_em,imei,clientes(nome,telefone)')
+      .is('deleted_at', null)
+      .in('status', filtroConcluidas === 'todas' ? ['entregue', 'cancelada'] : [filtroConcluidas])
+      .order('created_at', { ascending: false })
+      .limit(limiteConcluidas)
+
+    const filtroBusca = await montarFiltroBusca()
+    if (filtroBusca) query = query.or(filtroBusca)
+
+    const { data } = await query
+    setConcluidas((data as unknown as OS[]) ?? [])
+    setLoadingConcluidas(false)
+  }, [supabase, filtroConcluidas, limiteConcluidas, montarFiltroBusca])
+
   useEffect(() => {
     fetchOS()
     fetchPendencias()
   }, [fetchOS, fetchPendencias])
+
+  useEffect(() => {
+    if (aba === 'concluidas') fetchConcluidas()
+  }, [aba, fetchConcluidas])
 
   function onBuscaChange(v: string) {
     setBusca(v)
@@ -394,10 +507,11 @@ export default function OSPage() {
         {([
           ['pendencias', `⏳ Pendências (${totalPendencias})${qtdAtrasadas > 0 ? ` · 🔴 ${qtdAtrasadas}` : ''}`],
           ['lista', '📋 Visão Geral'],
+          ['concluidas', '✅ Concluídas'],
         ] as const).map(([key, label]) => (
           <button
             key={key}
-            onClick={() => { setAba(key); if (key === 'lista') fetchOS(); else fetchPendencias() }}
+            onClick={() => { setAba(key); if (key === 'lista') fetchOS(); else if (key === 'pendencias') fetchPendencias() }}
             style={{
               padding: '10px 18px', fontSize: 13, border: 'none', background: 'none', cursor: 'pointer',
               fontWeight: aba === key ? 600 : 400,
@@ -476,66 +590,60 @@ export default function OSPage() {
             </div>
           ) : (
             <div>
-              {items.map(os => (
-                <Link key={os.id} href={`/os/${os.id}`} style={{ textDecoration: 'none', display: 'block' }}>
-                  <div
-                    style={{
-                      background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10,
-                      padding: '14px 16px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12,
-                      cursor: 'pointer',
-                    }}
-                    onMouseEnter={e => (e.currentTarget.style.borderColor = '#c7d2fe')}
-                    onMouseLeave={e => (e.currentTarget.style.borderColor = '#e2e8f0')}
-                  >
-                    {/* Número */}
-                    <div style={{
-                      minWidth: 52, height: 52, borderRadius: 10, background: '#f5f3ff',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 13, fontWeight: 700, color: '#6366f1', flexShrink: 0,
-                    }}>
-                      #{os.numero}
-                    </div>
+              {items.map(os => <LinhaOS key={os.id} os={os} />)}
+            </div>
+          )}
+        </>
+      )}
 
-                    {/* Info principal */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>
-                        {(os.clientes as { nome: string } | null)?.nome ?? '—'}
-                      </div>
-                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
-                        {os.modelo ?? 'Modelo não informado'}
-                      </div>
-                      <div style={{
-                        fontSize: 12, color: '#94a3b8', marginTop: 2,
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 400,
-                      }}>
-                        {os.defeito_relatado}
-                      </div>
-                    </div>
+      {/* ═══ ABA CONCLUÍDAS ═══ */}
+      {aba === 'concluidas' && (
+        <>
+          {/* Filtro entregues x canceladas */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20, alignItems: 'center' }}>
+            {([
+              ['todas', `Todas (${(concluidasCounts.entregue ?? 0) + (concluidasCounts.cancelada ?? 0)})`],
+              ['entregue', `📦 Entregues (${concluidasCounts.entregue ?? 0})`],
+              ['cancelada', `❌ Canceladas (${concluidasCounts.cancelada ?? 0})`],
+            ] as const).map(([key, label]) => {
+              const ativo = filtroConcluidas === key
+              return (
+                <button
+                  key={key}
+                  onClick={() => { setFiltroConcluidas(key); setLimiteConcluidas(100) }}
+                  style={{
+                    padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: ativo ? 600 : 400, cursor: 'pointer',
+                    border: ativo ? '1px solid #2563eb' : '1px solid #e2e8f0',
+                    background: ativo ? '#dbeafe' : '#fff',
+                    color: ativo ? '#1d4ed8' : '#64748b',
+                  }}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
 
-                    {/* Valor + Status + Tempo */}
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      {os.valor_orcamento != null && (
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
-                          R$ {os.valor_orcamento.toFixed(2).replace('.', ',')}
-                        </div>
-                      )}
-                      <div style={{
-                        display: 'inline-block', padding: '3px 8px', borderRadius: 20, fontSize: 11, fontWeight: 500,
-                        background: STATUS_CONFIG[os.status]?.bg ?? '#f1f5f9',
-                        color: STATUS_CONFIG[os.status]?.color ?? '#475569',
-                        marginTop: 4,
-                      }}>
-                        {STATUS_CONFIG[os.status]?.label ?? os.status}
-                      </div>
-                      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
-                        {diasAberto(os.created_at) === 0
-                          ? 'hoje'
-                          : `há ${diasAberto(os.created_at)} dia${diasAberto(os.created_at) > 1 ? 's' : ''}`}
-                      </div>
-                    </div>
-                  </div>
-                </Link>
-              ))}
+          {loadingConcluidas ? (
+            <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8', fontSize: 13 }}>Carregando...</div>
+          ) : concluidas.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 60 }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>📁</div>
+              <p style={{ fontSize: 14, fontWeight: 500, color: '#475569' }}>
+                {buscaDebounced.trim().length >= 2 ? 'Nenhuma OS concluída encontrada para essa busca' : 'Nenhuma OS concluída ainda'}
+              </p>
+            </div>
+          ) : (
+            <div>
+              {concluidas.map(os => <LinhaOS key={os.id} os={os} />)}
+              {concluidas.length >= limiteConcluidas && (
+                <button
+                  onClick={() => setLimiteConcluidas(l => l + 100)}
+                  style={{ width: '100%', padding: '11px', marginTop: 4, borderRadius: 8, fontSize: 13, cursor: 'pointer', border: '1px solid #e2e8f0', background: '#fff', color: '#2563eb', fontWeight: 600 }}
+                >
+                  ↓ Carregar mais 100 OS antigas
+                </button>
+              )}
             </div>
           )}
         </>
