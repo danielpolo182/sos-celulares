@@ -29,7 +29,7 @@ type Pendencia = {
   snooze_ate: string | null
   snooze_motivo: string | null
   wa_enviado: Record<string, boolean>
-  clientes: { nome: string; telefone: string | null } | null
+  clientes: { nome: string; telefone: string | null; cpf: string | null } | null
   created_at: string
 }
 
@@ -210,6 +210,7 @@ export default function OSPage() {
   const [filtroStatus, setFiltroStatus] = useState('todos')
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({})
   const [busca, setBusca] = useState('')
+  const [buscaDebounced, setBuscaDebounced] = useState('')
   const buscaTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [prazoHoras, setPrazoHoras] = useState(4)
   const [prazoAlertaDias, setPrazoAlertaDias] = useState(3)
@@ -249,25 +250,38 @@ export default function OSPage() {
     if (filtroStatus !== 'todos') query = query.eq('status', filtroStatus)
     if (search.trim()) query = query.or(`modelo.ilike.%${search}%,defeito_relatado.ilike.%${search}%`)
 
-    // Filtro de busca avançada (kanban search bar)
-    if (busca.trim().length >= 2) {
-      const buscaNum = parseInt(busca.replace(/\D/g, ''))
-      if (!isNaN(buscaNum) && busca.replace(/\D/g, '').length > 0) {
-        query = query.eq('numero', buscaNum)
-      } else {
-        query = query.or(`modelo.ilike.%${busca}%,imei.ilike.%${busca}%`)
-      }
+    // Busca por nome/telefone/CPF do cliente, modelo, marca, IMEI ou nº da OS
+    if (buscaDebounced.trim().length >= 2) {
+      const termo = buscaDebounced.trim().replace(/[,()]/g, ' ').trim()
+      const digitos = termo.replace(/\D/g, '')
+
+      // Localiza clientes que batem com nome, telefone ou CPF
+      const orsCliente: string[] = [`nome.ilike.%${termo}%`]
+      if (digitos.length >= 3) orsCliente.push(`telefone.ilike.%${digitos}%`, `cpf.ilike.%${digitos}%`)
+      const { data: clientesMatch } = await supabase
+        .from('clientes')
+        .select('id')
+        .is('deleted_at', null)
+        .or(orsCliente.join(','))
+        .limit(100)
+      const idsClientes = (clientesMatch ?? []).map((c: { id: string }) => c.id)
+
+      const ors: string[] = [`modelo.ilike.%${termo}%`, `marca.ilike.%${termo}%`]
+      if (digitos.length >= 5) ors.push(`imei.ilike.%${digitos}%`)
+      if (digitos.length > 0 && digitos.length <= 6 && digitos === termo) ors.push(`numero.eq.${parseInt(digitos)}`)
+      if (idsClientes.length > 0) ors.push(`cliente_id.in.(${idsClientes.join(',')})`)
+      query = query.or(ors.join(','))
     }
 
     const { data } = await query
     setItems((data as unknown as OS[]) ?? [])
     setLoading(false)
-  }, [supabase, filtroStatus, search, busca, carregarConfigs])
+  }, [supabase, filtroStatus, search, buscaDebounced, carregarConfigs])
 
   const fetchPendencias = useCallback(async () => {
     const { data } = await supabase
       .from('ordens_servico')
-      .select('id,numero,status,modelo,defeito_relatado,valor_orcamento,snooze_ate,snooze_motivo,wa_enviado,created_at,clientes(nome,telefone)')
+      .select('id,numero,status,modelo,defeito_relatado,valor_orcamento,snooze_ate,snooze_motivo,wa_enviado,created_at,clientes(nome,telefone,cpf)')
       .is('deleted_at', null)
       .neq('status', 'entregue')
       .neq('status', 'cancelada')
@@ -283,7 +297,7 @@ export default function OSPage() {
   function onBuscaChange(v: string) {
     setBusca(v)
     if (buscaTimer.current) clearTimeout(buscaTimer.current)
-    buscaTimer.current = setTimeout(() => fetchOS(), 300)
+    buscaTimer.current = setTimeout(() => setBuscaDebounced(v), 300)
   }
 
   async function salvarSnooze() {
@@ -314,8 +328,24 @@ export default function OSPage() {
   }
 
   const hoje = new Date().toISOString().split('T')[0]
+
+  // Filtro de busca nas pendências (nome, telefone, CPF, modelo, nº OS)
+  const buscaLower = busca.trim().toLowerCase()
+  const buscaDigitos = buscaLower.replace(/\D/g, '')
+  const pendenciasFiltradas = buscaLower.length >= 2
+    ? pendencias.filter(os => {
+        const nome = os.clientes?.nome?.toLowerCase() ?? ''
+        const tel = os.clientes?.telefone?.replace(/\D/g, '') ?? ''
+        const cpf = os.clientes?.cpf?.replace(/\D/g, '') ?? ''
+        return nome.includes(buscaLower)
+          || (os.modelo ?? '').toLowerCase().includes(buscaLower)
+          || (buscaDigitos.length >= 3 && (tel.includes(buscaDigitos) || cpf.includes(buscaDigitos)))
+          || (buscaDigitos.length > 0 && buscaDigitos === buscaLower && String(os.numero).includes(buscaDigitos))
+      })
+    : pendencias
+
   const grupos: Record<SubGrupo, Pendencia[]> = { atrasada: [], pendente: [], no_prazo: [], adiada: [] }
-  pendencias.forEach(os => { grupos[classificarOS(os, prazoHoras, prazoAlertaDias)].push(os) })
+  pendenciasFiltradas.forEach(os => { grupos[classificarOS(os, prazoHoras, prazoAlertaDias)].push(os) })
 
   const qtdAtrasadas = grupos.atrasada.length
   const totalPendencias = pendencias.length
@@ -336,6 +366,27 @@ export default function OSPage() {
         <Link href="/os/nova" style={{ padding: '9px 18px', background: '#2563eb', color: '#fff', borderRadius: 8, textDecoration: 'none', fontSize: 13, fontWeight: 600, boxShadow: '0 1px 3px rgba(37,99,235,0.3)' }}>
           + Nova OS
         </Link>
+      </div>
+
+      {/* Busca */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16 }}>
+        <input
+          value={busca}
+          onChange={e => onBuscaChange(e.target.value)}
+          placeholder="🔍 Buscar por nome, telefone, CPF, modelo, IMEI ou nº OS..."
+          style={{
+            flex: 1, padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: 8,
+            fontSize: 13, color: '#1e293b', background: '#fff', outline: 'none', fontFamily: 'inherit',
+          }}
+        />
+        {busca && (
+          <button
+            onClick={() => onBuscaChange('')}
+            style={{ padding: '8px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer', border: '1px solid #e2e8f0', background: '#fff', color: '#64748b', flexShrink: 0 }}
+          >
+            ✕ Limpar
+          </button>
+        )}
       </div>
 
       {/* Abas */}
@@ -363,19 +414,6 @@ export default function OSPage() {
       {/* ═══ ABA VISÃO GERAL ═══ */}
       {aba === 'lista' && (
         <>
-          {/* Busca */}
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16 }}>
-            <input
-              value={busca}
-              onChange={e => onBuscaChange(e.target.value)}
-              placeholder="Buscar por cliente, modelo, IMEI ou nº OS..."
-              style={{
-                flex: 1, padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: 8,
-                fontSize: 13, color: '#1e293b', background: '#fff', outline: 'none', fontFamily: 'inherit',
-              }}
-            />
-          </div>
-
           {/* Kanban de status */}
           {Object.keys(statusCounts).length > 0 && (
             <div style={{
@@ -505,12 +543,20 @@ export default function OSPage() {
 
       {/* ═══ ABA PENDÊNCIAS ═══ */}
       {aba === 'pendencias' && (
-        totalPendencias === 0 ? (
+        pendenciasFiltradas.length === 0 ? (
+          buscaLower.length >= 2 ? (
+            <div style={{ textAlign: 'center', padding: 80 }}>
+              <div style={{ fontSize: 48, marginBottom: 16 }}>🔍</div>
+              <p style={{ fontSize: 16, fontWeight: 600, color: '#0f172a' }}>Nenhuma OS encontrada</p>
+              <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 6 }}>Nenhuma pendência corresponde a “{busca.trim()}”. Veja também a aba Visão Geral, que inclui OS entregues.</p>
+            </div>
+          ) : (
           <div style={{ textAlign: 'center', padding: 80 }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>🎉</div>
             <p style={{ fontSize: 16, fontWeight: 600, color: '#0f172a' }}>Nenhuma pendência!</p>
             <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 6 }}>Todas as OS estão entregues ou em snooze.</p>
           </div>
+          )
         ) : (
           <div>
             <SubGrupoSection subgrupo="atrasada" lista={grupos.atrasada} onAdiar={abrirModalAdiar} onWA={os => setWaModal({ os, status: os.status })} onAbrir={id => router.push(`/os/${id}`)} />
