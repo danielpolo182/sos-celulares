@@ -122,6 +122,7 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [sucessoMsg, setSucessoMsg] = useState('')
   const [aba, setAba] = useState<'os' | 'orcamento' | 'checklist'>('os')
 
   const [status, setStatus] = useState('')
@@ -296,7 +297,7 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
     setSaving(true)
     const obsPayload = JSON.stringify({ texto: observacoes, __checklist: checklist })
     const fechandoOS = status === 'entregue' && os?.status !== 'entregue'
-    await supabase.from('ordens_servico').update({
+    const { error } = await supabase.from('ordens_servico').update({
       status, defeito_tecnico: defeitoTecnico || null, solucao: solucao || null,
       valor_final: valorFinal ? parseFloat(valorFinal) : null,
       desconto: desconto ? parseFloat(desconto) : 0,
@@ -304,6 +305,13 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
       campos_extras: { ...((os as unknown as Record<string, unknown>).campos_extras as Record<string, unknown> ?? {}), custom: camposValores },
       ...(fechandoOS ? { entregue_em: new Date().toISOString() } : {}),
     }).eq('id', id)
+
+    if (error) {
+      alert(`Erro ao salvar: ${error.message}`)
+      setSaving(false)
+      return
+    }
+
     if (fechandoOS && itensOrc.length > 0) await baixarEstoque()
     try { await supabase.from('events').insert({ type: 'OS_ATUALIZADA', entity: 'os', entity_id: id, payload: { status, pago } }) } catch { /* non-critical */ }
     if (status !== os?.status) {
@@ -313,9 +321,10 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
         body: JSON.stringify({ osId: id, newStatus: status }),
       }).catch(() => {})
     }
-    const { data } = await supabase.from('ordens_servico').select('*,clientes(id,nome,telefone,cpf)').eq('id', id).single()
-    if (data) setOs(data as unknown as OS)
-    setSaving(false)
+
+    // Confirma o salvamento e fecha a OS, voltando para a lista
+    setSucessoMsg(`OS #${os?.numero ?? ''} salva com sucesso!`)
+    setTimeout(() => { router.push('/os'); router.refresh() }, 1200)
   }
 
   async function salvarDiagnostico() {
@@ -1300,6 +1309,17 @@ ${itensOrc.length > 0 ? `<table><thead><tr><th>Item</th><th>Qtd</th><th>Unit.</t
           {saving ? 'Salvando...' : 'Salvar alterações'}
         </button>
       </div>
+
+      {/* ═══ CONFIRMAÇÃO DE SALVAMENTO ═══ */}
+      {sucessoMsg && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 20 }}>
+          <div style={{ background: '#fff', border: '1px solid #d1fae5', borderRadius: 16, padding: '28px 34px', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.18)' }}>
+            <div style={{ fontSize: 40, marginBottom: 10 }}>✅</div>
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#065f46' }}>{sucessoMsg}</p>
+            <p style={{ margin: '6px 0 0', fontSize: 12, color: '#94a3b8' }}>Voltando para a lista de ordens de serviço...</p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -56,6 +56,12 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string; 
   aguardando_peca:        { label: 'Aguard. peça',       bg: '#fff7ed', color: '#c2410c', icon: '📦' },
 }
 
+// Ordem em que os status aparecem no seletor rápido dos cards
+const STATUS_OPCOES = [
+  'aberta', 'aguardando_diagnostico', 'em_orcamento', 'aguardando_peca',
+  'em_reparo', 'em_andamento', 'pronta', 'entregue', 'cancelada',
+]
+
 const WA_MENSAGENS: Record<string, string> = {
   aberta:       'Olá, {nome}! 😊 Seu aparelho *{modelo}* foi recebido.\n\n🔧 *OS Nº {numero}*\nDefeito: {defeito}\n\nEm breve teremos novidades!',
   em_andamento: 'Olá, {nome}! 👋 Sua *OS Nº {numero}* está em andamento. Já estamos trabalhando no seu *{modelo}*!',
@@ -94,13 +100,14 @@ function classificarOS(os: Pendencia, prazoHoras: number, prazoAlertaDias: numbe
 }
 
 function SubGrupoSection({
-  subgrupo, lista, onAdiar, onWA, onAbrir, colapsavel
+  subgrupo, lista, onAdiar, onWA, onAbrir, onStatus, colapsavel
 }: {
   subgrupo: SubGrupo
   lista: Pendencia[]
   onAdiar: (os: Pendencia) => void
   onWA: (os: Pendencia) => void
   onAbrir: (id: string) => void
+  onStatus: (os: Pendencia, novo: string) => void
   colapsavel?: boolean
 }) {
   const [aberto, setAberto] = useState(!colapsavel)
@@ -169,6 +176,18 @@ function SubGrupoSection({
                       ⏸️ Adiada até {new Date(os.snooze_ate + 'T12:00:00').toLocaleDateString('pt-BR')}
                     </div>
                   )}
+
+                  <select
+                    value={os.status}
+                    onChange={e => { const v = e.target.value; if (v !== os.status) onStatus(os, v) }}
+                    title="Alterar status da OS"
+                    style={{ width: '100%', padding: '6px 8px', borderRadius: 7, border: '1px solid #e2e8f0', background: st.bg, color: st.color, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', outline: 'none' }}
+                  >
+                    {!STATUS_OPCOES.includes(os.status) && <option value={os.status}>{os.status}</option>}
+                    {STATUS_OPCOES.map(sv => (
+                      <option key={sv} value={sv}>{STATUS_CONFIG[sv]?.icon ?? ''} {STATUS_CONFIG[sv]?.label ?? sv}</option>
+                    ))}
+                  </select>
 
                   <button
                     onClick={() => onWA(os)}
@@ -290,6 +309,9 @@ export default function OSPage() {
   const [prazoAlertaDias, setPrazoAlertaDias] = useState(3)
   const [snoozeModal, setSnoozeModal] = useState<{ os: Pendencia; data: string; motivo: string } | null>(null)
   const [waModal, setWaModal] = useState<{ os: Pendencia; status: string } | null>(null)
+  const [statusModal, setStatusModal] = useState<{ os: Pendencia; novo: string } | null>(null)
+  const [salvandoStatus, setSalvandoStatus] = useState(false)
+  const [toast, setToast] = useState('')
 
   const carregarConfigs = useCallback(async () => {
     const { data } = await supabase.from('sistema_config').select('chave, valor').in('chave', ['os_prazo_producao_horas', 'alerta_os_pronta_1'])
@@ -433,6 +455,58 @@ export default function OSPage() {
     await supabase.from('ordens_servico').update({ wa_enviado: novo }).eq('id', os.id)
     fetchPendencias()
     setWaModal(null)
+  }
+
+  function mostrarToast(msg: string) {
+    setToast(msg)
+    setTimeout(() => setToast(''), 3000)
+  }
+
+  // Baixa o estoque das peças do orçamento quando a OS é entregue (mesma regra da tela de detalhe)
+  async function baixarEstoqueOS(osId: string) {
+    const { data: itens } = await supabase.from('os_orcamento_itens').select('produto_id,quantidade').eq('os_id', osId)
+    for (const item of (itens ?? []) as { produto_id: string | null; quantidade: number }[]) {
+      if (!item.produto_id) continue
+      const { data: prod } = await supabase.from('produtos').select('estoque_atual').eq('id', item.produto_id).single()
+      if (prod) await supabase.from('produtos').update({ estoque_atual: Math.max(0, prod.estoque_atual - item.quantidade) }).eq('id', item.produto_id)
+    }
+  }
+
+  async function confirmarStatus() {
+    if (!statusModal || salvandoStatus) return
+    const { os, novo } = statusModal
+    setSalvandoStatus(true)
+
+    const { error } = await supabase.from('ordens_servico').update({
+      status: novo,
+      updated_at: new Date().toISOString(),
+      ...(novo === 'entregue' ? { entregue_em: new Date().toISOString() } : {}),
+    }).eq('id', os.id)
+
+    if (error) {
+      setSalvandoStatus(false)
+      alert(`Erro ao alterar status: ${error.message}`)
+      return
+    }
+
+    if (novo === 'entregue') await baixarEstoqueOS(os.id)
+
+    try {
+      await supabase.from('events').insert({ type: 'OS_ATUALIZADA', entity: 'os', entity_id: os.id, payload: { status: novo } })
+    } catch { /* non-critical */ }
+
+    fetch('/api/whatsapp/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ osId: os.id, newStatus: novo }),
+    }).catch(() => {})
+
+    setSalvandoStatus(false)
+    setStatusModal(null)
+    mostrarToast(`OS #${os.numero} alterada para “${STATUS_CONFIG[novo]?.label ?? novo}”`)
+    fetchPendencias()
+    fetchOS()
+    if (aba === 'concluidas') fetchConcluidas()
   }
 
   function abrirModalAdiar(os: Pendencia) {
@@ -667,10 +741,10 @@ export default function OSPage() {
           )
         ) : (
           <div>
-            <SubGrupoSection subgrupo="atrasada" lista={grupos.atrasada} onAdiar={abrirModalAdiar} onWA={os => setWaModal({ os, status: os.status })} onAbrir={id => router.push(`/os/${id}`)} />
-            <SubGrupoSection subgrupo="pendente" lista={grupos.pendente} onAdiar={abrirModalAdiar} onWA={os => setWaModal({ os, status: os.status })} onAbrir={id => router.push(`/os/${id}`)} />
-            <SubGrupoSection subgrupo="no_prazo" lista={grupos.no_prazo} onAdiar={abrirModalAdiar} onWA={os => setWaModal({ os, status: os.status })} onAbrir={id => router.push(`/os/${id}`)} />
-            <SubGrupoSection subgrupo="adiada"   lista={grupos.adiada}   onAdiar={abrirModalAdiar} onWA={os => setWaModal({ os, status: os.status })} onAbrir={id => router.push(`/os/${id}`)} colapsavel />
+            <SubGrupoSection subgrupo="atrasada" lista={grupos.atrasada} onAdiar={abrirModalAdiar} onWA={os => setWaModal({ os, status: os.status })} onAbrir={id => router.push(`/os/${id}`)} onStatus={(o, novo) => setStatusModal({ os: o, novo })} />
+            <SubGrupoSection subgrupo="pendente" lista={grupos.pendente} onAdiar={abrirModalAdiar} onWA={os => setWaModal({ os, status: os.status })} onAbrir={id => router.push(`/os/${id}`)} onStatus={(o, novo) => setStatusModal({ os: o, novo })} />
+            <SubGrupoSection subgrupo="no_prazo" lista={grupos.no_prazo} onAdiar={abrirModalAdiar} onWA={os => setWaModal({ os, status: os.status })} onAbrir={id => router.push(`/os/${id}`)} onStatus={(o, novo) => setStatusModal({ os: o, novo })} />
+            <SubGrupoSection subgrupo="adiada"   lista={grupos.adiada}   onAdiar={abrirModalAdiar} onWA={os => setWaModal({ os, status: os.status })} onAbrir={id => router.push(`/os/${id}`)} onStatus={(o, novo) => setStatusModal({ os: o, novo })} colapsavel />
           </div>
         )
       )}
@@ -710,6 +784,50 @@ export default function OSPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ═══ MODAL CONFIRMAR TROCA DE STATUS ═══ */}
+      {statusModal && (() => {
+        const atual = STATUS_CONFIG[statusModal.os.status] ?? { label: statusModal.os.status, bg: '#f1f5f9', color: '#475569', icon: '' }
+        const novo = STATUS_CONFIG[statusModal.novo] ?? { label: statusModal.novo, bg: '#f1f5f9', color: '#475569', icon: '' }
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }}>
+            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, width: '100%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
+              <div style={{ padding: '18px 22px', borderBottom: '1px solid #f1f5f9' }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', margin: 0 }}>Alterar status da OS #{statusModal.os.numero}</h3>
+                <p style={{ fontSize: 12, color: '#94a3b8', margin: '2px 0 0' }}>{statusModal.os.clientes?.nome ?? 'Cliente não identificado'} · {statusModal.os.modelo ?? 'Aparelho'}</p>
+              </div>
+              <div style={{ padding: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12, fontWeight: 600, padding: '6px 12px', borderRadius: 20, background: atual.bg, color: atual.color }}>{atual.icon} {atual.label}</span>
+                <span style={{ fontSize: 16, color: '#94a3b8' }}>→</span>
+                <span style={{ fontSize: 12, fontWeight: 600, padding: '6px 12px', borderRadius: 20, background: novo.bg, color: novo.color }}>{novo.icon} {novo.label}</span>
+              </div>
+              {statusModal.novo === 'entregue' && (
+                <p style={{ margin: '0 22px 16px', fontSize: 12, color: '#92400e', background: '#fef3c7', borderRadius: 8, padding: '8px 12px', lineHeight: 1.5 }}>
+                  ⚠️ Ao marcar como entregue, as peças do orçamento serão baixadas do estoque e a OS sairá das pendências.
+                </p>
+              )}
+              {statusModal.novo === 'cancelada' && (
+                <p style={{ margin: '0 22px 16px', fontSize: 12, color: '#991b1b', background: '#fee2e2', borderRadius: 8, padding: '8px 12px', lineHeight: 1.5 }}>
+                  ⚠️ A OS será cancelada e sairá das pendências.
+                </p>
+              )}
+              <div style={{ padding: '14px 22px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button onClick={() => setStatusModal(null)} disabled={salvandoStatus} style={{ padding: '8px 18px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, background: '#fff', cursor: salvandoStatus ? 'not-allowed' : 'pointer', color: '#475569' }}>Cancelar</button>
+                <button onClick={confirmarStatus} disabled={salvandoStatus} style={{ padding: '8px 18px', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: salvandoStatus ? 'not-allowed' : 'pointer', background: salvandoStatus ? '#a5b4fc' : '#2563eb', color: '#fff' }}>
+                  {salvandoStatus ? 'Salvando...' : 'Confirmar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* ═══ TOAST ═══ */}
+      {toast && (
+        <div style={{ position: 'fixed', top: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 200, background: '#065f46', color: '#fff', padding: '12px 22px', borderRadius: 10, fontSize: 13, fontWeight: 600, boxShadow: '0 10px 30px rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', gap: 8 }}>
+          ✅ {toast}
         </div>
       )}
 
