@@ -70,6 +70,7 @@ const NAV: NavItem[] = [
       { href: '/fechamento',   icon: 'ti-lock',             label: 'Fechamento' },
       { href: '/aparelhos',    icon: 'ti-device-mobile-up', label: 'Compra & Venda' },
       { href: '/relatorios',   icon: 'ti-chart-bar',        label: 'Relatórios' },
+      { href: '/surebet',      icon: 'ti-calculator',       label: 'Surebet' },
     ],
   },
   {
