@@ -1,7 +1,7 @@
 ﻿'use client'
 export const dynamic = 'force-dynamic'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import CategoriaSelect from '@/components/CategoriaSelect'
@@ -43,7 +43,63 @@ type Entrada = {
   custo_unit: number; custo_total: number; data_compra: string; created_at: string
 }
 
+type LinhaImport = {
+  nome: string
+  codigo_interno: string | null
+  codigo_barras: string | null
+  unidade: string | null
+  estoque_atual: number | null
+  estoque_minimo: number | null
+  custo_unit: number | null
+  preco_venda: number | null
+  categoria: string | null
+  modelos: string | null
+  descricao: string | null
+  ativo: boolean | null
+  status: 'novo' | 'atualizar'
+  matchId: string | null
+}
+
 const COMPLETO = (p: Produto) => (p.preco_venda ?? 0) > 0 && (p.custo_unit ?? 0) > 0
+
+// ── Helpers de importação de planilha ──
+function normHeader(s: unknown): string {
+  return String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+// aceita número, "1.234,56", "35,00", "R$ 45" — "------" e "N/A" viram null
+function parseNumBR(v: unknown): number | null {
+  if (v === null || v === undefined) return null
+  if (typeof v === 'number') return isNaN(v) ? null : v
+  let s = String(v).trim()
+  if (!s || /^-+$/.test(s) || s.toUpperCase() === 'N/A') return null
+  s = s.replace(/[R$\s]/g, '')
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.')
+  const n = parseFloat(s)
+  return isNaN(n) ? null : n
+}
+
+function parseTexto(v: unknown): string | null {
+  const s = String(v ?? '').trim()
+  if (!s || /^-+$/.test(s) || s.toUpperCase() === 'N/A') return null
+  return s
+}
+
+// mapeia cabeçalhos da planilha (nossos e de outros sistemas, ex: Cellparts) para campos do banco
+const COLUNAS_IMPORT: { campo: string; aliases: string[] }[] = [
+  { campo: 'codigo_interno', aliases: ['cod interno', 'codigo interno', 'codigo', 'cod', 'referencia', 'ref'] },
+  { campo: 'nome', aliases: ['nome', 'produto', 'descricao do produto', 'nome do produto'] },
+  { campo: 'codigo_barras', aliases: ['cod barra', 'cod barras', 'codigo de barras', 'codigo barras', 'codigo barra', 'ean', 'gtin'] },
+  { campo: 'unidade', aliases: ['unidade', 'und', 'un'] },
+  { campo: 'estoque_atual', aliases: ['estoque', 'estoque atual', 'qtd', 'quantidade', 'saldo', 'saldo atual'] },
+  { campo: 'estoque_minimo', aliases: ['estoque min', 'estoque minimo'] },
+  { campo: 'custo_unit', aliases: ['custo unit', 'custo', 'custo unitario', 'preco custo', 'preco de custo', 'valor custo'] },
+  { campo: 'preco_venda', aliases: ['valor venda', 'preco venda', 'valor de venda', 'preco de venda', 'venda', 'preco'] },
+  { campo: 'categoria', aliases: ['categoria'] },
+  { campo: 'modelos', aliases: ['modelos compat', 'modelos compativeis', 'modelos'] },
+  { campo: 'descricao', aliases: ['descricao', 'observacao', 'obs'] },
+  { campo: 'ativo', aliases: ['ativo'] },
+]
 
 const inp: React.CSSProperties = { width: '100%', padding: '8px 11px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, color: '#1e293b', background: '#fff', outline: 'none', fontFamily: 'inherit' }
 const lbl: React.CSSProperties = { display: 'block', fontSize: 11, fontWeight: 500, color: '#64748b', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.04em' }
@@ -81,6 +137,17 @@ export default function EstoquePage() {
   const [showModalRapido, setShowModalRapido] = useState(false)
   const [showModalCompleto, setShowModalCompleto] = useState(false)
   const [showModalEntrada, setShowModalEntrada] = useState(false)
+
+  // ── Importação / exportação de planilha
+  const importInputRef = useRef<HTMLInputElement>(null)
+  const [showModalImport, setShowModalImport] = useState(false)
+  const [importLinhas, setImportLinhas] = useState<LinhaImport[]>([])
+  const [importArquivo, setImportArquivo] = useState('')
+  const [importErro, setImportErro] = useState<string | null>(null)
+  const [importProcessando, setImportProcessando] = useState(false)
+  const [importando, setImportando] = useState(false)
+  const [importResultado, setImportResultado] = useState<{ criados: number; atualizados: number; erros: string[] } | null>(null)
+  const [exportando, setExportando] = useState(false)
 
   // ── Form compartilhado (rápido + completo)
   const [fNome, setFNome] = useState('')
@@ -349,6 +416,175 @@ export default function EstoquePage() {
     setESaving(false); setShowModalEntrada(false); fetchProdutos()
   }
 
+  // ── Exportar produtos para planilha (formato compatível com a importação)
+  async function exportarProdutos() {
+    setExportando(true)
+    try {
+      const XLSX = await import('xlsx')
+      const { data } = await supabase.from('produtos').select('*').is('deleted_at', null).order('nome')
+      const lista = (data ?? []) as (Produto & { estoque_atual?: number | null })[]
+      const ws = XLSX.utils.json_to_sheet(lista.map(p => ({
+        'Cód. interno': p.codigo_interno ?? '',
+        'Nome': p.nome,
+        'Cód. barra': p.codigo_barras ?? '',
+        'Unidade': p.unidade ?? 'un',
+        'Estoque': p.estoque_atual ?? 0,
+        'Estoque min.': p.estoque_minimo ?? 0,
+        'Custo unit.': p.custo_unit ?? 0,
+        'Valor venda': p.preco_venda ?? 0,
+        'Categoria': p.categoria ?? '',
+        'Modelos compat.': p.modelos_compat?.join(', ') ?? '',
+        'Descrição': p.descricao ?? '',
+        'Ativo': p.ativo ? 'Sim' : 'Não',
+      })))
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Produtos')
+      XLSX.writeFile(wb, `produtos-sos-celulares-${new Date().toISOString().split('T')[0]}.xlsx`)
+    } finally {
+      setExportando(false)
+    }
+  }
+
+  // ── Ler planilha e montar prévia da importação
+  async function processarArquivoImport(file: File) {
+    setImportErro(null); setImportResultado(null); setImportLinhas([])
+    setImportArquivo(file.name); setImportProcessando(true); setShowModalImport(true)
+    try {
+      const XLSX = await import('xlsx')
+      const buf = await file.arrayBuffer()
+      const wb = XLSX.read(buf)
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as unknown[][]
+
+      // localizar a linha de cabeçalho (pode não ser a primeira — relatórios têm título antes)
+      let headerIdx = -1
+      for (let i = 0; i < Math.min(rows.length, 15); i++) {
+        const norm = (rows[i] ?? []).map(normHeader)
+        const temNome = norm.some(c => c === 'nome' || c === 'produto' || c === 'nome do produto')
+        const temOutra = norm.some(c => ['valor venda', 'preco venda', 'preco de venda', 'custo unit', 'custo', 'estoque'].includes(c))
+        if (temNome && temOutra) { headerIdx = i; break }
+      }
+      if (headerIdx === -1) throw new Error('Linha de cabeçalho não encontrada. A planilha precisa de colunas como "Nome", "Custo unit." e "Valor venda".')
+
+      const mapa: Record<string, number> = {}
+      ;(rows[headerIdx] ?? []).forEach((cell, idx) => {
+        const n = normHeader(cell)
+        if (!n) return
+        const col = COLUNAS_IMPORT.find(c => c.aliases.includes(n))
+        if (col && mapa[col.campo] === undefined) mapa[col.campo] = idx
+      })
+      if (mapa.nome === undefined) throw new Error('Coluna com o nome do produto não encontrada.')
+
+      // produtos existentes para detectar o que é atualização (por cód. barras > cód. interno > nome)
+      const { data: existentes } = await supabase.from('produtos').select('id, nome, codigo_interno, codigo_barras').is('deleted_at', null)
+      const porBarras = new Map<string, string>(); const porCodigo = new Map<string, string>(); const porNome = new Map<string, string>()
+      for (const e of existentes ?? []) {
+        if (e.codigo_barras) porBarras.set(String(e.codigo_barras).trim(), e.id)
+        if (e.codigo_interno) porCodigo.set(String(e.codigo_interno).trim(), e.id)
+        porNome.set(String(e.nome).trim().toLowerCase(), e.id)
+      }
+
+      const linhas: LinhaImport[] = []
+      for (let i = headerIdx + 1; i < rows.length; i++) {
+        const r = rows[i] ?? []
+        const get = (campo: string) => (mapa[campo] !== undefined ? r[mapa[campo]] : undefined)
+        const nome = parseTexto(get('nome'))
+        if (!nome) continue
+        const codigo_interno = parseTexto(get('codigo_interno'))
+        const codigo_barras = parseTexto(get('codigo_barras'))
+        let ativo: boolean | null = null
+        if (mapa.ativo !== undefined) {
+          const a = normHeader(get('ativo'))
+          if (['sim', 'ativo', 'true', '1', 's'].includes(a)) ativo = true
+          else if (['nao', 'inativo', 'false', '0', 'n'].includes(a)) ativo = false
+        }
+        const estoqueNum = parseNumBR(get('estoque_atual'))
+        const estMinNum = parseNumBR(get('estoque_minimo'))
+        const matchId = (codigo_barras ? porBarras.get(codigo_barras) : undefined)
+          ?? (codigo_interno ? porCodigo.get(codigo_interno) : undefined)
+          ?? porNome.get(nome.toLowerCase()) ?? null
+        linhas.push({
+          nome, codigo_interno, codigo_barras,
+          unidade: parseTexto(get('unidade'))?.toLowerCase() ?? null,
+          estoque_atual: estoqueNum !== null ? Math.round(estoqueNum) : null,
+          estoque_minimo: estMinNum !== null ? Math.round(estMinNum) : null,
+          custo_unit: parseNumBR(get('custo_unit')),
+          preco_venda: parseNumBR(get('preco_venda')),
+          categoria: parseTexto(get('categoria')),
+          modelos: parseTexto(get('modelos')),
+          descricao: parseTexto(get('descricao')),
+          ativo,
+          status: matchId ? 'atualizar' : 'novo',
+          matchId,
+        })
+      }
+      if (linhas.length === 0) throw new Error('Nenhum produto válido encontrado na planilha.')
+      setImportLinhas(linhas)
+    } catch (err) {
+      setImportErro(err instanceof Error ? err.message : String(err))
+    } finally {
+      setImportProcessando(false)
+    }
+  }
+
+  // ── Confirmar importação: envia tudo em uma chamada
+  async function confirmarImport() {
+    setImportando(true)
+    const margemDe = (custo: number | null, preco: number | null) =>
+      custo !== null && preco !== null && custo > 0 && preco > custo
+        ? Math.round((1 - custo / preco) * 10000) / 100 : null
+
+    const criar: Record<string, unknown>[] = []
+    const atualizar: { id: string; dados: Record<string, unknown> }[] = []
+    for (const l of importLinhas) {
+      if (l.status === 'novo') {
+        criar.push({
+          nome: l.nome, codigo_interno: l.codigo_interno, codigo_barras: l.codigo_barras,
+          unidade: l.unidade ?? 'un',
+          custo_unit: l.custo_unit ?? 0, preco_venda: l.preco_venda ?? 0,
+          margem_pct: margemDe(l.custo_unit, l.preco_venda) ?? 0,
+          estoque_atual: l.estoque_atual ?? 0, estoque_minimo: l.estoque_minimo,
+          categoria: l.categoria,
+          modelos_compat: l.modelos ? l.modelos.split(',').map(s => s.trim()).filter(Boolean) : null,
+          descricao: l.descricao,
+          ativo: l.ativo ?? true, movimenta_estoque: true, cadastro_rapido: false,
+        })
+      } else if (l.matchId) {
+        // atualização: só sobrescreve campos que vieram preenchidos na planilha
+        const dados: Record<string, unknown> = { nome: l.nome }
+        if (l.codigo_interno !== null) dados.codigo_interno = l.codigo_interno
+        if (l.codigo_barras !== null) dados.codigo_barras = l.codigo_barras
+        if (l.unidade !== null) dados.unidade = l.unidade
+        if (l.estoque_atual !== null) dados.estoque_atual = l.estoque_atual
+        if (l.estoque_minimo !== null) dados.estoque_minimo = l.estoque_minimo
+        if (l.custo_unit !== null) dados.custo_unit = l.custo_unit
+        if (l.preco_venda !== null) dados.preco_venda = l.preco_venda
+        const m = margemDe(l.custo_unit, l.preco_venda)
+        if (m !== null) dados.margem_pct = m
+        if (l.categoria !== null) dados.categoria = l.categoria
+        if (l.modelos !== null) dados.modelos_compat = l.modelos.split(',').map(s => s.trim()).filter(Boolean)
+        if (l.descricao !== null) dados.descricao = l.descricao
+        if (l.ativo !== null) dados.ativo = l.ativo
+        atualizar.push({ id: l.matchId, dados })
+      }
+    }
+
+    try {
+      const res = await fetch('/api/produtos/importar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ criar, atualizar }),
+      })
+      const data = await res.json() as { criados?: number; atualizados?: number; erros?: string[]; error?: string }
+      if (!res.ok || data.error) { setImportErro(data.error ?? 'Erro ao importar'); return }
+      setImportResultado({ criados: data.criados ?? 0, atualizados: data.atualizados ?? 0, erros: data.erros ?? [] })
+      fetchProdutos()
+    } catch (err) {
+      setImportErro(String(err))
+    } finally {
+      setImportando(false)
+    }
+  }
+
   const fetchEntradasHistorico = useCallback(async () => {
     setLoadingEntradas(true)
     let q = supabase.from('produto_entradas').select('*, produtos(nome)').order('data_compra', { ascending: false }).limit(100)
@@ -457,7 +693,23 @@ export default function EstoquePage() {
             </p>
           </div>
           {aba === 'produtos' && (
-            <button onClick={abrirNovo} style={{ padding: '8px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>+ Novo produto</button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={exportarProdutos} disabled={exportando}
+                style={{ padding: '8px 14px', background: '#fff', color: '#374151', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: exportando ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
+                {exportando ? 'Exportando...' : '⬇ Exportar'}
+              </button>
+              <button onClick={() => importInputRef.current?.click()}
+                style={{ padding: '8px 14px', background: '#fff', color: '#374151', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                ⬆ Importar
+              </button>
+              <input ref={importInputRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }}
+                onChange={e => {
+                  const file = e.target.files?.[0]
+                  if (file) processarArquivoImport(file)
+                  e.target.value = ''
+                }} />
+              <button onClick={abrirNovo} style={{ padding: '8px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' }}>+ Novo produto</button>
+            </div>
           )}
         </div>
         <div style={{ display: 'flex', gap: 2 }}>
@@ -1148,6 +1400,104 @@ export default function EstoquePage() {
               <button onClick={salvarEntrada} disabled={eSaving || !eCusto} style={{ padding: '8px 18px', background: eSaving || !eCusto ? '#93c5fd' : '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: eSaving || !eCusto ? 'not-allowed' : 'pointer' }}>
                 {eSaving ? 'Registrando...' : 'Registrar entrada'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ MODAL IMPORTAR PLANILHA ═══ */}
+      {showModalImport && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 300, padding: '20px 16px', overflowY: 'auto' }}>
+          <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 760, marginBottom: 20, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 40px)' }}>
+            <div style={{ padding: '18px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+              <div>
+                <h2 style={{ fontSize: 16, fontWeight: 600, color: '#0f172a' }}>⬆ Importar produtos</h2>
+                <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{importArquivo}</p>
+              </div>
+              <button onClick={() => setShowModalImport(false)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#94a3b8', lineHeight: 1 }}>×</button>
+            </div>
+
+            <div style={{ padding: '18px 24px', overflowY: 'auto', flex: 1 }}>
+              {importProcessando ? (
+                <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8', fontSize: 13 }}>Lendo planilha...</div>
+              ) : importErro ? (
+                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '14px 18px' }}>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: '#991b1b', marginBottom: 4 }}>Não foi possível importar</p>
+                  <p style={{ fontSize: 13, color: '#b91c1c' }}>{importErro}</p>
+                </div>
+              ) : importResultado ? (
+                <div>
+                  <div style={{ background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: 10, padding: '16px 20px', marginBottom: 12 }}>
+                    <p style={{ fontSize: 14, fontWeight: 700, color: '#065f46', marginBottom: 6 }}>✓ Importação concluída</p>
+                    <p style={{ fontSize: 13, color: '#047857' }}>
+                      {importResultado.criados} produto{importResultado.criados !== 1 ? 's' : ''} criado{importResultado.criados !== 1 ? 's' : ''} · {importResultado.atualizados} atualizado{importResultado.atualizados !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                  {importResultado.erros.length > 0 && (
+                    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '12px 16px' }}>
+                      <p style={{ fontSize: 12, fontWeight: 600, color: '#92400e', marginBottom: 6 }}>⚠ {importResultado.erros.length} erro(s):</p>
+                      {importResultado.erros.slice(0, 10).map((e, i) => <p key={i} style={{ fontSize: 12, color: '#92400e' }}>{e}</p>)}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, padding: '5px 12px', borderRadius: 20, background: '#ecfdf5', color: '#065f46' }}>
+                      + {importLinhas.filter(l => l.status === 'novo').length} novos
+                    </span>
+                    <span style={{ fontSize: 12, fontWeight: 600, padding: '5px 12px', borderRadius: 20, background: '#eff6ff', color: '#1d4ed8' }}>
+                      ↻ {importLinhas.filter(l => l.status === 'atualizar').length} serão atualizados
+                    </span>
+                  </div>
+                  <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
+                    <div style={{ maxHeight: 380, overflowY: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                        <thead>
+                          <tr style={{ background: '#f8fafc', position: 'sticky', top: 0 }}>
+                            {['', 'Produto', 'Cód. interno', 'Custo', 'Venda', 'Estoque'].map((h, i) => (
+                              <th key={i} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap', borderBottom: '1px solid #e2e8f0' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {importLinhas.map((l, i) => (
+                            <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                              <td style={{ padding: '7px 12px' }}>
+                                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, whiteSpace: 'nowrap', background: l.status === 'novo' ? '#ecfdf5' : '#eff6ff', color: l.status === 'novo' ? '#065f46' : '#1d4ed8' }}>
+                                  {l.status === 'novo' ? 'Novo' : 'Atualizar'}
+                                </span>
+                              </td>
+                              <td style={{ padding: '7px 12px', fontWeight: 500, color: '#0f172a' }}>{l.nome}</td>
+                              <td style={{ padding: '7px 12px', color: '#94a3b8', fontSize: 11 }}>{l.codigo_interno ?? '—'}</td>
+                              <td style={{ padding: '7px 12px', fontFamily: 'monospace', color: '#374151' }}>{l.custo_unit !== null ? `R$ ${l.custo_unit.toFixed(2).replace('.', ',')}` : '—'}</td>
+                              <td style={{ padding: '7px 12px', fontFamily: 'monospace', fontWeight: 600, color: '#0f172a' }}>{l.preco_venda !== null ? `R$ ${l.preco_venda.toFixed(2).replace('.', ',')}` : '—'}</td>
+                              <td style={{ padding: '7px 12px', color: '#374151' }}>{l.estoque_atual ?? '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 10 }}>
+                    Produtos são reconhecidos pelo código de barras, código interno ou nome — os já cadastrados serão atualizados (células vazias na planilha não apagam dados existentes).
+                  </p>
+                </>
+              )}
+            </div>
+
+            <div style={{ padding: '14px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', gap: 8, justifyContent: 'flex-end', background: '#f8fafc', borderRadius: '0 0 16px 16px', flexShrink: 0 }}>
+              {importResultado || importErro ? (
+                <button onClick={() => setShowModalImport(false)} style={{ padding: '9px 22px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Fechar</button>
+              ) : (
+                <>
+                  <button onClick={() => setShowModalImport(false)} disabled={importando} style={{ padding: '9px 18px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer', color: '#374151' }}>Cancelar</button>
+                  <button onClick={confirmarImport} disabled={importando || importProcessando || importLinhas.length === 0}
+                    style={{ padding: '9px 22px', background: importando || importProcessando || importLinhas.length === 0 ? '#93c5fd' : '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: importando ? 'wait' : 'pointer' }}>
+                    {importando ? 'Importando...' : `✓ Importar ${importLinhas.length} produto${importLinhas.length !== 1 ? 's' : ''}`}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
