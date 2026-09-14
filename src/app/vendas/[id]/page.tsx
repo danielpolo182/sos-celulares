@@ -36,6 +36,17 @@ type CampoPersonalizado = {
   tipo: string
 }
 
+type NotaFiscal = {
+  id: string
+  referencia: string
+  status: string
+  numero: string | null
+  chave: string | null
+  url_danfe: string | null
+  url_xml: string | null
+  mensagem_erro: string | null
+}
+
 const fmt = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -52,6 +63,46 @@ export default function VendaDetailPage({ params }: { params: Promise<{ id: stri
   const [campos, setCampos] = useState<CampoPersonalizado[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [nota, setNota] = useState<NotaFiscal | null>(null)
+  const [nfeAtivo, setNfeAtivo] = useState(false)
+  const [emitindo, setEmitindo] = useState(false)
+  const [nfeErro, setNfeErro] = useState<string | null>(null)
+
+  async function carregarNota() {
+    const supabase = createClient()
+    const { data } = await supabase.from('notas_fiscais')
+      .select('id, referencia, status, numero, chave, url_danfe, url_xml, mensagem_erro')
+      .eq('venda_id', id).order('created_at', { ascending: false }).limit(1).maybeSingle()
+    setNota((data as NotaFiscal) ?? null)
+  }
+
+  async function emitirNota() {
+    setEmitindo(true); setNfeErro(null)
+    try {
+      const res = await fetch('/api/nfe/emitir', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ venda_id: id }),
+      })
+      const data = await res.json() as { error?: string }
+      if (!res.ok || data.error) setNfeErro(data.error ?? 'Erro ao emitir')
+      await carregarNota()
+    } catch (e) {
+      setNfeErro(String(e))
+    } finally {
+      setEmitindo(false)
+    }
+  }
+
+  async function consultarNota() {
+    if (!nota) return
+    setEmitindo(true)
+    try {
+      await fetch(`/api/nfe/status?ref=${encodeURIComponent(nota.referencia)}`)
+      await carregarNota()
+    } finally {
+      setEmitindo(false)
+    }
+  }
 
   useEffect(() => {
     const load = async () => {
@@ -69,6 +120,13 @@ export default function VendaDetailPage({ params }: { params: Promise<{ id: stri
         const res = await fetch('/api/campos-personalizados?entidade=venda')
         const d = await res.json()
         setCampos(d.campos ?? [])
+
+        const { data: cfg } = await supabase.from('nfe_config').select('ativo').maybeSingle()
+        setNfeAtivo(cfg?.ativo ?? false)
+        const { data: nf } = await supabase.from('notas_fiscais')
+          .select('id, referencia, status, numero, chave, url_danfe, url_xml, mensagem_erro')
+          .eq('venda_id', id).order('created_at', { ascending: false }).limit(1).maybeSingle()
+        setNota((nf as NotaFiscal) ?? null)
       } catch (e: any) {
         setError(e.message ?? 'Erro ao carregar venda')
       } finally {
@@ -164,6 +222,51 @@ export default function VendaDetailPage({ params }: { params: Promise<{ id: stri
           </div>
         ))}
       </div>
+
+      {/* Nota fiscal */}
+      {(nfeAtivo || nota) && (
+        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '20px 24px', marginBottom: 32 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>🧾 Nota fiscal</h2>
+              {nota ? (
+                <span style={{
+                  padding: '3px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                  background: nota.status === 'autorizada' ? '#dcfce7' : nota.status === 'processando' ? '#fef3c7' : '#fee2e2',
+                  color: nota.status === 'autorizada' ? '#166534' : nota.status === 'processando' ? '#92400e' : '#991b1b',
+                }}>
+                  {nota.status === 'autorizada' ? `Autorizada${nota.numero ? ` · nº ${nota.numero}` : ''}` : nota.status === 'processando' ? 'Processando na SEFAZ' : nota.status === 'cancelada' ? 'Cancelada' : 'Erro na emissão'}
+                </span>
+              ) : (
+                <span style={{ fontSize: 13, color: '#94a3b8' }}>Nenhuma nota emitida para esta venda</span>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {nota?.status === 'autorizada' && nota.url_danfe && (
+                <a href={nota.url_danfe} target="_blank" rel="noopener noreferrer" style={{ padding: '8px 16px', border: '1px solid #86efac', borderRadius: 8, fontSize: 13, background: '#f0fdf4', color: '#166534', fontWeight: 600, textDecoration: 'none' }}>Ver DANFE</a>
+              )}
+              {nota?.status === 'autorizada' && nota.url_xml && (
+                <a href={nota.url_xml} target="_blank" rel="noopener noreferrer" style={{ padding: '8px 16px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, background: '#fff', color: '#374151', textDecoration: 'none' }}>XML</a>
+              )}
+              {nota?.status === 'processando' && (
+                <button onClick={consultarNota} disabled={emitindo} style={{ padding: '8px 16px', border: '1px solid #fde68a', borderRadius: 8, fontSize: 13, background: '#fffbeb', color: '#92400e', cursor: 'pointer', fontWeight: 500 }}>
+                  {emitindo ? 'Consultando...' : 'Consultar status'}
+                </button>
+              )}
+              {nfeAtivo && venda.status === 'finalizada' && (!nota || nota.status === 'erro' || nota.status === 'cancelada') && (
+                <button onClick={emitirNota} disabled={emitindo} style={{ padding: '8px 18px', border: 'none', borderRadius: 8, fontSize: 13, background: emitindo ? '#93c5fd' : '#2563eb', color: '#fff', fontWeight: 600, cursor: emitindo ? 'wait' : 'pointer' }}>
+                  {emitindo ? 'Emitindo...' : nota ? 'Emitir novamente' : 'Emitir NFC-e'}
+                </button>
+              )}
+            </div>
+          </div>
+          {(nfeErro || nota?.mensagem_erro) && nota?.status !== 'autorizada' && (
+            <p style={{ margin: '12px 0 0', fontSize: 13, color: '#991b1b', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px' }}>
+              {nfeErro ?? nota?.mensagem_erro}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Items table */}
       {venda.venda_itens && venda.venda_itens.length > 0 && (

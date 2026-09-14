@@ -33,6 +33,11 @@ type Historico = {
 
 type PixConfig = { mp_access_token: string; mp_webhook_secret: string; ativo: boolean }
 
+type NfeConfigUI = {
+  ativo: boolean; token: string; ambiente: string; emitir_automatico: boolean
+  csosn_padrao: string; cfop_padrao: string; origem_padrao: string; ncm_padrao: string; natureza_operacao: string
+}
+
 type CampoPersonalizado = { id: string; nome: string; tipo: 'texto'|'numero'|'lista'; opcoes: string[]; obrigatorio: boolean; ordem: number; entidade: string }
 
 // ─── Menu lateral com categorias ──────────────────────────
@@ -63,6 +68,7 @@ const MENU_GRUPOS = [
     items: [
       { key: 'whatsapp',        icon: '💬', label: 'WhatsApp API' },
       { key: 'pix',             icon: '📱', label: 'PIX / Mercado Pago' },
+      { key: 'nfe',             icon: '🧾', label: 'Nota Fiscal (NFC-e)' },
       { key: 'banco_aparelhos', icon: '📲', label: 'Banco de aparelhos' },
     ],
   },
@@ -257,6 +263,15 @@ export default function ConfiguracoesPage() {
   const [pixShowSecret, setPixShowSecret] = useState(false)
   const [pixManualOpen, setPixManualOpen] = useState(false)
 
+  // Nota Fiscal (NFC-e)
+  const [nfeConfig, setNfeConfig] = useState<NfeConfigUI>({
+    ativo: false, token: '', ambiente: 'homologacao', emitir_automatico: false,
+    csosn_padrao: '102', cfop_padrao: '5102', origem_padrao: '0', ncm_padrao: '', natureza_operacao: 'VENDA AO CONSUMIDOR',
+  })
+  const [nfeSaving, setNfeSaving] = useState(false)
+  const [nfeMsg, setNfeMsg] = useState('')
+  const [nfeShowToken, setNfeShowToken] = useState(false)
+
   // ── Fetch ────────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -291,6 +306,21 @@ export default function ConfiguracoesPage() {
       mp_access_token: pixCfg.mp_access_token ?? '',
       mp_webhook_secret: pixCfg.mp_webhook_secret ?? '',
       ativo: pixCfg.ativo ?? false,
+    })
+    const { data: nfeCfg } = await supabase
+      .from('nfe_config')
+      .select('ativo, token, ambiente, emitir_automatico, csosn_padrao, cfop_padrao, origem_padrao, ncm_padrao, natureza_operacao')
+      .single()
+    if (nfeCfg) setNfeConfig({
+      ativo: nfeCfg.ativo ?? false,
+      token: nfeCfg.token ?? '',
+      ambiente: nfeCfg.ambiente ?? 'homologacao',
+      emitir_automatico: nfeCfg.emitir_automatico ?? false,
+      csosn_padrao: nfeCfg.csosn_padrao ?? '102',
+      cfop_padrao: nfeCfg.cfop_padrao ?? '5102',
+      origem_padrao: nfeCfg.origem_padrao ?? '0',
+      ncm_padrao: nfeCfg.ncm_padrao ?? '',
+      natureza_operacao: nfeCfg.natureza_operacao ?? 'VENDA AO CONSUMIDOR',
     })
     setLoading(false)
   }, [supabase])
@@ -395,6 +425,29 @@ export default function ConfiguracoesPage() {
     })
     setWaMsg(error ? '❌ Erro ao salvar' : '✅ Configurações salvas!')
     setWaSaving(false)
+  }
+
+  async function salvarNfeConfig() {
+    setNfeSaving(true); setNfeMsg('')
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setNfeSaving(false); return }
+    const { data: perfil } = await supabase.from('perfis').select('filial_id').eq('id', user.id).single()
+    if (!perfil?.filial_id) { setNfeMsg('❌ Filial não encontrada'); setNfeSaving(false); return }
+    const { error } = await supabase.from('nfe_config').upsert({
+      filial_id: perfil.filial_id,
+      ativo: nfeConfig.ativo,
+      token: nfeConfig.token || null,
+      ambiente: nfeConfig.ambiente,
+      emitir_automatico: nfeConfig.emitir_automatico,
+      csosn_padrao: nfeConfig.csosn_padrao || '102',
+      cfop_padrao: nfeConfig.cfop_padrao || '5102',
+      origem_padrao: nfeConfig.origem_padrao || '0',
+      ncm_padrao: nfeConfig.ncm_padrao.replace(/\D/g, '') || null,
+      natureza_operacao: nfeConfig.natureza_operacao || 'VENDA AO CONSUMIDOR',
+      atualizado_em: new Date().toISOString(),
+    })
+    setNfeMsg(error ? `❌ Erro ao salvar: ${error.message}` : '✅ Configurações salvas!')
+    setNfeSaving(false)
   }
 
   async function salvarPixConfig() {
@@ -1269,6 +1322,98 @@ export default function ConfiguracoesPage() {
         )}
 
         {/* ── PIX */}
+        {activeMenu === 'nfe' && (
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>🧾 Nota Fiscal (NFC-e)</h2>
+            <p style={{ fontSize: 13, color: '#64748b', marginBottom: 20 }}>Emissão automática de NFC-e nas vendas e OS via Focus NFe. A partir de 01/01/2027 o MEI deve emitir nota em todas as vendas.</p>
+
+            <div style={card}>
+              <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 600, color: '#0f172a' }}>🔒 Conexão Focus NFe</h3>
+              <div style={{ marginBottom: 14 }}>
+                <label style={lbl}>Token da API (da empresa cadastrada na Focus)</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    type={nfeShowToken ? 'text' : 'password'}
+                    style={{ flex: 1, padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'monospace' }}
+                    value={nfeConfig.token}
+                    onChange={e => setNfeConfig(c => ({ ...c, token: e.target.value }))}
+                    placeholder="Token gerado no painel da Focus NFe"
+                  />
+                  <button onClick={() => setNfeShowToken(v => !v)} style={{ padding: '10px 14px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
+                    {nfeShowToken ? '🙈' : '👁'}
+                  </button>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 14 }}>
+                <div>
+                  <label style={lbl}>Ambiente</label>
+                  <select style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13 }} value={nfeConfig.ambiente} onChange={e => setNfeConfig(c => ({ ...c, ambiente: e.target.value }))}>
+                    <option value="homologacao">Homologação (teste — nota sem validade)</option>
+                    <option value="producao">Produção (nota valendo de verdade)</option>
+                  </select>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 20, paddingBottom: 4 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#374151' }}>
+                    <div onClick={() => setNfeConfig(c => ({ ...c, ativo: !c.ativo }))} style={{ width: 40, height: 22, borderRadius: 11, cursor: 'pointer', background: nfeConfig.ativo ? '#2563eb' : '#cbd5e1', position: 'relative', transition: 'background 0.2s' }}>
+                      <div style={{ position: 'absolute', top: 3, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.2s', left: nfeConfig.ativo ? 21 : 3 }} />
+                    </div>
+                    Emissão ativa
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#374151' }}>
+                    <div onClick={() => setNfeConfig(c => ({ ...c, emitir_automatico: !c.emitir_automatico }))} style={{ width: 40, height: 22, borderRadius: 11, cursor: 'pointer', background: nfeConfig.emitir_automatico ? '#2563eb' : '#cbd5e1', position: 'relative', transition: 'background 0.2s' }}>
+                      <div style={{ position: 'absolute', top: 3, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.2s', left: nfeConfig.emitir_automatico ? 21 : 3 }} />
+                    </div>
+                    Emitir automático ao finalizar venda
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ ...card, marginTop: 16 }}>
+              <h3 style={{ margin: '0 0 6px', fontSize: 15, fontWeight: 600, color: '#0f172a' }}>⚙️ Padrões fiscais</h3>
+              <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16 }}>Usados quando o produto não tem o campo preenchido no cadastro completo. Valide com seu contador.</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
+                <div>
+                  <label style={lbl}>CSOSN padrão</label>
+                  <input style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13 }} value={nfeConfig.csosn_padrao} onChange={e => setNfeConfig(c => ({ ...c, csosn_padrao: e.target.value }))} placeholder="102" />
+                </div>
+                <div>
+                  <label style={lbl}>CFOP padrão</label>
+                  <input style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13 }} value={nfeConfig.cfop_padrao} onChange={e => setNfeConfig(c => ({ ...c, cfop_padrao: e.target.value }))} placeholder="5102" />
+                </div>
+                <div>
+                  <label style={lbl}>Origem padrão</label>
+                  <input style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13 }} value={nfeConfig.origem_padrao} onChange={e => setNfeConfig(c => ({ ...c, origem_padrao: e.target.value }))} placeholder="0" />
+                </div>
+                <div>
+                  <label style={lbl}>NCM padrão (8 dígitos)</label>
+                  <input style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13 }} value={nfeConfig.ncm_padrao} onChange={e => setNfeConfig(c => ({ ...c, ncm_padrao: e.target.value }))} placeholder="ex: 85177900" />
+                </div>
+              </div>
+              <div>
+                <label style={lbl}>Natureza da operação</label>
+                <input style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13 }} value={nfeConfig.natureza_operacao} onChange={e => setNfeConfig(c => ({ ...c, natureza_operacao: e.target.value }))} />
+              </div>
+            </div>
+
+            <div style={{ ...card, marginTop: 16, background: '#f0f9ff', border: '1px solid #bae6fd' }}>
+              <h3 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 600, color: '#0369a1' }}>📋 Checklist para ativar (uma vez só)</h3>
+              <ol style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: '#0369a1', lineHeight: 2 }}>
+                <li>Certificado digital <strong>A1</strong> do CNPJ (~R$ 150/ano, compra online com validação por vídeo)</li>
+                <li>Conta na <strong>Focus NFe</strong> (focusnfe.com.br — plano Retail, 30 dias grátis): cadastre a empresa, envie o certificado e gere o token</li>
+                <li>Credenciamento para <strong>NFC-e na SEFAZ-PR</strong> + código CSC (o suporte da Focus orienta; seu contador faz em minutos)</li>
+                <li>CNAE de <strong>comércio</strong> no MEI (Portal do Empreendedor, grátis)</li>
+                <li>Teste em <strong>Homologação</strong> primeiro; quando a nota autorizar, mude para Produção</li>
+              </ol>
+            </div>
+
+            {nfeMsg && <div style={{ margin: '12px 0', fontSize: 13, color: nfeMsg.startsWith('✅') ? '#059669' : '#dc2626' }}>{nfeMsg}</div>}
+            <button onClick={salvarNfeConfig} disabled={nfeSaving} style={{ marginTop: 12, padding: '11px 24px', background: nfeSaving ? '#a5b4fc' : '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: nfeSaving ? 'not-allowed' : 'pointer' }}>
+              {nfeSaving ? 'Salvando...' : '💾 Salvar configurações de NF'}
+            </button>
+          </div>
+        )}
+
         {activeMenu === 'pix' && (
           <div>
             <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>📱 PIX — Mercado Pago</h2>

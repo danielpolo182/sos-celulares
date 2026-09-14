@@ -93,6 +93,9 @@ export default function PDVPage() {
   const [vendaOk, setVendaOk] = useState(false)
   const [ultimaVenda, setUltimaVenda] = useState<{ numero: number; total: number; troco: number } | null>(null)
   const [ultimaVendaId, setUltimaVendaId] = useState<string | null>(null)
+  const [nfeAtivo, setNfeAtivo] = useState(false)
+  const [nfeAuto, setNfeAuto] = useState(false)
+  const [nfe, setNfe] = useState<{ estado: 'idle' | 'emitindo' | 'ok' | 'erro'; msg?: string; numero?: string | null; urlDanfe?: string | null }>({ estado: 'idle' })
   const [pixCriando, setPixCriando] = useState(false)
   const [pixModal, setPixModal] = useState<{ cobrancaId: string; pixCopiaCola: string; valor: number; expiraEm: string; temTelefone: boolean } | null>(null)
 
@@ -180,6 +183,9 @@ export default function PDVPage() {
   useEffect(() => {
     fetchProdutos()
     fetchCaixa()
+    supabase.from('nfe_config').select('ativo, emitir_automatico').maybeSingle().then(({ data }) => {
+      if (data) { setNfeAtivo(data.ativo ?? false); setNfeAuto(data.emitir_automatico ?? false) }
+    })
     supabase.from('sistema_config').select('valor').eq('chave', 'formas_pgto_taxas').maybeSingle().then(({ data }) => {
       if (data?.valor) {
         try {
@@ -319,6 +325,23 @@ export default function PDVPage() {
     setValorPag('')
   }
 
+  async function emitirNotaFiscal(vendaId: string) {
+    setNfe({ estado: 'emitindo' })
+    try {
+      const res = await fetch('/api/nfe/emitir', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ venda_id: vendaId }),
+      })
+      const data = await res.json() as { status?: string; numero?: string | null; url_danfe?: string | null; error?: string; mensagem?: string | null }
+      if (!res.ok || data.error) { setNfe({ estado: 'erro', msg: data.error ?? 'Erro ao emitir' }); return }
+      if (data.status === 'autorizada') setNfe({ estado: 'ok', numero: data.numero, urlDanfe: data.url_danfe })
+      else if (data.status === 'processando') setNfe({ estado: 'emitindo', msg: 'Aguardando SEFAZ...' })
+      else setNfe({ estado: 'erro', msg: data.mensagem ?? 'Nota não autorizada' })
+    } catch (err) {
+      setNfe({ estado: 'erro', msg: String(err) })
+    }
+  }
+
   async function finalizarVenda() {
     if (itens.length === 0 || faltaPagar > 0.01) return
     setSalvando(true)
@@ -345,7 +368,10 @@ export default function PDVPage() {
       }
       await supabase.from('caixa_movimentos').insert({ tipo: 'venda', valor: total, forma: pagamentos.length === 1 ? pagamentos[0].forma : 'misto', referencia_id: venda.id, observacoes: `Venda #${venda.numero}`, data_ref: hoje() })
       setUltimaVenda({ numero: venda.numero, total, troco })
+      setUltimaVendaId(venda.id)
+      setNfe({ estado: 'idle' })
       setVendaOk(true)
+      if (nfeAtivo && nfeAuto) emitirNotaFiscal(venda.id)
       setItens([]); setPagamentos([]); setDesconto(0); setObs(''); setCamposVendaValores({})
       setEtapa('produtos')
       fetchProdutos(); fetchCaixa()
@@ -707,11 +733,29 @@ ${ultimaVenda.troco > 0 ? `<div class="troco"><span>Troco</span><span>R$&nbsp;${
                           <p style={{ fontSize: 14, fontWeight: 600, color: '#065f46' }}>✅ Venda #{ultimaVenda.numero} finalizada!</p>
                           {ultimaVenda.troco > 0 && <p style={{ fontSize: 14, fontWeight: 700, color: '#065f46', marginTop: 2 }}>Troco: {formatMoeda(ultimaVenda.troco)}</p>}
                         </div>
-                        <div style={{ display: 'flex', gap: 8 }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                          {nfeAtivo && ultimaVendaId && (
+                            nfe.estado === 'ok' ? (
+                              <a href={nfe.urlDanfe ?? '#'} target="_blank" rel="noopener noreferrer" style={{ padding: '7px 14px', border: '1px solid #86efac', borderRadius: 7, fontSize: 12, background: '#dcfce7', color: '#065f46', fontWeight: 600, textDecoration: 'none' }}>
+                                🧾 NFC-e {nfe.numero ? `nº ${nfe.numero}` : 'autorizada'} · DANFE
+                              </a>
+                            ) : nfe.estado === 'emitindo' ? (
+                              <span style={{ padding: '7px 14px', fontSize: 12, color: '#92400e', background: '#fef3c7', borderRadius: 7, fontWeight: 500 }}>🧾 {nfe.msg ?? 'Emitindo...'}</span>
+                            ) : nfe.estado === 'erro' ? (
+                              <button onClick={() => emitirNotaFiscal(ultimaVendaId)} title={nfe.msg} style={{ padding: '7px 14px', border: '1px solid #fecaca', borderRadius: 7, fontSize: 12, cursor: 'pointer', background: '#fef2f2', color: '#991b1b', fontWeight: 500 }}>
+                                ⚠ NF: erro — tentar de novo
+                              </button>
+                            ) : (
+                              <button onClick={() => emitirNotaFiscal(ultimaVendaId)} style={{ padding: '7px 14px', border: '1px solid #86efac', borderRadius: 7, fontSize: 12, cursor: 'pointer', background: '#fff', color: '#065f46', fontWeight: 500 }}>🧾 Emitir NFC-e</button>
+                            )
+                          )}
                           <button onClick={imprimir} style={{ padding: '7px 14px', border: '1px solid #86efac', borderRadius: 7, fontSize: 12, cursor: 'pointer', background: '#fff', color: '#065f46', fontWeight: 500 }}>🖨 Imprimir</button>
                           <button onClick={novaVenda} style={{ padding: '7px 14px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 12, cursor: 'pointer', background: '#fff', color: '#374151' }}>Nova venda</button>
                         </div>
                       </div>
+                    )}
+                    {vendaOk && nfe.estado === 'erro' && nfe.msg && (
+                      <div style={{ marginBottom: 16, padding: '10px 16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, fontSize: 12, color: '#991b1b' }}>{nfe.msg}</div>
                     )}
                     <p style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>⭐ Mais vendidos (30 dias)</p>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10 }}>

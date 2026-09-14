@@ -135,6 +135,39 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
   const [pixCriando, setPixCriando] = useState(false)
   const [pixModal, setPixModal] = useState<{ cobrancaId: string; pixCopiaCola: string; valor: number; expiraEm: string; temTelefone: boolean } | null>(null)
   const [observacoes, setObservacoes] = useState('')
+  const [nfAtivo, setNfAtivo] = useState(false)
+  const [nfNota, setNfNota] = useState<{ referencia: string; status: string; numero: string | null; url_danfe: string | null; mensagem_erro: string | null } | null>(null)
+  const [nfEmitindo, setNfEmitindo] = useState(false)
+  const [nfErro, setNfErro] = useState<string | null>(null)
+
+  useEffect(() => {
+    supabase.from('nfe_config').select('ativo').maybeSingle().then(({ data }) => setNfAtivo(data?.ativo ?? false))
+    supabase.from('notas_fiscais')
+      .select('referencia, status, numero, url_danfe, mensagem_erro')
+      .eq('os_id', id).order('created_at', { ascending: false }).limit(1).maybeSingle()
+      .then(({ data }) => setNfNota(data ?? null))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
+
+  async function emitirNfceOs() {
+    setNfEmitindo(true); setNfErro(null)
+    try {
+      const res = await fetch('/api/nfe/emitir', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ os_id: id }),
+      })
+      const data = await res.json() as { error?: string }
+      if (!res.ok || data.error) setNfErro(data.error ?? 'Erro ao emitir')
+      const { data: nf } = await supabase.from('notas_fiscais')
+        .select('referencia, status, numero, url_danfe, mensagem_erro')
+        .eq('os_id', id).order('created_at', { ascending: false }).limit(1).maybeSingle()
+      setNfNota(nf ?? null)
+    } catch (e) {
+      setNfErro(String(e))
+    } finally {
+      setNfEmitindo(false)
+    }
+  }
   const [checklist, setChecklist] = useState<ChecklistState>({})
   const [camposValores, setCamposValores] = useState<Record<string, string>>({})
 
@@ -1162,6 +1195,26 @@ ${itensOrc.length > 0 ? `<table><thead><tr><th>Item</th><th>Qtd</th><th>Unit.</t
                     <button onClick={criarPixRemoto} disabled={pixCriando} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', background: '#f1f5f9', color: '#374151', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: pixCriando ? 'not-allowed' : 'pointer' }}>
                       📲 Enviar cobrança remota
                     </button>
+                  </div>
+                )}
+                {(nfAtivo || nfNota) && (
+                  <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>🧾 Nota fiscal</span>
+                    {nfNota?.status === 'autorizada' ? (
+                      <>
+                        <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 12px', borderRadius: 20, background: '#dcfce7', color: '#166534' }}>Autorizada{nfNota.numero ? ` · nº ${nfNota.numero}` : ''}</span>
+                        {nfNota.url_danfe && <a href={nfNota.url_danfe} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, fontWeight: 600, color: '#166534', textDecoration: 'underline' }}>Ver DANFE</a>}
+                      </>
+                    ) : nfNota?.status === 'processando' ? (
+                      <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 12px', borderRadius: 20, background: '#fef3c7', color: '#92400e' }}>Processando na SEFAZ</span>
+                    ) : nfAtivo ? (
+                      <button onClick={emitirNfceOs} disabled={nfEmitindo} style={{ padding: '7px 16px', background: nfEmitindo ? '#93c5fd' : '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: nfEmitindo ? 'wait' : 'pointer' }}>
+                        {nfEmitindo ? 'Emitindo...' : nfNota ? 'Emitir novamente' : 'Emitir NFC-e'}
+                      </button>
+                    ) : null}
+                    {(nfErro || (nfNota?.status === 'erro' && nfNota.mensagem_erro)) && (
+                      <span style={{ fontSize: 12, color: '#991b1b', width: '100%' }}>{nfErro ?? nfNota?.mensagem_erro}</span>
+                    )}
                   </div>
                 )}
               </div>
