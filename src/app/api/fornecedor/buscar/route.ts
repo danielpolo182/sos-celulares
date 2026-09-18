@@ -21,14 +21,16 @@ function getText(node: unknown): string {
 
 function parseProducts(messages: unknown[]): ProdutoFornecedor[] {
   if (!Array.isArray(messages) || messages.length === 0) return []
-  const msg = messages[0] as Record<string, unknown>
-  const richText = (msg?.content as Record<string, unknown>)?.richText
-  if (!Array.isArray(richText)) return []
 
-  const varBlock = richText.find((b: unknown) => (b as Record<string, unknown>).type === 'variable')
-  if (!varBlock) return []
-
-  const fullText = getText(varBlock)
+  // O bot passou a devolver os resultados em blocos de parágrafo (type: 'p'),
+  // não mais num bloco 'variable'. Juntamos o texto de todos os blocos de todas
+  // as mensagens e aplicamos o regex sobre o texto completo.
+  let fullText = ''
+  for (const msg of messages) {
+    const richText = ((msg as Record<string, unknown>)?.content as Record<string, unknown>)?.richText
+    if (Array.isArray(richText)) fullText += richText.map(getText).join('\n') + '\n'
+  }
+  if (!fullText.trim()) return []
 
   const produtos: ProdutoFornecedor[] = []
   const regex = /\d+\s*-\s*(\d+)\s*-\s*(.+?)\s*-\s*\[R\$\s*([\d,.]+)\]/g
