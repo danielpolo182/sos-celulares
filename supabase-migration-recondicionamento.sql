@@ -55,5 +55,16 @@ create table if not exists recond_pecas (
 create index if not exists idx_recond_passos_aparelho on recond_passos(aparelho_id);
 create index if not exists idx_recond_pecas_aparelho  on recond_pecas(aparelho_id);
 
--- Observação: assim como as demais tabelas de aparelhos deste projeto, estas
--- tabelas ficam sem RLS (acesso via anon key nas páginas e service role nas APIs).
+-- RLS: como as demais tabelas do app, usuários autenticados têm acesso total.
+-- (Sem isso, o site logado enxerga a tabela mas não retorna nenhuma linha.)
+alter table recond_aparelhos enable row level security;
+alter table recond_passos    enable row level security;
+alter table recond_pecas     enable row level security;
+
+drop policy if exists "auth_full_access" on recond_aparelhos;
+drop policy if exists "auth_full_access" on recond_passos;
+drop policy if exists "auth_full_access" on recond_pecas;
+
+create policy "auth_full_access" on recond_aparelhos for all to authenticated using (true) with check (true);
+create policy "auth_full_access" on recond_passos    for all to authenticated using (true) with check (true);
+create policy "auth_full_access" on recond_pecas     for all to authenticated using (true) with check (true);
