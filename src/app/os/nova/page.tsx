@@ -359,6 +359,45 @@ export default function NovaOSPage() {
     setNovoProduto(false)
   }
 
+  // ── Fornecedor (Fix Cell Parts)
+  const [fixcellLoading, setFixcellLoading] = useState(false)
+  const [fixcellResults, setFixcellResults] = useState<{ nome: string; preco: number; url: string }[]>([])
+  const [fixcellAberto, setFixcellAberto] = useState(false)
+  const [fixcellQuery, setFixcellQuery] = useState('')
+  const [fixcellErro, setFixcellErro] = useState('')
+
+  async function buscarFixcell() {
+    if (!fixcellQuery.trim()) return
+    setFixcellLoading(true)
+    setFixcellResults([])
+    setFixcellErro('')
+    try {
+      const res = await fetch('/api/fornecedor/fixcell', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: fixcellQuery }),
+      })
+      const data = await res.json() as { produtos?: { nome: string; preco: number; url: string }[]; error?: string }
+      if (data.produtos) setFixcellResults(data.produtos)
+      else setFixcellErro(data.error ?? 'Erro desconhecido')
+    } catch (e) {
+      setFixcellErro(String(e))
+    } finally {
+      setFixcellLoading(false)
+    }
+  }
+
+  function selecionarDoFixcell(item: { nome: string; preco: number; url: string }) {
+    setProdutoSelecionado({ id: '__novo__', nome: item.nome, preco_venda: item.preco, categoria: 'Peça' })
+    setProdutoSearch(item.nome)
+    setNomeProduto(item.nome)
+    setPrecoProduto(item.preco.toFixed(2))
+    setValor(item.preco.toFixed(2))
+    setFixcellAberto(false)
+    setFixcellResults([])
+    setNovoProduto(false)
+  }
+
   async function buscarProduto(q: string) {
     if (!q || q.length < 2) { setProdutoResults([]); return }
     const { data } = await supabase.from('produtos').select('id,nome,preco_venda,categoria').eq('ativo', true).ilike('nome', `%${q}%`).is('deleted_at', null).limit(6).order('nome')
@@ -902,6 +941,60 @@ export default function NovaOSPage() {
                     )}
                     {!fornecedorLoading && !fornecedorErro && fornecedorResults.length === 0 && fornecedorQuery && (
                       <p style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', padding: '8px 0' }}>Nenhum produto encontrado para &quot;{fornecedorQuery}&quot;</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Fornecedor Fix Cell Parts */}
+              <div style={{ gridColumn: '1/-1' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: fixcellAberto ? 8 : 0 }}>
+                  <button type="button" onClick={() => { setFixcellAberto(v => !v); setFixcellResults([]) }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', border: '1px solid #e2e8f0', borderRadius: 6, background: fixcellAberto ? '#eff6ff' : '#f8fafc', fontSize: 11, fontWeight: 600, color: fixcellAberto ? '#1e40af' : '#475569', cursor: 'pointer' }}>
+                    🏪 Buscar no fornecedor (Fix Cell Parts)
+                  </button>
+                  {fixcellAberto && <span style={{ fontSize: 10, color: '#94a3b8' }}>Preços de custo — consulta em tempo real</span>}
+                </div>
+
+                {fixcellAberto && (
+                  <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 12px' }}>
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                      <input
+                        style={{ ...inp, flex: 1, background: '#fff' }}
+                        value={fixcellQuery}
+                        onChange={e => setFixcellQuery(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && buscarFixcell()}
+                        placeholder="Ex: frontal a10, bateria g52, conector iphone 11..."
+                        autoFocus
+                      />
+                      <button type="button" onClick={buscarFixcell} disabled={fixcellLoading}
+                        style={{ padding: '6px 14px', background: fixcellLoading ? '#93c5fd' : '#2563eb', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: fixcellLoading ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
+                        {fixcellLoading ? 'Buscando...' : '🔍 Buscar'}
+                      </button>
+                    </div>
+
+                    {fixcellResults.length > 0 && (
+                      <div style={{ maxHeight: 220, overflowY: 'auto', borderRadius: 6, border: '1px solid #bfdbfe', background: '#fff' }}>
+                        <div style={{ padding: '6px 10px', borderBottom: '1px solid #f1f5f9', fontSize: 10, fontWeight: 600, color: '#64748b', display: 'grid', gridTemplateColumns: '1fr 70px' }}>
+                          <span>PRODUTO</span><span style={{ textAlign: 'right' }}>CUSTO</span>
+                        </div>
+                        {fixcellResults.map((item, i) => (
+                          <button key={item.url + i} type="button" onClick={() => selecionarDoFixcell(item)}
+                            style={{ display: 'grid', gridTemplateColumns: '1fr 70px', width: '100%', padding: '7px 10px', textAlign: 'left', background: 'none', border: 'none', borderBottom: '1px solid #f8fafc', cursor: 'pointer', fontSize: 11, color: '#1e293b', alignItems: 'center' }}
+                            onMouseEnter={e => (e.currentTarget.style.background = '#eff6ff')}
+                            onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                            <span style={{ fontWeight: 500, paddingRight: 8 }}>{item.nome}</span>
+                            <span style={{ textAlign: 'right', color: '#2563eb', fontWeight: 700 }}>R$ {item.preco.toFixed(2)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {fixcellErro && (
+                      <p style={{ fontSize: 11, color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '6px 10px', marginTop: 4, wordBreak: 'break-all' }}>{fixcellErro}</p>
+                    )}
+                    {!fixcellLoading && !fixcellErro && fixcellResults.length === 0 && fixcellQuery && (
+                      <p style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', padding: '8px 0' }}>Nenhum produto encontrado para &quot;{fixcellQuery}&quot;</p>
                     )}
                   </div>
                 )}
