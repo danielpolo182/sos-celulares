@@ -2,6 +2,7 @@ export interface Condicao { item: string; estado: string; gravidade?: 'baixa' | 
 
 export interface RecondAparelho {
   id: string
+  user_id?: string | null
   marca?: string | null
   modelo: string
   capacidade?: string | null

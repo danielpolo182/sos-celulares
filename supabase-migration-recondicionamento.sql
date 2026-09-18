@@ -55,8 +55,11 @@ create table if not exists recond_pecas (
 create index if not exists idx_recond_passos_aparelho on recond_passos(aparelho_id);
 create index if not exists idx_recond_pecas_aparelho  on recond_pecas(aparelho_id);
 
--- RLS: como as demais tabelas do app, usuários autenticados têm acesso total.
--- (Sem isso, o site logado enxerga a tabela mas não retorna nenhuma linha.)
+-- Dono do registro: cada usuário vê/edita apenas o que cadastrou.
+-- O default auth.uid() preenche automaticamente no insert do site logado.
+alter table recond_aparelhos add column if not exists user_id uuid references auth.users(id) default auth.uid();
+
+-- RLS por dono (padrão de segurança do app). Passos e peças herdam o dono do aparelho.
 alter table recond_aparelhos enable row level security;
 alter table recond_passos    enable row level security;
 alter table recond_pecas     enable row level security;
@@ -64,7 +67,20 @@ alter table recond_pecas     enable row level security;
 drop policy if exists "auth_full_access" on recond_aparelhos;
 drop policy if exists "auth_full_access" on recond_passos;
 drop policy if exists "auth_full_access" on recond_pecas;
+drop policy if exists "owner_access" on recond_aparelhos;
+drop policy if exists "owner_access" on recond_passos;
+drop policy if exists "owner_access" on recond_pecas;
 
-create policy "auth_full_access" on recond_aparelhos for all to authenticated using (true) with check (true);
-create policy "auth_full_access" on recond_passos    for all to authenticated using (true) with check (true);
-create policy "auth_full_access" on recond_pecas     for all to authenticated using (true) with check (true);
+create policy "owner_access" on recond_aparelhos
+  for all to authenticated
+  using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+create policy "owner_access" on recond_passos
+  for all to authenticated
+  using (exists (select 1 from recond_aparelhos a where a.id = aparelho_id and a.user_id = auth.uid()))
+  with check (exists (select 1 from recond_aparelhos a where a.id = aparelho_id and a.user_id = auth.uid()));
+
+create policy "owner_access" on recond_pecas
+  for all to authenticated
+  using (exists (select 1 from recond_aparelhos a where a.id = aparelho_id and a.user_id = auth.uid()))
+  with check (exists (select 1 from recond_aparelhos a where a.id = aparelho_id and a.user_id = auth.uid()));
