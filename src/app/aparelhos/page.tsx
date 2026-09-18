@@ -14,6 +14,7 @@ type Aparelho = {
   checklist_json: Record<string, string>; checklist_nota: string | null
   observacoes: string | null; created_at: string
   senha_tipo: string | null; senha_valor: string | null
+  compra_id?: string | null
 }
 
 type ModalSucesso = {
@@ -189,6 +190,9 @@ export default function AparelhoPage() {
   const [cParcelas, setCParcelas] = useState(2)
   const [salvando, setSalvando] = useState(false)
   const [compraSalva, setCompraSalva] = useState<{id:string;numero:number}|null>(null)
+  // ── Edição completa (reabrir cadastro de um aparelho existente) ──
+  const [editandoId, setEditandoId] = useState<string|null>(null)
+  const [editandoCompraId, setEditandoCompraId] = useState<string|null>(null)
   const [submitAttempted, setSubmitAttempted] = useState(false)
   const [modalSucesso, setModalSucesso] = useState<ModalSucesso | null>(null)
 
@@ -935,7 +939,104 @@ section { margin-bottom:12pt; }
   function setChecklistItem(key: string, val: string) { setCChecklist(prev => ({ ...prev, [key]: val })) }
 
   // ── Salvar compra ─────────────────────────────────────────
+  function limparFormCompra() {
+    setEditandoId(null); setEditandoCompraId(null)
+    setModeloInput(''); setModeloSelecionado(null); setCTipo('usado')
+    setCIMEI(''); setCIMEI2(''); setCCor(''); setCCapacidade(''); setCObs(''); setCChecklist({}); setCValor('')
+    setVNome(''); setVCPF(''); setVRG(''); setVTel(''); setVEmail(''); setVCEP(''); setVEnd(''); setVBairro(''); setVCidade(''); setVEstado('')
+    setAssinaturaVendedor(''); setAssinaturaLoja(''); setFotoVendedor('')
+    setCTipoSenha('nenhuma'); setCScenha(''); setCPadrao([]); setSubmitAttempted(false)
+  }
+
+  // Reabre a tela de cadastro inicial com todos os dados do aparelho para edição completa
+  async function abrirEdicaoCompleta(a: Aparelho) {
+    limparFormCompra()
+    // Dados do aparelho
+    setEditandoId(a.id)
+    setCTipo(a.tipo === 'novo' ? 'novo' : 'usado')
+    const specs = a.specs_json as Dispositivo | null
+    setModeloSelecionado(specs && specs.modelo ? specs : ({ marca: a.marca, modelo: a.modelo } as Dispositivo))
+    setModeloInput([a.marca, a.modelo].filter(Boolean).join(' '))
+    setCCapacidade(a.capacidade ?? '')
+    setCCor(a.cor ?? '')
+    setCIMEI(a.imei ?? '')
+    setCIMEI2(a.imei2 ?? '')
+    setCObs(a.observacoes ?? '')
+    setCChecklist((a.checklist_json as Record<string,string>) ?? {})
+    setCValor(a.preco_compra != null ? String(a.preco_compra) : '')
+    setCTipoSenha((a.senha_tipo as 'nenhuma'|'pin'|'padrao') ?? 'nenhuma')
+    if (a.senha_tipo === 'pin') setCScenha(a.senha_valor ?? '')
+    else if (a.senha_tipo === 'padrao' && a.senha_valor) setCPadrao(a.senha_valor.split(' → ').map(Number).filter(n => !isNaN(n)))
+
+    // Dados da compra (vendedor, pagamento, assinaturas)
+    if (a.compra_id) {
+      setEditandoCompraId(a.compra_id)
+      const { data: compra } = await supabase.from('aparelho_compras').select('*').eq('id', a.compra_id).single()
+      if (compra) {
+        setVNome(compra.vendedor_nome ?? '')
+        setVCPF(compra.vendedor_cpf ?? '')
+        setVRG(compra.vendedor_rg ?? '')
+        setVTel(compra.vendedor_tel ?? '')
+        setVEmail(compra.vendedor_email ?? '')
+        setVCEP(compra.vendedor_cep ?? '')
+        setVEnd(compra.vendedor_end ?? '')
+        setCForma(compra.forma_pagamento ?? 'Dinheiro')
+        setAssinaturaVendedor(compra.assinatura_vendedor ?? '')
+        setAssinaturaLoja(compra.assinatura_loja ?? '')
+        setFotoVendedor(compra.foto_vendedor ?? '')
+      }
+    }
+
+    setDetalhes(null); setDetalheEditando(false)
+    setAba('comprar')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  // Atualiza um aparelho existente (edição completa) sem trocar o status
+  async function salvarEdicaoCompleta() {
+    if (!modeloSelecionado || !editandoId) {
+      modeloRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); modeloRef.current?.focus(); return
+    }
+    setSalvando(true)
+    const { error: apErr } = await supabase.from('aparelhos').update({
+      tipo: cTipo,
+      marca: modeloSelecionado.marca, modelo: modeloSelecionado.modelo,
+      capacidade: cCapacidade || null, cor: cCor || null,
+      imei: cIMEI || null, imei2: cIMEI2 || null,
+      aparelho_legal_url: cIMEI ? `https://www.aparelhoslegais.com.br/consulta?imei=${cIMEI}` : null,
+      specs_json: modeloSelecionado,
+      preco_compra: cValor ? parseFloat(cValor) : null,
+      checklist_json: cChecklist, checklist_nota: notaGeral(cChecklist),
+      observacoes: cObs || null,
+      senha_tipo: cTipoSenha !== 'nenhuma' ? cTipoSenha : null,
+      senha_valor: cTipoSenha === 'pin' ? cSenha : cTipoSenha === 'padrao' && cPadrao.length > 0 ? cPadrao.join(' → ') : null,
+    }).eq('id', editandoId)
+
+    if (apErr) { alert(`Erro ao salvar alterações: ${apErr.message}`); setSalvando(false); return }
+
+    // Atualiza a compra vinculada (se existir e houver dados de vendedor)
+    if (editandoCompraId && vNome.trim()) {
+      const endCompleto = [vEnd, vBairro, vCidade, vEstado].filter(Boolean).join(', ')
+      await supabase.from('aparelho_compras').update({
+        vendedor_nome: vNome, vendedor_cpf: vCPF, vendedor_rg: vRG || null,
+        vendedor_tel: vTel || null, vendedor_email: vEmail || null,
+        vendedor_end: endCompleto || vEnd, vendedor_cep: vCEP || null,
+        valor_pago: cValor ? parseFloat(cValor) : null, forma_pagamento: cForma,
+        assinatura_vendedor: assinaturaVendedor || null,
+        assinatura_loja: assinaturaLoja || null,
+        foto_vendedor: fotoVendedor || null,
+      }).eq('id', editandoCompraId)
+    }
+
+    setSalvando(false)
+    limparFormCompra()
+    setAba('estoque')
+    fetchAll()
+    alert('Alterações salvas!')
+  }
+
   async function salvarCompra() {
+    if (editandoId) { salvarEdicaoCompleta(); return }
     setSubmitAttempted(true)
 
     // Validação com scroll para o primeiro campo inválido
@@ -1131,7 +1232,7 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
               )}
             </button>
           )}
-          <button onClick={() => setAba('comprar')} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 8, cursor: 'pointer', background: aba==='comprar'?'#0f172a':'#1e293b', color: '#fbbf24', display: 'flex', alignItems: 'center', gap: 6 }}>⬇ Registrar compra</button>
+          <button onClick={() => { if (editandoId) limparFormCompra(); setAba('comprar') }} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 8, cursor: 'pointer', background: aba==='comprar'?'#0f172a':'#1e293b', color: '#fbbf24', display: 'flex', alignItems: 'center', gap: 6 }}>⬇ Registrar compra</button>
           <button onClick={() => setAba('vender')} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 8, cursor: 'pointer', background: aba==='vender'?'#065f46':'#16a34a', color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}>⬆ Registrar venda</button>
         </div>
       </div>
@@ -1339,12 +1440,17 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
             </div>
 
             {/* Botões topo */}
-            <div style={{ display:'flex',gap:8,marginBottom:16 }}>
+            <div style={{ display:'flex',gap:8,marginBottom:8 }}>
               <button onClick={() => { setDetalheEditando(v => !v) }} style={{ flex:1,padding:'8px',border:'1px solid #bfdbfe',borderRadius:8,fontSize:13,background:detalheEditando?'#dbeafe':'#fff',color:'#2563eb',cursor:'pointer',fontWeight:detalheEditando?600:400 }}>
                 ✏️ {detalheEditando ? 'Editando...' : 'Editar'}
               </button>
               <button onClick={() => imprimirCard(detalhes)} style={{ flex:1,padding:'8px',border:'1px solid #dbeafe',borderRadius:8,fontSize:13,background:'#f0f9ff',color:'#2563eb',cursor:'pointer' }}>
                 🏷 Reimprimir card
+              </button>
+            </div>
+            <div style={{ marginBottom:16 }}>
+              <button onClick={() => abrirEdicaoCompleta(detalhes)} style={{ width:'100%',padding:'9px',border:'1px solid #c7d2fe',borderRadius:8,fontSize:13,fontWeight:600,background:'#eef2ff',color:'#4338ca',cursor:'pointer' }}>
+                📝 Edição Completa (reabrir cadastro)
               </button>
             </div>
 
@@ -1558,6 +1664,13 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
       {/* ═══ COMPRAR ═══ */}
       {aba === 'comprar' && (
         <div style={{ maxWidth: 820 }}>
+
+          {editandoId && (
+            <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,background:'#eef2ff',border:'1px solid #c7d2fe',borderRadius:10,padding:'10px 14px',marginBottom:14 }}>
+              <span style={{ fontSize:13,color:'#4338ca',fontWeight:600 }}>📝 Edição completa — alterando o aparelho já cadastrado (o status não muda).</span>
+              <button onClick={() => { limparFormCompra(); setAba('estoque') }} style={{ padding:'6px 12px',border:'1px solid #c7d2fe',borderRadius:7,background:'#fff',color:'#4338ca',fontSize:12,fontWeight:600,cursor:'pointer',whiteSpace:'nowrap' }}>Cancelar edição</button>
+            </div>
+          )}
 
           {/* Tipo */}
           <div style={card}>
@@ -1808,8 +1921,8 @@ ${cTipoSenha !== 'nenhuma' ? `<div class="row"><span class="label">Senha</span><
             )}
           </div>
 
-          <button onClick={salvarCompra} disabled={salvando} style={{ width:'100%',padding:'14px',background:salvando?'#93c5fd':'#2563eb',color:'#fff',border:'none',borderRadius:10,fontSize:14,fontWeight:600,cursor:salvando?'not-allowed':'pointer' }}>
-            {salvando ? 'Salvando...' : '✓ Registrar compra'}
+          <button onClick={salvarCompra} disabled={salvando} style={{ width:'100%',padding:'14px',background:salvando?'#93c5fd':(editandoId?'#4338ca':'#2563eb'),color:'#fff',border:'none',borderRadius:10,fontSize:14,fontWeight:600,cursor:salvando?'not-allowed':'pointer' }}>
+            {salvando ? 'Salvando...' : (editandoId ? '✓ Salvar alterações' : '✓ Registrar compra')}
           </button>
         </div>
       )}
