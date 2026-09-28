@@ -29,6 +29,7 @@ type Produto = {
   preco_atacado: number | null; qtd_min_atacado: number | null
   despesas_extras: number | null; despesas_acess: number | null; custo_final: number | null
   fornecedor_id: string | null; categoria: string | null; estoque_minimo: number | null
+  estoque_atual: number | null; filial_id: string | null
   campos_extras: { fotos?: string[] } | null
 }
 
@@ -408,11 +409,18 @@ export default function EstoquePage() {
   async function salvarEntrada() {
     if (!produtoSel || !eCusto) return
     setESaving(true)
+    const qtd = parseInt(eQtd) || 1
     const { error } = await supabase.from('produto_entradas').insert({
-      produto_id: produtoSel.id, quantidade: parseInt(eQtd) || 1,
+      produto_id: produtoSel.id, quantidade: qtd,
       custo_unit: parseFloat(eCusto), data_compra: eData, nota_fiscal: eNF || null,
     })
     if (error) { alert(`Erro: ${error.message}`); setESaving(false); return }
+
+    // Soma a quantidade no estoque atual (mesmo padrão da baixa no PDV)
+    await supabase.from('produtos').update({ estoque_atual: (produtoSel.estoque_atual ?? 0) + qtd }).eq('id', produtoSel.id)
+    if (produtoSel.filial_id)
+      await supabase.from('movimentacoes_estoque').insert({ filial_id: produtoSel.filial_id, produto_id: produtoSel.id, tipo: 'entrada', quantidade: qtd, motivo: `Entrada de estoque${eNF ? ` (NF ${eNF})` : ''}` })
+
     setESaving(false); setShowModalEntrada(false); fetchProdutos()
   }
 
@@ -630,12 +638,21 @@ export default function EstoquePage() {
   const incompletos = produtos.filter(p => !COMPLETO(p))
   const completos = produtos.filter(p => COMPLETO(p))
 
+  // Valor total do estoque (qtd × custo e qtd × preço de venda)
+  const totalEstoqueCusto = produtos.reduce((s, p) => s + (p.estoque_atual ?? 0) * (p.custo_unit ?? 0), 0)
+  const totalEstoqueVenda = produtos.reduce((s, p) => s + (p.estoque_atual ?? 0) * (p.preco_venda ?? 0), 0)
+  const fmtBR = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
   // ── Linha da tabela de produtos
   function ProdutoRow({ p, showDivider }: { p: Produto; showDivider?: boolean }) {
     const custo = p.custo_unit ?? 0
     const preco = p.preco_venda ?? 0
     const margem = custo > 0 && preco > 0 ? ((preco - custo) / preco * 100).toFixed(0) : null
     const incompleto = !COMPLETO(p)
+    const qtd = p.estoque_atual ?? 0
+    const abaixoMin = p.estoque_minimo != null && qtd <= p.estoque_minimo
+    const corEstoque = qtd === 0 ? '#991b1b' : abaixoMin ? '#92400e' : '#0f172a'
+    const totalCusto = qtd * custo
     return (
       <tr style={{ borderBottom: '1px solid #f1f5f9', background: showDivider ? '#fffbeb' : undefined }}
         onMouseEnter={e => { e.currentTarget.style.background = incompleto ? '#fef9ec' : '#eff6ff' }}
@@ -654,12 +671,25 @@ export default function EstoquePage() {
             <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>{p.modelos_compat.slice(0, 2).join(', ')}{p.modelos_compat.length > 2 ? ` +${p.modelos_compat.length - 2}` : ''}</div>
           )}
         </td>
-        <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{p.unidade ?? 'un'}</td>
+        <td style={{ padding: '10px 14px', fontSize: 12 }}>
+          <span style={{ fontWeight: 700, color: corEstoque, fontSize: 13 }}>{qtd}</span>
+          <span style={{ color: '#94a3b8', marginLeft: 4 }}>{p.unidade ?? 'un'}</span>
+          {qtd === 0 && <div style={{ fontSize: 10, color: '#991b1b', fontWeight: 600 }}>sem estoque</div>}
+          {qtd > 0 && abaixoMin && <div style={{ fontSize: 10, color: '#92400e', fontWeight: 600 }}>abaixo do mín. ({p.estoque_minimo})</div>}
+        </td>
         <td style={{ padding: '10px 14px', color: '#374151', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
           {custo > 0 ? `R$ ${custo.toFixed(2).replace('.', ',')}` : <span style={{ color: '#fbbf24' }}>—</span>}
         </td>
         <td style={{ padding: '10px 14px', fontWeight: 500, color: preco > 0 ? '#0f172a' : '#fbbf24', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
           {preco > 0 ? `R$ ${preco.toFixed(2).replace('.', ',')}` : '—'}
+        </td>
+        <td style={{ padding: '10px 14px', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+          {qtd > 0 && custo > 0 ? (
+            <>
+              <div style={{ fontWeight: 600, color: '#0f172a' }}>R$ {totalCusto.toFixed(2).replace('.', ',')}</div>
+              {preco > 0 && <div style={{ fontSize: 10, color: '#94a3b8' }}>venda: R$ {(qtd * preco).toFixed(2).replace('.', ',')}</div>}
+            </>
+          ) : <span style={{ color: '#94a3b8' }}>—</span>}
         </td>
         <td style={{ padding: '10px 14px' }}>
           {margem ? <span style={{ fontSize: 12, fontWeight: 600, color: parseInt(margem) >= 30 ? '#065f46' : parseInt(margem) >= 15 ? '#92400e' : '#991b1b' }}>{margem}%</span> : '—'}
@@ -690,6 +720,9 @@ export default function EstoquePage() {
             <h1 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', letterSpacing: '-0.02em' }}>Produtos & Estoque</h1>
             <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
               {produtos.length} produtos · {incompletos.length > 0 ? <span style={{ color: '#d97706' }}>{incompletos.length} incompletos</span> : 'todos completos'}
+              {totalEstoqueCusto > 0 && (
+                <span> · em estoque: <strong style={{ color: '#0f172a' }}>R$ {fmtBR(totalEstoqueCusto)}</strong> (custo) · <strong style={{ color: '#065f46' }}>R$ {fmtBR(totalEstoqueVenda)}</strong> (venda)</span>
+              )}
             </p>
           </div>
           {aba === 'produtos' && (
@@ -738,7 +771,7 @@ export default function EstoquePage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                    {['Produto', 'Unidade', 'Custo unit.', 'Preço venda', 'Margem', 'Status', 'Ações'].map(h => (
+                    {['Produto', 'Estoque', 'Custo unit.', 'Preço venda', 'Total em estoque', 'Margem', 'Status', 'Ações'].map(h => (
                       <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
@@ -748,7 +781,7 @@ export default function EstoquePage() {
                   {incompletos.length > 0 && (
                     <>
                       <tr>
-                        <td colSpan={7} style={{ padding: '8px 14px', background: '#fffbeb', borderBottom: '1px solid #fde68a', borderTop: '1px solid #fde68a' }}>
+                        <td colSpan={8} style={{ padding: '8px 14px', background: '#fffbeb', borderBottom: '1px solid #fde68a', borderTop: '1px solid #fde68a' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <span style={{ fontSize: 14 }}>⚠</span>
                             <span style={{ fontSize: 11, fontWeight: 700, color: '#92400e', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
@@ -759,7 +792,7 @@ export default function EstoquePage() {
                       </tr>
                       {incompletos.map(p => <ProdutoRow key={p.id} p={p} showDivider />)}
                       <tr>
-                        <td colSpan={7} style={{ padding: '10px 14px', background: '#f0fdf4', borderBottom: '1px solid #bbf7d0', borderTop: '2px solid #e2e8f0' }}>
+                        <td colSpan={8} style={{ padding: '10px 14px', background: '#f0fdf4', borderBottom: '1px solid #bbf7d0', borderTop: '2px solid #e2e8f0' }}>
                           <span style={{ fontSize: 11, fontWeight: 700, color: '#065f46', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                             ✓ Produtos completos — {completos.length}
                           </span>
