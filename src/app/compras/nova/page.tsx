@@ -61,6 +61,7 @@ export default function NovaCompraPage() {
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([])
   const [perfilAtual, setPerfilAtual] = useState<{ id: string; nome: string } | null>(null)
   const [salvando, setSalvando] = useState(false)
+  const [progresso, setProgresso] = useState<string | null>(null)
   const [sucesso, setSucesso] = useState<string | null>(null)
   const [tabelaFaltando, setTabelaFaltando] = useState(false)
 
@@ -176,23 +177,71 @@ export default function NovaCompraPage() {
     : null
 
   // ── Entrada no estoque (ao confirmar)
+  // Tenta vincular itens avulsos pelo nome, insere as entradas em lote e
+  // devolve um resumo do que entrou / ficou de fora / falhou.
   async function aplicarEntradaEstoque(itensDB: CompraItemDB[], numeroCompra: number, nfe: string | null, dataCompra: string) {
+    let semVinculo = 0
+    let erros = 0
+    const paraEntrada: { produto_id: string; quantidade: number; custo_unit: number }[] = []
+
+    setProgresso(`Verificando vínculos dos ${itensDB.length} itens...`)
     for (const item of itensDB) {
-      if (!item.produto_id || item.quantidade <= 0) continue
-      await supabase.from('produto_entradas').insert({
-        produto_id: item.produto_id, quantidade: item.quantidade,
-        custo_unit: item.custo_unit, data_compra: dataCompra, nota_fiscal: nfe || `Compra #${numeroCompra}`,
-      })
-      const { data: prod } = await supabase.from('produtos').select('estoque_atual, filial_id').eq('id', item.produto_id).single()
-      if (prod) {
-        await supabase.from('produtos').update({ estoque_atual: (prod.estoque_atual ?? 0) + item.quantidade }).eq('id', item.produto_id)
-        if (prod.filial_id)
-          await supabase.from('movimentacoes_estoque').insert({
-            filial_id: prod.filial_id, produto_id: item.produto_id, tipo: 'entrada',
-            quantidade: item.quantidade, motivo: `Compra #${numeroCompra}`,
-          })
+      if (item.quantidade <= 0) continue
+      let pid = item.produto_id
+      if (!pid) {
+        // Item avulso: tenta achar produto com o mesmo nome no estoque
+        const { data: match } = await supabase.from('produtos').select('id')
+          .is('deleted_at', null).ilike('nome', item.descricao.trim()).limit(2)
+        if (match && match.length === 1) {
+          pid = match[0].id
+          // Persiste o vínculo no item da compra (quando o item tem id real)
+          if (item.id.length === 36) await supabase.from('compra_itens').update({ produto_id: pid }).eq('id', item.id)
+        }
+      }
+      if (!pid) { semVinculo++; continue }
+      paraEntrada.push({ produto_id: pid, quantidade: item.quantidade, custo_unit: item.custo_unit })
+    }
+
+    // Histórico de entradas em lote (1 requisição)
+    if (paraEntrada.length > 0) {
+      setProgresso(`Registrando ${paraEntrada.length} entradas...`)
+      const { error: errEnt } = await supabase.from('produto_entradas').insert(paraEntrada.map(p => ({
+        produto_id: p.produto_id, quantidade: p.quantidade,
+        custo_unit: p.custo_unit, data_compra: dataCompra, nota_fiscal: nfe || `Compra #${numeroCompra}`,
+      })))
+      if (errEnt) {
+        setProgresso(null)
+        return { ok: 0, semVinculo, erros: paraEntrada.length, msgErro: errEnt.message }
       }
     }
+
+    // Atualiza o estoque agrupado por produto
+    const porProduto = new Map<string, number>()
+    paraEntrada.forEach(p => porProduto.set(p.produto_id, (porProduto.get(p.produto_id) ?? 0) + p.quantidade))
+    const movs: { filial_id: string; produto_id: string; tipo: string; quantidade: number; motivo: string }[] = []
+    let ok = 0
+    let n = 0
+    let msgErro: string | undefined
+    for (const [pid, q] of porProduto) {
+      n++
+      setProgresso(`Atualizando estoque ${n}/${porProduto.size}...`)
+      const { data: prod, error: e1 } = await supabase.from('produtos').select('estoque_atual, filial_id').eq('id', pid).single()
+      if (e1 || !prod) { erros++; msgErro = e1?.message ?? msgErro; continue }
+      const { error: e2 } = await supabase.from('produtos').update({ estoque_atual: (prod.estoque_atual ?? 0) + q }).eq('id', pid)
+      if (e2) { erros++; msgErro = e2.message; continue }
+      ok++
+      if (prod.filial_id) movs.push({ filial_id: prod.filial_id, produto_id: pid, tipo: 'entrada', quantidade: q, motivo: `Compra #${numeroCompra}` })
+    }
+    if (movs.length > 0) await supabase.from('movimentacoes_estoque').insert(movs)
+    setProgresso(null)
+    return { ok, semVinculo, erros, msgErro }
+  }
+
+  function resumoEntrada(r: { ok: number; semVinculo: number; erros: number; msgErro?: string }) {
+    const partes = [`✅ ${r.ok} produto${r.ok !== 1 ? 's' : ''} com entrada no estoque.`]
+    if (r.semVinculo > 0) partes.push(`⚠️ ${r.semVinculo} item(ns) avulso(s) sem vínculo com o estoque — não tiveram entrada (vincule pelo nome exato do produto ou lance manualmente no Estoque).`)
+    if (r.erros > 0) partes.push(`❌ ${r.erros} erro(s)${r.msgErro ? `: ${r.msgErro}` : ''}`)
+    return partes.join('\n')
   }
 
   async function estornarEntradaEstoque(itensDB: CompraItemDB[], numeroCompra: number) {
@@ -242,14 +291,16 @@ export default function NovaCompraPage() {
       detalhes: i.detalhes.trim() || null, quantidade: Math.max(1, parseInt(i.quantidade) || 1),
       unidade: i.unidade, custo_unit: num(i.custo_unit), desconto: num(i.desconto),
     }))
-    const { error: errItens } = await supabase.from('compra_itens').insert(itensDB)
+    const { data: itensSalvos, error: errItens } = await supabase.from('compra_itens').insert(itensDB)
+      .select('id,produto_id,descricao,quantidade,custo_unit,desconto')
     if (errItens) { alert(`Compra criada, mas erro ao salvar itens: ${errItens.message}`); setSalvando(false); return }
 
     if (situacao === 'confirmada') {
-      await aplicarEntradaEstoque(
-        itensDB.map((i, idx) => ({ id: String(idx), produto_id: i.produto_id, descricao: i.descricao, quantidade: i.quantidade, custo_unit: i.custo_unit, desconto: i.desconto })),
+      const r = await aplicarEntradaEstoque(
+        (itensSalvos as CompraItemDB[]) ?? [],
         compra.numero, numeroNfe.trim() || null, dataEmissao,
       )
+      alert(`Compra #${compra.numero} cadastrada.\n\n${resumoEntrada(r)}`)
     }
 
     // Limpa o formulário
@@ -263,18 +314,36 @@ export default function NovaCompraPage() {
   async function mudarSituacao(c: Compra, nova: 'confirmada' | 'cancelada') {
     const eraConfirmada = c.situacao === 'confirmada'
     if (nova === 'confirmada') {
-      if (!confirm(`Confirmar a compra #${c.numero}?\n\nOs produtos vinculados ao estoque terão entrada de ${c.compra_itens.filter(i => i.produto_id).reduce((s, i) => s + i.quantidade, 0)} itens.`)) return
+      const totalItens = c.compra_itens.reduce((s, i) => s + i.quantidade, 0)
+      if (!confirm(`Confirmar a compra #${c.numero}?\n\nSerá dada entrada de até ${totalItens} itens no estoque (itens avulsos são vinculados pelo nome quando possível).`)) return
     } else {
       if (!confirm(`Cancelar a compra #${c.numero}?${eraConfirmada ? '\n\nA entrada no estoque será estornada.' : ''}`)) return
     }
     setSalvando(true)
-    if (nova === 'confirmada' && !eraConfirmada) await aplicarEntradaEstoque(c.compra_itens, c.numero, c.numero_nfe, c.data_emissao)
+    let resumo: string | null = null
+    if (nova === 'confirmada' && !eraConfirmada) {
+      const r = await aplicarEntradaEstoque(c.compra_itens, c.numero, c.numero_nfe, c.data_emissao)
+      resumo = resumoEntrada(r)
+    }
     if (nova === 'cancelada' && eraConfirmada) await estornarEntradaEstoque(c.compra_itens, c.numero)
     await supabase.from('compras').update({
       situacao: nova, updated_at: new Date().toISOString(),
       confirmada_em: nova === 'confirmada' ? new Date().toISOString() : undefined,
     }).eq('id', c.id)
     setSalvando(false)
+    if (resumo) alert(`Compra #${c.numero} confirmada.\n\n${resumo}`)
+    fetchCompras()
+  }
+
+  // Reprocessa a entrada de uma compra já confirmada — para casos em que a
+  // entrada não aconteceu (ex.: itens avulsos sem vínculo). CUIDADO: rodar
+  // em uma compra cuja entrada já aconteceu duplica o estoque.
+  async function reprocessarEntrada(c: Compra) {
+    if (!confirm(`Reprocessar a entrada da compra #${c.numero}?\n\n⚠️ Use apenas se a entrada NÃO aconteceu (estoque não subiu). Se a entrada já tiver sido feita, rodar de novo DUPLICA as quantidades no estoque.`)) return
+    setSalvando(true)
+    const r = await aplicarEntradaEstoque(c.compra_itens, c.numero, c.numero_nfe, c.data_emissao)
+    setSalvando(false)
+    alert(resumoEntrada(r))
     fetchCompras()
   }
 
@@ -304,6 +373,12 @@ export default function NovaCompraPage() {
       {tabelaFaltando && (
         <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '12px 16px', marginBottom: 18, fontSize: 13, color: '#92400e' }}>
           ⚠️ As tabelas de compras ainda não existem no banco. Rode o arquivo <code>supabase-migration-compras-notas.sql</code> no SQL Editor do Supabase.
+        </div>
+      )}
+
+      {progresso && (
+        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '12px 16px', marginBottom: 18, fontSize: 13, color: '#1d4ed8', fontWeight: 600 }}>
+          ⏳ {progresso}
         </div>
       )}
 
@@ -357,7 +432,21 @@ export default function NovaCompraPage() {
                 value={buscaProduto}
                 onChange={e => onBuscaProduto(e.target.value)}
                 placeholder="🔍 Buscar produto do estoque por nome ou código... (Enter para adicionar como item avulso)"
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (resultados.length > 0) addProduto(resultados[0]); else addAvulso() } }}
+                onKeyDown={async e => {
+                  if (e.key !== 'Enter') return
+                  e.preventDefault()
+                  if (resultados.length > 0) { addProduto(resultados[0]); return }
+                  // A busca é assíncrona: antes de criar item avulso, consulta o estoque agora
+                  const v = buscaProduto.trim()
+                  if (v.length < 2) return
+                  const { data } = await supabase.from('produtos')
+                    .select('id,nome,unidade,custo_unit,estoque_atual')
+                    .is('deleted_at', null)
+                    .or(`nome.ilike.%${v}%,codigo_interno.ilike.%${v}%`)
+                    .limit(1)
+                  if (data && data.length > 0) addProduto(data[0] as ProdutoBusca)
+                  else addAvulso()
+                }}
                 style={inp}
               />
               {resultados.length > 0 && (
@@ -543,6 +632,7 @@ export default function NovaCompraPage() {
               const st = SITUACAO[c.situacao] ?? SITUACAO.em_aberto
               const cancelada = c.situacao === 'cancelada'
               const qtdItens = c.compra_itens.reduce((s, i) => s + i.quantidade, 0)
+              const semVinculo = c.compra_itens.filter(i => !i.produto_id).length
               return (
                 <div key={c.id} style={{
                   background: cancelada ? '#fef2f2' : '#fff',
@@ -564,6 +654,11 @@ export default function NovaCompraPage() {
                       {c.pagamento === 'parcelado' && c.parcelas && <span> · {c.parcelas.length}× parcelas</span>}
                       {c.usuario_nome && <span> · 👤 {c.usuario_nome}</span>}
                     </div>
+                    {semVinculo > 0 && (
+                      <div style={{ fontSize: 11, fontWeight: 600, color: '#92400e', marginTop: 3 }}>
+                        ⚠ {semVinculo} ite{semVinculo > 1 ? 'ns' : 'm'} sem vínculo com o estoque
+                      </div>
+                    )}
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: cancelada ? '#991b1b' : '#0f172a', textDecoration: cancelada ? 'line-through' : 'none' }}>{fmt(c.total ?? 0)}</div>
@@ -572,6 +667,9 @@ export default function NovaCompraPage() {
                   <div style={{ display: 'flex', gap: 6 }}>
                     {(c.situacao === 'em_aberto' || c.situacao === 'em_andamento') && (
                       <button disabled={salvando} onClick={() => mudarSituacao(c, 'confirmada')} style={{ padding: '6px 12px', border: '1px solid #86efac', borderRadius: 7, background: '#f0fdf4', color: '#166534', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>✅ Confirmar</button>
+                    )}
+                    {c.situacao === 'confirmada' && (
+                      <button disabled={salvando} onClick={() => reprocessarEntrada(c)} title="Use apenas se a entrada no estoque não aconteceu" style={{ padding: '6px 12px', border: '1px solid #fde68a', borderRadius: 7, background: '#fffbeb', color: '#92400e', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>↻ Reprocessar entrada</button>
                     )}
                     {c.situacao !== 'cancelada' && (
                       <button disabled={salvando} onClick={() => mudarSituacao(c, 'cancelada')} style={{ padding: '6px 12px', border: '1px solid #fecaca', borderRadius: 7, background: '#fef2f2', color: '#991b1b', fontSize: 12, cursor: 'pointer' }}>❌ Cancelar</button>
