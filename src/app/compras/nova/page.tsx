@@ -33,6 +33,7 @@ type Compra = {
   pagamento: string
   parcelas: { n: number; vencimento: string; valor: number }[] | null
   usuario_nome: string | null
+  confirmada_em: string | null
   created_at: string
   fornecedores: { nome: string } | null
   compra_itens: CompraItemDB[]
@@ -61,6 +62,7 @@ export default function NovaCompraPage() {
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([])
   const [perfilAtual, setPerfilAtual] = useState<{ id: string; nome: string } | null>(null)
   const [salvando, setSalvando] = useState(false)
+  const processandoRef = useRef(false)
   const [progresso, setProgresso] = useState<string | null>(null)
   const [sucesso, setSucesso] = useState<string | null>(null)
   const [tabelaFaltando, setTabelaFaltando] = useState(false)
@@ -114,7 +116,7 @@ export default function NovaCompraPage() {
     setLoadingCompras(true)
     const { data, error } = await supabase
       .from('compras')
-      .select('id,numero,numero_nfe,data_emissao,situacao,total,total_produtos,pagamento,parcelas,usuario_nome,created_at,fornecedores(nome),compra_itens(id,produto_id,descricao,quantidade,custo_unit,desconto)')
+      .select('id,numero,numero_nfe,data_emissao,situacao,total,total_produtos,pagamento,parcelas,usuario_nome,confirmada_em,created_at,fornecedores(nome),compra_itens(id,produto_id,descricao,quantidade,custo_unit,desconto)')
       .order('created_at', { ascending: false })
       .limit(100)
     if (error) { setTabelaFaltando(true); setLoadingCompras(false); return }
@@ -260,8 +262,10 @@ export default function NovaCompraPage() {
   }
 
   async function cadastrar() {
+    if (salvando || processandoRef.current) return
     if (itens.length === 0) { alert('Adicione ao menos um produto à compra.'); return }
     if (!fornecedorId) { alert('Selecione o fornecedor.'); return }
+    processandoRef.current = true
     setSalvando(true); setSucesso(null)
 
     const { data: compra, error } = await supabase.from('compras').insert({
@@ -283,7 +287,7 @@ export default function NovaCompraPage() {
     if (error || !compra) {
       if (error?.code === '42P01') setTabelaFaltando(true)
       alert(`Erro ao cadastrar: ${error?.message ?? 'desconhecido'}`)
-      setSalvando(false); return
+      processandoRef.current = false; setSalvando(false); return
     }
 
     const itensDB = itens.map(i => ({
@@ -293,7 +297,7 @@ export default function NovaCompraPage() {
     }))
     const { data: itensSalvos, error: errItens } = await supabase.from('compra_itens').insert(itensDB)
       .select('id,produto_id,descricao,quantidade,custo_unit,desconto')
-    if (errItens) { alert(`Compra criada, mas erro ao salvar itens: ${errItens.message}`); setSalvando(false); return }
+    if (errItens) { alert(`Compra criada, mas erro ao salvar itens: ${errItens.message}`); processandoRef.current = false; setSalvando(false); return }
 
     if (situacao === 'confirmada') {
       const r = await aplicarEntradaEstoque(
@@ -308,10 +312,12 @@ export default function NovaCompraPage() {
     setItens([]); setTransportadora(''); setFrete(''); setFreteSoma(true); setDescontoGeral(''); setImpostos('')
     setPagamento('a_vista'); setNumParcelas('2'); setObservacoes(''); setObsInternas('')
     setSucesso(`Compra #${compra.numero} cadastrada${situacao === 'confirmada' ? ' e estoque atualizado' : ''}!`)
+    processandoRef.current = false
     setSalvando(false)
   }
 
   async function mudarSituacao(c: Compra, nova: 'confirmada' | 'cancelada') {
+    if (salvando || processandoRef.current) return
     const eraConfirmada = c.situacao === 'confirmada'
     if (nova === 'confirmada') {
       const totalItens = c.compra_itens.reduce((s, i) => s + i.quantidade, 0)
@@ -319,31 +325,140 @@ export default function NovaCompraPage() {
     } else {
       if (!confirm(`Cancelar a compra #${c.numero}?${eraConfirmada ? '\n\nA entrada no estoque será estornada.' : ''}`)) return
     }
+    processandoRef.current = true
     setSalvando(true)
-    let resumo: string | null = null
-    if (nova === 'confirmada' && !eraConfirmada) {
+
+    if (nova === 'confirmada') {
+      // Trava atômica: só confirma se AINDA não estiver confirmada.
+      // Um segundo clique (ou outra aba) não passa daqui — evita entrada dupla.
+      const agora = new Date().toISOString()
+      const { data: claimed, error: errClaim } = await supabase.from('compras')
+        .update({ situacao: 'confirmada', confirmada_em: agora, updated_at: agora })
+        .eq('id', c.id)
+        .neq('situacao', 'confirmada')
+        .select('id')
+      if (errClaim || !claimed || claimed.length === 0) {
+        processandoRef.current = false
+        setSalvando(false)
+        alert(errClaim ? `Erro: ${errClaim.message}` : `A compra #${c.numero} já estava confirmada — nada foi feito, para evitar entrada duplicada.`)
+        fetchCompras()
+        return
+      }
       const r = await aplicarEntradaEstoque(c.compra_itens, c.numero, c.numero_nfe, c.data_emissao)
-      resumo = resumoEntrada(r)
+      alert(`Compra #${c.numero} confirmada.\n\n${resumoEntrada(r)}`)
+    } else {
+      if (eraConfirmada) await estornarEntradaEstoque(c.compra_itens, c.numero)
+      await supabase.from('compras').update({ situacao: 'cancelada', updated_at: new Date().toISOString() }).eq('id', c.id)
     }
-    if (nova === 'cancelada' && eraConfirmada) await estornarEntradaEstoque(c.compra_itens, c.numero)
-    await supabase.from('compras').update({
-      situacao: nova, updated_at: new Date().toISOString(),
-      confirmada_em: nova === 'confirmada' ? new Date().toISOString() : undefined,
-    }).eq('id', c.id)
+
+    processandoRef.current = false
     setSalvando(false)
-    if (resumo) alert(`Compra #${c.numero} confirmada.\n\n${resumo}`)
     fetchCompras()
   }
 
-  // Reprocessa a entrada de uma compra já confirmada — para casos em que a
-  // entrada não aconteceu (ex.: itens avulsos sem vínculo). CUIDADO: rodar
-  // em uma compra cuja entrada já aconteceu duplica o estoque.
-  async function reprocessarEntrada(c: Compra) {
-    if (!confirm(`Reprocessar a entrada da compra #${c.numero}?\n\n⚠️ Use apenas se a entrada NÃO aconteceu (estoque não subiu). Se a entrada já tiver sido feita, rodar de novo DUPLICA as quantidades no estoque.`)) return
+  // Confere a entrada de uma compra confirmada e corrige nos dois sentidos:
+  // remove entradas duplicadas (ex.: confirmação clicada 2x) e lança as que
+  // faltam (ex.: itens avulsos vinculados depois). Idempotente — pode rodar
+  // quantas vezes for preciso.
+  async function conferirECorrigir(c: Compra) {
+    if (salvando || processandoRef.current) return
+    if (!confirm(`Conferir e corrigir a entrada da compra #${c.numero}?\n\nO sistema compara o que deveria ter entrado com o que entrou de fato:\n• remove entradas duplicadas (confirmação em dobro)\n• lança as entradas que faltam (itens sem vínculo que agora têm)\n\nPode rodar quantas vezes precisar — não duplica nada.`)) return
+    processandoRef.current = true
     setSalvando(true)
-    const r = await aplicarEntradaEstoque(c.compra_itens, c.numero, c.numero_nfe, c.data_emissao)
+    const nfRef = c.numero_nfe || `Compra #${c.numero}`
+
+    // 1. Resolve vínculos (auto-link por nome exato, persistindo no item)
+    const esperadoPorProduto = new Map<string, number>()
+    let semVinculo = 0
+    setProgresso('Verificando vínculos dos itens...')
+    for (const item of c.compra_itens) {
+      if (item.quantidade <= 0) continue
+      let pid = item.produto_id
+      if (!pid) {
+        const { data: match } = await supabase.from('produtos').select('id')
+          .is('deleted_at', null).ilike('nome', item.descricao.trim()).limit(2)
+        if (match && match.length === 1) {
+          pid = match[0].id
+          await supabase.from('compra_itens').update({ produto_id: pid }).eq('id', item.id)
+        }
+      }
+      if (!pid) { semVinculo++; continue }
+      esperadoPorProduto.set(pid, (esperadoPorProduto.get(pid) ?? 0) + item.quantidade)
+    }
+
+    // 2. Compara com as entradas já registradas desta compra e corrige
+    let removidas = 0
+    let adicionadas = 0
+    let corretos = 0
+    let erros = 0
+    let n = 0
+    for (const [pid, esperado] of esperadoPorProduto) {
+      n++
+      setProgresso(`Conferindo produto ${n}/${esperadoPorProduto.size}...`)
+      const { data: rows, error: e0 } = await supabase.from('produto_entradas')
+        .select('id, quantidade')
+        .eq('produto_id', pid).eq('nota_fiscal', nfRef).eq('data_compra', c.data_emissao)
+        .order('created_at', { ascending: false })
+      if (e0) { erros++; continue }
+      const atual = (rows ?? []).reduce((s, r) => s + r.quantidade, 0)
+
+      if (atual > esperado) {
+        // Excesso: apaga as entradas mais recentes até bater e devolve o estoque
+        const excesso = atual - esperado
+        let removidoQtd = 0
+        for (const r of rows ?? []) {
+          if (removidoQtd >= excesso) break
+          const { error: eDel } = await supabase.from('produto_entradas').delete().eq('id', r.id)
+          if (!eDel) removidoQtd += r.quantidade
+        }
+        if (removidoQtd > 0) {
+          const { data: prod } = await supabase.from('produtos').select('estoque_atual, filial_id').eq('id', pid).single()
+          if (prod) {
+            await supabase.from('produtos').update({ estoque_atual: Math.max(0, (prod.estoque_atual ?? 0) - removidoQtd) }).eq('id', pid)
+            if (prod.filial_id)
+              await supabase.from('movimentacoes_estoque').insert({
+                filial_id: prod.filial_id, produto_id: pid, tipo: 'saida',
+                quantidade: removidoQtd, motivo: `Correção de entrada duplicada — compra #${c.numero}`,
+              })
+          }
+          removidas += removidoQtd
+        }
+      } else if (atual < esperado) {
+        // Falta: lança a diferença
+        const falta = esperado - atual
+        const custoItem = c.compra_itens.find(i => i.produto_id === pid)?.custo_unit ?? 0
+        const { error: eIns } = await supabase.from('produto_entradas').insert({
+          produto_id: pid, quantidade: falta, custo_unit: custoItem,
+          data_compra: c.data_emissao, nota_fiscal: nfRef,
+        })
+        if (eIns) { erros++; continue }
+        const { data: prod } = await supabase.from('produtos').select('estoque_atual, filial_id').eq('id', pid).single()
+        if (prod) {
+          await supabase.from('produtos').update({ estoque_atual: (prod.estoque_atual ?? 0) + falta }).eq('id', pid)
+          if (prod.filial_id)
+            await supabase.from('movimentacoes_estoque').insert({
+              filial_id: prod.filial_id, produto_id: pid, tipo: 'entrada',
+              quantidade: falta, motivo: `Compra #${c.numero} (correção)`,
+            })
+        }
+        adicionadas += falta
+      } else {
+        corretos++
+      }
+    }
+
+    setProgresso(null)
+    processandoRef.current = false
     setSalvando(false)
-    alert(resumoEntrada(r))
+    alert([
+      `Conferência da compra #${c.numero} concluída:`,
+      '',
+      `✅ ${corretos} produtos já estavam corretos`,
+      removidas > 0 ? `➖ ${removidas} unidades duplicadas removidas (estoque ajustado)` : null,
+      adicionadas > 0 ? `➕ ${adicionadas} unidades que faltavam foram lançadas` : null,
+      semVinculo > 0 ? `⚠️ ${semVinculo} itens sem vínculo (nome não bate com nenhum produto do estoque)` : null,
+      erros > 0 ? `❌ ${erros} erros` : null,
+    ].filter(Boolean).join('\n'))
     fetchCompras()
   }
 
@@ -662,14 +777,21 @@ export default function NovaCompraPage() {
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: cancelada ? '#991b1b' : '#0f172a', textDecoration: cancelada ? 'line-through' : 'none' }}>{fmt(c.total ?? 0)}</div>
-                    <span style={{ display: 'inline-block', marginTop: 4, padding: '2px 9px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: st.bg, color: st.color }}>{st.label}</span>
+                    <span style={{ display: 'inline-block', marginTop: 4, padding: '2px 9px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: st.bg, color: st.color }}>
+                      {c.situacao === 'confirmada' ? '✅ ' : ''}{st.label}
+                    </span>
+                    {c.situacao === 'confirmada' && c.confirmada_em && (
+                      <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>
+                        em {new Date(c.confirmada_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    )}
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
                     {(c.situacao === 'em_aberto' || c.situacao === 'em_andamento') && (
                       <button disabled={salvando} onClick={() => mudarSituacao(c, 'confirmada')} style={{ padding: '6px 12px', border: '1px solid #86efac', borderRadius: 7, background: '#f0fdf4', color: '#166534', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>✅ Confirmar</button>
                     )}
                     {c.situacao === 'confirmada' && (
-                      <button disabled={salvando} onClick={() => reprocessarEntrada(c)} title="Use apenas se a entrada no estoque não aconteceu" style={{ padding: '6px 12px', border: '1px solid #fde68a', borderRadius: 7, background: '#fffbeb', color: '#92400e', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>↻ Reprocessar entrada</button>
+                      <button disabled={salvando} onClick={() => conferirECorrigir(c)} title="Compara o esperado com o que entrou e corrige duplicidades ou faltas — seguro rodar mais de uma vez" style={{ padding: '6px 12px', border: '1px solid #bfdbfe', borderRadius: 7, background: '#eff6ff', color: '#1d4ed8', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>🔧 Conferir/corrigir entrada</button>
                     )}
                     {c.situacao !== 'cancelada' && (
                       <button disabled={salvando} onClick={() => mudarSituacao(c, 'cancelada')} style={{ padding: '6px 12px', border: '1px solid #fecaca', borderRadius: 7, background: '#fef2f2', color: '#991b1b', fontSize: 12, cursor: 'pointer' }}>❌ Cancelar</button>
