@@ -171,6 +171,22 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
   const [checklist, setChecklist] = useState<ChecklistState>({})
   const [camposValores, setCamposValores] = useState<Record<string, string>>({})
 
+  // Edição dos dados da OS (cliente, aparelho, defeito, acessórios, senha)
+  const [showEditar, setShowEditar] = useState(false)
+  const [editSaving, setEditSaving] = useState(false)
+  const [eCliente, setECliente] = useState<{ id: string; nome: string; telefone: string | null } | null>(null)
+  const [eClienteSearch, setEClienteSearch] = useState('')
+  const [eClienteResults, setEClienteResults] = useState<{ id: string; nome: string; telefone: string | null; cpf: string | null }[]>([])
+  const eClienteTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [eMarca, setEMarca] = useState('')
+  const [eModelo, setEModelo] = useState('')
+  const [eImei, setEImei] = useState('')
+  const [eCor, setECor] = useState('')
+  const [eDefeito, setEDefeito] = useState('')
+  const [eAcessorios, setEAcessorios] = useState('')
+  const [eSenhaTipo, setESenhaTipo] = useState<'manter' | 'nenhuma' | 'pin' | 'senha'>('manter')
+  const [eSenhaValor, setESenhaValor] = useState('')
+
   const [showDiagnostico, setShowDiagnostico] = useState(false)
   const [savingDiagnostico, setSavingDiagnostico] = useState(false)
   const [valorOrcamento, setValorOrcamento] = useState('')
@@ -268,6 +284,54 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
       }
     }
   }, [os, loadOrcamento, loadProdutosCompat])
+
+  function abrirEditar() {
+    if (!os) return
+    setECliente(os.clientes ? { id: os.clientes.id, nome: os.clientes.nome, telefone: os.clientes.telefone } : null)
+    setEClienteSearch(''); setEClienteResults([])
+    setEMarca(os.marca ?? ''); setEModelo(os.modelo ?? ''); setEImei(os.imei ?? ''); setECor(os.cor ?? '')
+    setEDefeito(os.defeito_relatado); setEAcessorios((os.acessorios ?? []).join(', '))
+    setESenhaTipo('manter'); setESenhaValor('')
+    setShowEditar(true)
+  }
+
+  function buscarClienteEdit(q: string) {
+    setEClienteSearch(q)
+    if (eClienteTimer.current) clearTimeout(eClienteTimer.current)
+    if (q.trim().length < 2) { setEClienteResults([]); return }
+    eClienteTimer.current = setTimeout(async () => {
+      const digitos = q.replace(/\D/g, '')
+      let query = supabase.from('clientes').select('id,nome,telefone,cpf').is('deleted_at', null).limit(6)
+      if (digitos.length >= 3) query = query.or(`nome.ilike.%${q.trim()}%,telefone.ilike.%${digitos}%,cpf.ilike.%${digitos}%`)
+      else query = query.ilike('nome', `%${q.trim()}%`)
+      const { data } = await query
+      setEClienteResults(data ?? [])
+    }, 250)
+  }
+
+  async function salvarEdicao() {
+    if (!os) return
+    if (!eDefeito.trim()) { alert('O defeito relatado não pode ficar vazio.'); return }
+    setEditSaving(true)
+    const payload: Record<string, unknown> = {
+      cliente_id: eCliente?.id ?? null,
+      marca: eMarca.trim() || null,
+      modelo: eModelo.trim() || null,
+      imei: eImei.trim() || null,
+      cor: eCor.trim() || null,
+      defeito_relatado: eDefeito.trim(),
+      acessorios: eAcessorios.split(',').map(s => s.trim()).filter(Boolean),
+      updated_at: new Date().toISOString(),
+    }
+    if (eSenhaTipo !== 'manter') {
+      payload.senha_aparelho = eSenhaTipo === 'nenhuma' ? null : JSON.stringify({ tipo: eSenhaTipo, valor: eSenhaValor })
+    }
+    const { error } = await supabase.from('ordens_servico').update(payload).eq('id', id)
+    if (error) { alert(`Erro ao salvar: ${error.message}`); setEditSaving(false); return }
+    try { await supabase.from('events').insert({ type: 'OS_DADOS_EDITADOS', entity: 'os', entity_id: id, payload: { cliente_id: payload.cliente_id, modelo: payload.modelo, imei: payload.imei } }) } catch { /* non-critical */ }
+    setEditSaving(false); setShowEditar(false)
+    await loadOS()
+  }
 
   function buscarProdOrc(q: string) {
     setSearchOrc(q)
@@ -1141,7 +1205,10 @@ ${itensOrc.length > 0 ? `<table><thead><tr><th>Item</th><th>Qtd</th><th>Unit.</t
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             <div style={card}>
-              <div style={cardTitle}><span>👤</span> Cliente</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={cardTitle}><span>👤</span> Cliente</div>
+                <button onClick={abrirEditar} style={{ fontSize: 11, padding: '4px 10px', border: '1px solid #c7d2fe', borderRadius: 6, background: '#eef2ff', color: '#4338ca', cursor: 'pointer', fontWeight: 600 }}>✏️ Editar</button>
+              </div>
               {os.clientes ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#e0e7ff', color: '#4338ca', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 600 }}>{os.clientes.nome.charAt(0).toUpperCase()}</div>
@@ -1151,7 +1218,10 @@ ${itensOrc.length > 0 ? `<table><thead><tr><th>Item</th><th>Qtd</th><th>Unit.</t
             </div>
 
             <div style={card}>
-              <div style={cardTitle}><span>📱</span> Aparelho</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={cardTitle}><span>📱</span> Aparelho</div>
+                <button onClick={abrirEditar} style={{ fontSize: 11, padding: '4px 10px', border: '1px solid #c7d2fe', borderRadius: 6, background: '#eef2ff', color: '#4338ca', cursor: 'pointer', fontWeight: 600 }}>✏️ Editar</button>
+              </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {[{ label: 'Modelo', value: os.modelo }, { label: 'IMEI', value: os.imei }, { label: 'Cor', value: os.cor }, { label: 'Acessórios', value: os.acessorios?.join(', ') }].map(r => r.value ? (
                   <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #f8fafc' }}>
@@ -1362,6 +1432,97 @@ ${itensOrc.length > 0 ? `<table><thead><tr><th>Item</th><th>Qtd</th><th>Unit.</t
           {saving ? 'Salvando...' : 'Salvar alterações'}
         </button>
       </div>
+
+      {/* ═══ MODAL EDITAR DADOS DA OS ═══ */}
+      {showEditar && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 150, padding: 20 }}>
+          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+            <div style={{ padding: '18px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', margin: 0 }}>✏️ Editar dados da OS #{os.numero}</h3>
+              <button onClick={() => setShowEditar(false)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#94a3b8', lineHeight: 1 }}>×</button>
+            </div>
+
+            <div style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Cliente */}
+              <div>
+                <label style={lbl}>Cliente</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', marginBottom: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', flex: 1 }}>
+                    {eCliente ? eCliente.nome : 'Nenhum cliente vinculado'}
+                  </span>
+                  {eCliente?.telefone && <span style={{ fontSize: 12, color: '#94a3b8' }}>{formatPhone(eCliente.telefone)}</span>}
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    style={inp}
+                    value={eClienteSearch}
+                    onChange={e => buscarClienteEdit(e.target.value)}
+                    placeholder="🔍 Trocar cliente: busque por nome, telefone ou CPF..."
+                  />
+                  {eClienteResults.length > 0 && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, marginTop: 4, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 30, maxHeight: 200, overflowY: 'auto' }}>
+                      {eClienteResults.map(c => (
+                        <button
+                          key={c.id}
+                          onClick={() => { setECliente({ id: c.id, nome: c.nome, telefone: c.telefone }); setEClienteSearch(''); setEClienteResults([]) }}
+                          style={{ display: 'flex', justifyContent: 'space-between', width: '100%', padding: '9px 12px', border: 'none', borderBottom: '1px solid #f1f5f9', background: '#fff', cursor: 'pointer', fontSize: 13, textAlign: 'left' }}
+                        >
+                          <span style={{ fontWeight: 500, color: '#0f172a' }}>{c.nome}</span>
+                          <span style={{ color: '#94a3b8', flexShrink: 0, marginLeft: 8 }}>{c.telefone ? formatPhone(c.telefone) : c.cpf ?? ''}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Aparelho */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div><label style={lbl}>Marca</label><input style={inp} value={eMarca} onChange={e => setEMarca(e.target.value)} placeholder="Ex: Apple, Samsung..." /></div>
+                <div><label style={lbl}>Modelo</label><input style={inp} value={eModelo} onChange={e => setEModelo(e.target.value)} placeholder="Ex: iPhone 11" /></div>
+                <div><label style={lbl}>IMEI</label><input style={inp} value={eImei} onChange={e => setEImei(e.target.value)} placeholder="15 dígitos" /></div>
+                <div><label style={lbl}>Cor</label><input style={inp} value={eCor} onChange={e => setECor(e.target.value)} placeholder="Ex: Preto" /></div>
+              </div>
+
+              {/* Defeito */}
+              <div>
+                <label style={lbl}>Defeito relatado pelo cliente *</label>
+                <textarea style={{ ...inp, minHeight: 70, resize: 'vertical' }} value={eDefeito} onChange={e => setEDefeito(e.target.value)} />
+              </div>
+
+              {/* Acessórios */}
+              <div>
+                <label style={lbl}>Acessórios deixados (separados por vírgula)</label>
+                <input style={inp} value={eAcessorios} onChange={e => setEAcessorios(e.target.value)} placeholder="Ex: Capinha, Carregador, Película" />
+              </div>
+
+              {/* Senha */}
+              <div>
+                <label style={lbl}>Senha do aparelho</label>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <select style={{ ...inp, width: 190 }} value={eSenhaTipo} onChange={e => setESenhaTipo(e.target.value as typeof eSenhaTipo)}>
+                    <option value="manter">Manter a atual</option>
+                    <option value="nenhuma">Sem senha</option>
+                    <option value="pin">PIN</option>
+                    <option value="senha">Senha (texto)</option>
+                  </select>
+                  {(eSenhaTipo === 'pin' || eSenhaTipo === 'senha') && (
+                    <input style={{ ...inp, flex: 1, minWidth: 140 }} value={eSenhaValor} onChange={e => setESenhaValor(e.target.value)} placeholder={eSenhaTipo === 'pin' ? 'Ex: 1234' : 'Digite a senha'} />
+                  )}
+                </div>
+                <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Padrão de desbloqueio (desenho) só pode ser registrado na abertura da OS — aqui você pode manter, remover ou trocar por PIN/senha.</p>
+              </div>
+            </div>
+
+            <div style={{ padding: '14px 22px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end', gap: 8, position: 'sticky', bottom: 0, background: '#fff' }}>
+              <button onClick={() => setShowEditar(false)} style={{ padding: '9px 18px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer', color: '#475569' }}>Cancelar</button>
+              <button onClick={salvarEdicao} disabled={editSaving} style={{ padding: '9px 22px', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: editSaving ? 'wait' : 'pointer', background: '#6366f1', color: '#fff' }}>
+                {editSaving ? 'Salvando...' : 'Salvar dados'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ═══ CONFIRMAÇÃO DE SALVAMENTO ═══ */}
       {sucessoMsg && (
