@@ -56,6 +56,19 @@ type Alteracao = {
   created_at: string
 }
 
+type GarantiaProduto = {
+  id: string
+  produto_nome: string
+  tipo: string
+  quantidade: number
+  valor_credito: number | null
+  credito_status: string | null
+  cliente_nome: string | null
+  motivo: string | null
+  usuario_nome: string | null
+  created_at: string
+}
+
 type ProdutoBusca = {
   id: string
   nome: string
@@ -88,6 +101,9 @@ export default function VendaDetailPage({ params }: { params: Promise<{ id: stri
   const [emitindo, setEmitindo] = useState(false)
   const [nfeErro, setNfeErro] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
+
+  // Garantias de produtos vinculadas a esta venda
+  const [garantias, setGarantias] = useState<GarantiaProduto[]>([])
 
   // Auditoria
   const [alteracoes, setAlteracoes] = useState<Alteracao[]>([])
@@ -169,6 +185,12 @@ export default function VendaDetailPage({ params }: { params: Promise<{ id: stri
       setNfeAtivo(cfg?.ativo ?? false)
       await carregarNota()
       await carregarAlteracoes()
+
+      // Garantias de produtos desta venda (silencioso se a tabela ainda não existir)
+      const { data: gars } = await supabase.from('garantias_produtos')
+        .select('id,produto_nome,tipo,quantidade,valor_credito,credito_status,cliente_nome,motivo,usuario_nome,created_at')
+        .eq('venda_id', id).order('created_at', { ascending: false })
+      setGarantias((gars as GarantiaProduto[]) ?? [])
     } catch (e: any) {
       setError(e.message ?? 'Erro ao carregar venda')
     } finally {
@@ -610,6 +632,45 @@ export default function VendaDetailPage({ params }: { params: Promise<{ id: stri
           </div>
         )}
       </div>
+
+      {/* Garantias de produtos vinculadas */}
+      {garantias.length > 0 && (
+        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '20px 24px', marginBottom: 32 }}>
+          <h2 style={{ margin: '0 0 14px', fontSize: 16, fontWeight: 600 }}>🛡️ Garantias vinculadas a esta venda</h2>
+          {garantias.map(g => {
+            const credito = g.tipo === 'credito'
+            return (
+              <div key={g.id} style={{
+                display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+                padding: '10px 14px', marginBottom: 6, borderRadius: 9,
+                background: credito ? '#eff6ff' : '#f0fdf4',
+                border: `1px solid ${credito ? '#bfdbfe' : '#bbf7d0'}`,
+              }}>
+                <span style={{
+                  padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, flexShrink: 0,
+                  background: credito ? '#dbeafe' : '#d1fae5', color: credito ? '#1d4ed8' : '#065f46',
+                }}>
+                  {credito ? '💳 Crédito' : '🔄 Troca'}
+                </span>
+                <span style={{ flex: 1, minWidth: 180, fontSize: 13 }}>
+                  <strong style={{ color: '#0f172a' }}>{g.quantidade}× {g.produto_nome}</strong>
+                  <span style={{ color: '#64748b' }}> · {new Date(g.created_at).toLocaleDateString('pt-BR')}</span>
+                  {g.cliente_nome && <span style={{ color: '#64748b' }}> · 👤 {g.cliente_nome}</span>}
+                  {g.motivo && <span style={{ display: 'block', fontSize: 12, color: '#64748b', marginTop: 2 }}>{g.motivo}</span>}
+                </span>
+                {credito && (
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#1d4ed8', flexShrink: 0 }}>
+                    {fmt(g.valor_credito ?? 0)}
+                    <span style={{ fontSize: 11, fontWeight: 600, marginLeft: 6, color: g.credito_status === 'pendente' ? '#d97706' : g.credito_status === 'utilizado' ? '#16a34a' : '#94a3b8' }}>
+                      {g.credito_status === 'pendente' ? '⏳ pendente' : g.credito_status === 'utilizado' ? '✅ utilizado' : '✕ cancelado'}
+                    </span>
+                  </span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* Info section */}
       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '20px 24px', marginBottom: 32 }}>
