@@ -391,6 +391,12 @@ export default function NovaCompraPage() {
     let adicionadas = 0
     let corretos = 0
     let erros = 0
+    const msgsErro: string[] = []
+    const registrarErro = (msg: string | undefined) => {
+      erros++
+      if (msg && !msgsErro.includes(msg)) msgsErro.push(msg)
+      if (msg) console.error('[conferirECorrigir]', msg)
+    }
     let n = 0
     for (const [pid, esperado] of esperadoPorProduto) {
       n++
@@ -399,7 +405,7 @@ export default function NovaCompraPage() {
         .select('id, quantidade')
         .eq('produto_id', pid).eq('nota_fiscal', nfRef).eq('data_compra', c.data_emissao)
         .order('created_at', { ascending: false })
-      if (e0) { erros++; continue }
+      if (e0) { registrarErro(e0.message); continue }
       const atual = (rows ?? []).reduce((s, r) => s + r.quantidade, 0)
 
       if (atual > esperado) {
@@ -431,7 +437,7 @@ export default function NovaCompraPage() {
           produto_id: pid, quantidade: falta, custo_unit: custoItem,
           data_compra: c.data_emissao, nota_fiscal: nfRef,
         })
-        if (eIns) { erros++; continue }
+        if (eIns) { registrarErro(eIns.message); continue }
         const { data: prod } = await supabase.from('produtos').select('estoque_atual, filial_id').eq('id', pid).single()
         if (prod) {
           await supabase.from('produtos').update({ estoque_atual: (prod.estoque_atual ?? 0) + falta }).eq('id', pid)
@@ -457,7 +463,10 @@ export default function NovaCompraPage() {
       removidas > 0 ? `➖ ${removidas} unidades duplicadas removidas (estoque ajustado)` : null,
       adicionadas > 0 ? `➕ ${adicionadas} unidades que faltavam foram lançadas` : null,
       semVinculo > 0 ? `⚠️ ${semVinculo} itens sem vínculo (nome não bate com nenhum produto do estoque)` : null,
-      erros > 0 ? `❌ ${erros} erros` : null,
+      erros > 0 ? `❌ ${erros} erros — motivo: ${msgsErro[0] ?? 'desconhecido'}` : null,
+      msgsErro.some(m => m.includes('produto_entradas')) || msgsErro.some(m => m.toLowerCase().includes('does not exist'))
+        ? '\n💡 A tabela de histórico de entradas parece não existir no banco. Rode o arquivo supabase-migration-produto-entradas.sql no SQL Editor do Supabase e tente de novo.'
+        : null,
     ].filter(Boolean).join('\n'))
     fetchCompras()
   }
