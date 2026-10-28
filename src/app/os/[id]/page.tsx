@@ -485,6 +485,150 @@ function OSDetailInner({ params }: { params: Promise<{ id: string }> }) {
     abrirJanelaImpressao(html)
   }
 
+  function imprimirOrcamento() {
+    if (!os) return
+    abrirJanelaImpressao(gerarHTMLOrcamento())
+  }
+
+  // Orçamento para o cliente: via única, com análise do técnico e preços (sem custos internos)
+  function gerarHTMLOrcamento(): string {
+    if (!os) return ''
+    const assinatura = assinaturaLoja || cfgLoja.assinatura_responsavel || ''
+    const nomeLoja = cfgLoja.loja_nome || 'SOS Celulares'
+    const telLoja = cfgLoja.loja_telefone || ''
+    const endLoja = cfgLoja.loja_endereco || ''
+    const cnpjLoja = cfgLoja.loja_cnpj || ''
+    const obsTec = ((os as unknown as Record<string, unknown>).obs_tecnica as string | null) ?? ''
+    const analise = [defeitoTecnico.trim(), obsTec.trim()].filter(Boolean).join('\n\n')
+    const totalItens = itensOrc.reduce((s, i) => s + i.subtotal, 0)
+    const vFinal = valorFinal ? parseFloat(valorFinal) : 0
+    const total = itensOrc.length > 0 ? totalItens : (vFinal || os.valor_orcamento || 0)
+    const hoje = new Date().toLocaleDateString('pt-BR')
+
+    const itensRows = itensOrc.map(i => {
+      const qual = QUALIDADE_CONFIG[i.qualidade]?.label ?? ''
+      return `<tr>
+        <td>${i.descricao}${qual ? ` <span class="qual">${qual}</span>` : ''}${i.tipo === 'servico' ? ' <span class="qual">Serviço</span>' : ''}</td>
+        <td class="c">${i.quantidade}</td>
+        <td class="r">R$&nbsp;${i.preco_unit.toFixed(2).replace('.', ',')}</td>
+        <td class="r">R$&nbsp;${i.subtotal.toFixed(2).replace('.', ',')}</td>
+      </tr>`
+    }).join('')
+
+    return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="utf-8">
+<title>Orçamento — OS #${os.numero}</title>
+<style>
+  @page { size: A4; margin: 18mm 15mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', Arial, sans-serif; font-size: 10.5pt; color: #1e293b; line-height: 1.6; }
+  .topo { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 18px; }
+  .logo-nome { font-size: 17pt; font-weight: 700; color: #0f172a; }
+  .loja-sub { font-size: 8.5pt; color: #64748b; margin-top: 3px; line-height: 1.5; }
+  .doc-tag { text-align: right; }
+  .doc-tag .tipo { font-size: 13pt; font-weight: 700; color: #2563eb; text-transform: uppercase; letter-spacing: 1px; }
+  .doc-tag .ref { font-size: 9pt; color: #64748b; margin-top: 3px; }
+  .grid { display: flex; gap: 16px; margin-bottom: 14px; }
+  .box { flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; }
+  .box h3 { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; margin-bottom: 6px; }
+  .box .row { display: flex; justify-content: space-between; font-size: 9.5pt; padding: 2px 0; }
+  .box .row span:first-child { color: #64748b; }
+  .box .row span:last-child { font-weight: 600; color: #0f172a; text-align: right; }
+  .secao { margin-bottom: 14px; }
+  .secao h3 { font-size: 8pt; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; margin-bottom: 5px; }
+  .texto { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; font-size: 10pt; white-space: pre-wrap; }
+  .analise { background: #eff6ff; border: 1px solid #bfdbfe; border-left: 3px solid #2563eb; }
+  table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+  th { text-align: left; font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; border-bottom: 1.5px solid #0f172a; padding: 5px 8px; }
+  td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
+  .c { text-align: center; } .r { text-align: right; white-space: nowrap; }
+  .qual { font-size: 7.5pt; background: #e2e8f0; color: #475569; border-radius: 8px; padding: 1px 7px; font-weight: 600; }
+  .total-box { display: flex; justify-content: flex-end; margin-top: 10px; }
+  .total-inner { background: #0f172a; color: #fff; border-radius: 8px; padding: 10px 22px; text-align: right; }
+  .total-inner .lbl { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; }
+  .total-inner .val { font-size: 15pt; font-weight: 700; }
+  .condicoes { font-size: 8.5pt; color: #64748b; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 14px; margin-top: 16px; line-height: 1.7; }
+  .ass { margin-top: 36px; display: flex; justify-content: center; }
+  .ass-box { text-align: center; min-width: 220px; }
+  .ass-img { max-height: 44px; max-width: 150px; display: block; margin: 0 auto 4px; }
+  .ass-linha { border-top: 1px solid #0f172a; margin-bottom: 5px; }
+  .ass-label { font-size: 8.5pt; color: #374151; }
+  .footer { margin-top: 24px; text-align: center; font-size: 7.5pt; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 6px; }
+</style></head><body>
+
+<div class="topo">
+  <div>
+    <div class="logo-nome">${nomeLoja}</div>
+    <div class="loja-sub">
+      ${cnpjLoja ? `CNPJ: ${cnpjLoja}<br>` : ''}
+      ${endLoja ? `${endLoja}<br>` : ''}
+      ${telLoja ? `📞 ${telLoja}` : ''}
+    </div>
+  </div>
+  <div class="doc-tag">
+    <div class="tipo">Orçamento</div>
+    <div class="ref">OS #${os.numero} · Emitido em ${hoje}</div>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="box">
+    <h3>Cliente</h3>
+    <div class="row"><span>Nome</span><span>${os.clientes?.nome ?? '—'}</span></div>
+    ${os.clientes?.telefone ? `<div class="row"><span>Telefone</span><span>${formatPhone(os.clientes.telefone)}</span></div>` : ''}
+  </div>
+  <div class="box">
+    <h3>Aparelho</h3>
+    <div class="row"><span>Modelo</span><span>${[os.marca, os.modelo].filter(Boolean).join(' ') || '—'}</span></div>
+    ${os.imei ? `<div class="row"><span>IMEI</span><span>${os.imei}</span></div>` : ''}
+    ${os.cor ? `<div class="row"><span>Cor</span><span>${os.cor}</span></div>` : ''}
+  </div>
+</div>
+
+<div class="secao">
+  <h3>Defeito relatado pelo cliente</h3>
+  <div class="texto">${os.defeito_relatado}</div>
+</div>
+
+<div class="secao">
+  <h3>🔬 Análise do técnico</h3>
+  <div class="texto analise">${analise || 'Aparelho em análise técnica.'}</div>
+</div>
+
+${itensOrc.length > 0 ? `
+<div class="secao">
+  <h3>Peças e serviços orçados</h3>
+  <table>
+    <thead><tr><th>Descrição</th><th class="c">Qtd</th><th class="r">Valor unit.</th><th class="r">Subtotal</th></tr></thead>
+    <tbody>${itensRows}</tbody>
+  </table>
+</div>` : ''}
+
+<div class="total-box">
+  <div class="total-inner">
+    <div class="lbl">Valor total do orçamento</div>
+    <div class="val">R$ ${total.toFixed(2).replace('.', ',')}</div>
+  </div>
+</div>
+
+<div class="condicoes">
+  <strong>Condições:</strong> orçamento válido por 7 dias a partir da emissão · valores sujeitos à disponibilidade de peças ·
+  o serviço só é iniciado após aprovação do cliente · este documento não constitui comprovante de pagamento.
+</div>
+
+<div class="ass">
+  <div class="ass-box">
+    ${assinatura ? `<img src="${assinatura}" class="ass-img" />` : '<div style="height:44px"></div>'}
+    <div class="ass-linha"></div>
+    <div class="ass-label">Responsável técnico<br>${nomeLoja}</div>
+  </div>
+</div>
+
+<div class="footer">${nomeLoja}${cnpjLoja ? ` · CNPJ ${cnpjLoja}` : ''} · OS #${os.numero} · ${hoje} · Via única do cliente</div>
+<script>window.onload = () => { window.print(); }<\/script>
+</body></html>`
+  }
+
   // FIX: usa onafterprint para fechar a janela automaticamente e não travar
   function abrirJanelaImpressao(html: string) {
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
@@ -952,6 +1096,9 @@ ${itensOrc.length > 0 ? `<table><thead><tr><th>Item</th><th>Qtd</th><th>Unit.</t
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <button onClick={imprimir} style={{ padding: '9px 16px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontWeight: 500, background: '#fff', cursor: 'pointer', color: '#374151', display: 'flex', alignItems: 'center', gap: 6 }}>
             🖨 Imprimir OS
+          </button>
+          <button onClick={imprimirOrcamento} title="Via única com a análise do técnico e valores, para enviar ao cliente" style={{ padding: '9px 16px', border: '1px solid #bbf7d0', borderRadius: 8, fontSize: 13, fontWeight: 500, background: '#f0fdf4', cursor: 'pointer', color: '#166534', display: 'flex', alignItems: 'center', gap: 6 }}>
+            💰 Emitir orçamento
           </button>
           {contratos.map(c => (
             <button key={c.id} onClick={() => imprimirContrato(c)} style={{ padding: '9px 16px', border: '1px solid #c7d2fe', borderRadius: 8, fontSize: 13, fontWeight: 500, background: '#eef2ff', cursor: 'pointer', color: '#3730a3', display: 'flex', alignItems: 'center', gap: 6 }}>
