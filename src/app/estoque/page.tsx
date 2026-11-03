@@ -33,6 +33,14 @@ type Produto = {
   campos_extras: { fotos?: string[] } | null
 }
 
+type Movimentacao = {
+  id: string
+  tipo: string
+  quantidade: number
+  motivo: string | null
+  created_at: string
+}
+
 type PedidoPeca = {
   id: string; aparelho_id: string; item_key: string | null
   peca_nome: string; preco: number; chegou: boolean; created_at: string
@@ -401,6 +409,31 @@ export default function EstoquePage() {
     setFSaving(false); setShowModalCompleto(false); fetchProdutos()
   }
 
+  // ── Movimentações de estoque do produto
+  const [movProduto, setMovProduto] = useState<Produto | null>(null)
+  const [movimentos, setMovimentos] = useState<Movimentacao[]>([])
+  const [loadingMov, setLoadingMov] = useState(false)
+  const [movDias, setMovDias] = useState(30)
+
+  const fetchMovimentos = useCallback(async (produtoId: string, dias: number) => {
+    setLoadingMov(true)
+    let q = supabase.from('movimentacoes_estoque')
+      .select('id,tipo,quantidade,motivo,created_at')
+      .eq('produto_id', produtoId)
+      .order('created_at', { ascending: false })
+      .limit(500)
+    if (dias > 0) q = q.gte('created_at', new Date(Date.now() - dias * 86400000).toISOString())
+    const { data } = await q
+    setMovimentos((data ?? []) as Movimentacao[])
+    setLoadingMov(false)
+  }, [supabase])
+
+  function abrirMovimentacoes(p: Produto) {
+    setMovProduto(p)
+    setMovimentos([])
+    fetchMovimentos(p.id, movDias)
+  }
+
   function abrirEntrada(p: Produto) {
     setProdutoSel(p); setEQtd('1'); setECusto(''); setEData(new Date().toISOString().split('T')[0]); setENF('')
     fetchEntradas(p.id); setShowModalEntrada(true)
@@ -704,6 +737,7 @@ export default function EstoquePage() {
             <button onClick={e => { e.stopPropagation(); abrirEntrada(p) }} style={{ fontSize: 11, padding: '4px 8px', border: '1px solid #dbeafe', borderRadius: 6, background: '#dbeafe', color: '#2563eb', cursor: 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}>+ Entrada</button>
             <button onClick={e => { e.stopPropagation(); abrirRapido(p) }} style={{ fontSize: 11, padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', color: '#64748b', cursor: 'pointer', whiteSpace: 'nowrap' }}>Editar rápido</button>
             <button onClick={e => { e.stopPropagation(); abrirCompleto(p) }} style={{ fontSize: 11, padding: '4px 8px', border: '1px solid #bfdbfe', borderRadius: 6, background: '#dbeafe', color: '#2563eb', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 500 }}>Editar completo</button>
+            <button onClick={e => { e.stopPropagation(); abrirMovimentacoes(p) }} title="Histórico de movimentações de estoque" style={{ fontSize: 11, padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', color: '#64748b', cursor: 'pointer', whiteSpace: 'nowrap' }}>📊 Movs</button>
           </div>
         </td>
       </tr>
@@ -1535,6 +1569,110 @@ export default function EstoquePage() {
           </div>
         </div>
       )}
+
+      {/* ═══ MODAL MOVIMENTAÇÕES DE ESTOQUE ═══ */}
+      {movProduto && (() => {
+        // Saldo após cada movimento: parte do estoque atual e anda para trás
+        let saldo = movProduto.estoque_atual ?? 0
+        const rows = movimentos.map(m => {
+          const sinal = m.tipo === 'saida' ? -m.quantidade : m.quantidade
+          const row = { ...m, saldoApos: saldo }
+          saldo -= sinal
+          return row
+        })
+        const entradas = movimentos.filter(m => m.tipo !== 'saida').reduce((s, m) => s + m.quantidade, 0)
+        const saidas = movimentos.filter(m => m.tipo === 'saida').reduce((s, m) => s + m.quantidade, 0)
+        const custo = movProduto.custo_unit ?? 0
+        const TIPO_CFG: Record<string, { label: string; bg: string; color: string }> = {
+          entrada: { label: 'Entrada', bg: '#dcfce7', color: '#166534' },
+          saida:   { label: 'Saída',   bg: '#fee2e2', color: '#991b1b' },
+          ajuste:  { label: 'Ajuste',  bg: '#f1f5f9', color: '#475569' },
+        }
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120, padding: 20 }}>
+            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, width: '100%', maxWidth: 760, maxHeight: '88vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+              {/* Header */}
+              <div style={{ padding: '16px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', margin: 0 }}>📊 Movimentações — {movProduto.nome}</h3>
+                  <p style={{ fontSize: 12, color: '#94a3b8', margin: '3px 0 0' }}>
+                    Estoque atual: <strong style={{ color: '#0f172a' }}>{movProduto.estoque_atual ?? 0} {movProduto.unidade ?? 'un'}</strong>
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <select
+                    value={movDias}
+                    onChange={e => { const d = Number(e.target.value); setMovDias(d); fetchMovimentos(movProduto.id, d) }}
+                    style={{ padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12, background: '#fff', color: '#374151', outline: 'none', cursor: 'pointer' }}
+                  >
+                    <option value={30}>Últimos 30 dias</option>
+                    <option value={90}>Últimos 90 dias</option>
+                    <option value={365}>Último ano</option>
+                    <option value={0}>Tudo</option>
+                  </select>
+                  <button onClick={() => setMovProduto(null)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#94a3b8', lineHeight: 1 }}>×</button>
+                </div>
+              </div>
+
+              {/* Tabela */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '0 22px' }}>
+                {loadingMov ? (
+                  <div style={{ textAlign: 'center', padding: 50, color: '#94a3b8', fontSize: 13 }}>Carregando...</div>
+                ) : rows.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 50 }}>
+                    <div style={{ fontSize: 34, marginBottom: 10 }}>📭</div>
+                    <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>Nenhuma movimentação registrada neste período.</p>
+                    <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Vendas no PDV, entradas de compra, garantias e correções aparecem aqui automaticamente.</p>
+                  </div>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, marginTop: 8 }}>
+                    <thead>
+                      <tr style={{ position: 'sticky', top: 0, background: '#fff' }}>
+                        {['Data/hora', 'Tipo', 'Qtd. movim.', 'Saldo após', 'Descrição'].map(h => (
+                          <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1.5px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map(m => {
+                        const cfg = TIPO_CFG[m.tipo] ?? TIPO_CFG.ajuste
+                        const saida = m.tipo === 'saida'
+                        return (
+                          <tr key={m.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '8px 10px', color: '#64748b', whiteSpace: 'nowrap' }}>
+                              {new Date(m.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                            </td>
+                            <td style={{ padding: '8px 10px' }}>
+                              <span style={{ fontSize: 10.5, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}22` }}>{cfg.label}</span>
+                            </td>
+                            <td style={{ padding: '8px 10px', fontWeight: 700, color: saida ? '#991b1b' : '#166534', whiteSpace: 'nowrap' }}>
+                              {saida ? '−' : '+'} {m.quantidade}
+                            </td>
+                            <td style={{ padding: '8px 10px', fontWeight: 600, color: '#0f172a' }}>{m.saldoApos}</td>
+                            <td style={{ padding: '8px 10px', color: '#374151' }}>{m.motivo ?? '—'}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {/* Resumo do período */}
+              <div style={{ padding: '12px 22px', borderTop: '1px solid #e2e8f0', background: '#f8fafc', borderRadius: '0 0 16px 16px', display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 12, color: '#64748b' }}>
+                  Entradas no período: <strong style={{ color: '#166534' }}>+{entradas}</strong>
+                  {custo > 0 && <span style={{ color: '#94a3b8' }}> (R$ {(entradas * custo).toFixed(2).replace('.', ',')} ao custo atual)</span>}
+                </div>
+                <div style={{ fontSize: 12, color: '#64748b' }}>
+                  Saídas no período: <strong style={{ color: '#991b1b' }}>−{saidas}</strong>
+                  {custo > 0 && <span style={{ color: '#94a3b8' }}> (R$ {(saidas * custo).toFixed(2).replace('.', ',')} ao custo atual)</span>}
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
