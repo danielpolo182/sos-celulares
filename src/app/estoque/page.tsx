@@ -203,6 +203,13 @@ export default function EstoquePage() {
   const [eCusto, setECusto] = useState('')
   const [eData, setEData] = useState(new Date().toISOString().split('T')[0])
   const [eNF, setENF] = useState('')
+  const [eDescricao, setEDescricao] = useState('')
+
+  // ── Saída manual de estoque
+  const [showModalSaida, setShowModalSaida] = useState(false)
+  const [sQtd, setSQtd] = useState('1')
+  const [sDescricao, setSDescricao] = useState('')
+  const [sSaving, setSSaving] = useState(false)
   const [eSaving, setESaving] = useState(false)
   const [ultimoCusto, setUltimoCusto] = useState<number | null>(null)
 
@@ -435,7 +442,7 @@ export default function EstoquePage() {
   }
 
   function abrirEntrada(p: Produto) {
-    setProdutoSel(p); setEQtd('1'); setECusto(''); setEData(new Date().toISOString().split('T')[0]); setENF('')
+    setProdutoSel(p); setEQtd('1'); setECusto(''); setEData(new Date().toISOString().split('T')[0]); setENF(''); setEDescricao('')
     fetchEntradas(p.id); setShowModalEntrada(true)
   }
 
@@ -451,10 +458,30 @@ export default function EstoquePage() {
 
     // Soma a quantidade no estoque atual (mesmo padrão da baixa no PDV)
     await supabase.from('produtos').update({ estoque_atual: (produtoSel.estoque_atual ?? 0) + qtd }).eq('id', produtoSel.id)
+    const motivoEntrada = (eDescricao.trim() || 'Entrada de estoque') + (eNF ? ` (NF ${eNF})` : '')
     if (produtoSel.filial_id)
-      await supabase.from('movimentacoes_estoque').insert({ filial_id: produtoSel.filial_id, produto_id: produtoSel.id, tipo: 'entrada', quantidade: qtd, motivo: `Entrada de estoque${eNF ? ` (NF ${eNF})` : ''}` })
+      await supabase.from('movimentacoes_estoque').insert({ filial_id: produtoSel.filial_id, produto_id: produtoSel.id, tipo: 'entrada', quantidade: qtd, motivo: motivoEntrada })
 
     setESaving(false); setShowModalEntrada(false); fetchProdutos()
+  }
+
+  function abrirSaida(p: Produto) {
+    setProdutoSel(p); setSQtd('1'); setSDescricao('')
+    setShowModalSaida(true)
+  }
+
+  async function salvarSaida() {
+    if (!produtoSel) return
+    const qtd = parseInt(sQtd) || 1
+    if (!sDescricao.trim()) { alert('Descreva o motivo da saída (ex: produto com defeito, perda, uso interno...).'); return }
+    const atual = produtoSel.estoque_atual ?? 0
+    if (qtd > atual && !confirm(`O estoque atual é ${atual} e a saída é de ${qtd}. O estoque ficará em 0. Continuar?`)) return
+    setSSaving(true)
+    const { error } = await supabase.from('produtos').update({ estoque_atual: Math.max(0, atual - qtd) }).eq('id', produtoSel.id)
+    if (error) { alert(`Erro: ${error.message}`); setSSaving(false); return }
+    if (produtoSel.filial_id)
+      await supabase.from('movimentacoes_estoque').insert({ filial_id: produtoSel.filial_id, produto_id: produtoSel.id, tipo: 'saida', quantidade: qtd, motivo: sDescricao.trim() })
+    setSSaving(false); setShowModalSaida(false); fetchProdutos()
   }
 
   // ── Exportar produtos para planilha (formato compatível com a importação)
@@ -735,7 +762,7 @@ export default function EstoquePage() {
         <td style={{ padding: '10px 14px' }}>
           <div style={{ display: 'flex', gap: 5 }}>
             <button onClick={e => { e.stopPropagation(); abrirEntrada(p) }} style={{ fontSize: 11, padding: '4px 8px', border: '1px solid #dbeafe', borderRadius: 6, background: '#dbeafe', color: '#2563eb', cursor: 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}>+ Entrada</button>
-            <button onClick={e => { e.stopPropagation(); abrirRapido(p) }} style={{ fontSize: 11, padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', color: '#64748b', cursor: 'pointer', whiteSpace: 'nowrap' }}>Editar rápido</button>
+            <button onClick={e => { e.stopPropagation(); abrirSaida(p) }} style={{ fontSize: 11, padding: '4px 8px', border: '1px solid #fecaca', borderRadius: 6, background: '#fef2f2', color: '#991b1b', cursor: 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}>− Saída</button>
             <button onClick={e => { e.stopPropagation(); abrirCompleto(p) }} style={{ fontSize: 11, padding: '4px 8px', border: '1px solid #bfdbfe', borderRadius: 6, background: '#dbeafe', color: '#2563eb', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 500 }}>Editar completo</button>
             <button onClick={e => { e.stopPropagation(); abrirMovimentacoes(p) }} title="Histórico de movimentações de estoque" style={{ fontSize: 11, padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', color: '#64748b', cursor: 'pointer', whiteSpace: 'nowrap' }}>📊 Movs</button>
           </div>
@@ -1431,6 +1458,10 @@ export default function EstoquePage() {
                   <label style={lbl}>Nota fiscal / referência (opcional)</label>
                   <input style={inp} value={eNF} onChange={e => setENF(e.target.value)} placeholder="NF-e, número do pedido..." />
                 </div>
+                <div style={{ gridColumn: '1/-1' }}>
+                  <label style={lbl}>Descrição da movimentação (opcional)</label>
+                  <input style={inp} value={eDescricao} onChange={e => setEDescricao(e.target.value)} placeholder="Ex: reposição de estoque, devolução de cliente... (aparece em 📊 Movs)" />
+                </div>
               </div>
               {eCusto && parseFloat(eCusto) > 0 && (
                 <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '12px 16px', marginBottom: 14 }}>
@@ -1565,6 +1596,50 @@ export default function EstoquePage() {
                   </button>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ MODAL SAÍDA DE ESTOQUE ═══ */}
+      {showModalSaida && produtoSel && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }}>
+          <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 460 }}>
+            <div style={{ padding: '18px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>− Registrar saída de estoque</h2>
+                <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{produtoSel.nome}</p>
+              </div>
+              <button onClick={() => setShowModalSaida(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#94a3b8' }}>×</button>
+            </div>
+            <div style={{ padding: '18px 22px' }}>
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 14px', marginBottom: 14, display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 12, color: '#64748b' }}>Estoque atual</span>
+                <strong style={{ fontSize: 14, color: (produtoSel.estoque_atual ?? 0) > 0 ? '#0f172a' : '#991b1b' }}>
+                  {produtoSel.estoque_atual ?? 0} {produtoSel.unidade ?? 'un'}
+                </strong>
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <label style={lbl}>Quantidade de saída</label>
+                <input style={inp} type="number" min="1" value={sQtd} onChange={e => setSQtd(e.target.value)} />
+              </div>
+              <div style={{ marginBottom: 6 }}>
+                <label style={lbl}>Descrição / motivo da saída *</label>
+                <textarea rows={2} style={{ ...inp, resize: 'vertical' }} value={sDescricao} onChange={e => setSDescricao(e.target.value)} placeholder="Ex: produto com defeito, perda, uso interno na bancada..." />
+                <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Essa descrição fica registrada no histórico 📊 Movs do produto.</p>
+              </div>
+              {(parseInt(sQtd) || 1) > (produtoSel.estoque_atual ?? 0) && (
+                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#92400e', marginBottom: 6 }}>
+                  ⚠ Saída maior que o estoque atual — o estoque ficará em 0.
+                </div>
+              )}
+            </div>
+            <div style={{ padding: '14px 22px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button onClick={() => setShowModalSaida(false)} style={{ padding: '8px 18px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer', color: '#475569' }}>Cancelar</button>
+              <button onClick={salvarSaida} disabled={sSaving || !sDescricao.trim()}
+                style={{ padding: '8px 20px', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: sSaving || !sDescricao.trim() ? 'not-allowed' : 'pointer', background: sSaving || !sDescricao.trim() ? '#fca5a5' : '#dc2626', color: '#fff' }}>
+                {sSaving ? 'Registrando...' : '− Confirmar saída'}
+              </button>
             </div>
           </div>
         </div>
