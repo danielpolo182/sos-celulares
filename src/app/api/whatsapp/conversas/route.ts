@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { sendMessage } from '@/lib/whatsapp/send'
 import { buscarConfigEnvio } from '@/lib/whatsapp/config'
+import { liberarBot, pausarBot } from '@/lib/whatsapp/botRegras'
 
 export const dynamic = 'force-dynamic'
 
@@ -60,6 +61,7 @@ export async function POST(request: NextRequest) {
 
   if (acao === 'resolver') {
     await supabase.from('wa_conversas').update({ status: 'resolvida' }).eq('id', conversaId)
+    await liberarBot(supabase, conversaId)
     return NextResponse.json({ ok: true })
   }
 
@@ -88,6 +90,7 @@ export async function POST(request: NextRequest) {
     await supabase.from('wa_mensagens').insert({ conversa_id: conversaId, direcao: 'saida', conteudo: texto, wa_message_id: waMessageId })
     // Quem responde pela caixa de entrada assume a conversa: o bot para de responder
     await supabase.from('wa_conversas').update({ atualizado_em: new Date().toISOString(), status: 'humano' }).eq('id', conversaId)
+    await pausarBot(supabase, conversa.filial_id, conversaId)
 
     return NextResponse.json({ ok: true })
   }

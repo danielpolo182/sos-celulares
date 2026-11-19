@@ -4,6 +4,7 @@
 // para os tipos daqui e chama estas funções.
 import { SupabaseClient } from '@supabase/supabase-js'
 import { processBot } from './bot'
+import { botPodeResponder, pausarBot } from './botRegras'
 import { escalateToHuman } from './escalate'
 import { sendMessage, variantesDeTelefone, WaConfig } from './send'
 import { MidiaSalva } from './media'
@@ -187,12 +188,14 @@ export async function processarMensagem(
   try {
     await gravarMidia(gravada.id, norm, `${ctx.filialId}/${conversaId}`, ctx)
 
-    if (status !== 'bot' || !ctx.botAtivo || !ctx.envio) return
+    if (!ctx.botAtivo || !ctx.envio) return
+    if (!(await botPodeResponder(supabase, ctx.filialId, conversaId, telefone, status))) return
     const envio = { ...ctx.envio, filial_id: ctx.filialId }
 
     // O bot só entende texto: áudio, foto e arquivo vão direto para uma pessoa
     if (norm.tipo !== 'texto') {
       await escalateToHuman(conversaId, envio, supabase)
+      await pausarBot(supabase, ctx.filialId, conversaId)
       return
     }
 
@@ -200,9 +203,12 @@ export async function processarMensagem(
 
     if (escalou) {
       await escalateToHuman(conversaId, envio, supabase)
+      // Sem a pausa, a próxima mensagem do cliente geraria outro "vou te conectar"
+      await pausarBot(supabase, ctx.filialId, conversaId)
     } else {
       const waMessageId = await sendMessage(ctx.envio, telefone, resposta)
       await supabase.from('wa_mensagens').insert({ conversa_id: conversaId, direcao: 'saida', conteudo: resposta, wa_message_id: waMessageId })
+      if (status !== 'bot') await supabase.from('wa_conversas').update({ status: 'bot' }).eq('id', conversaId)
     }
   } catch (err) {
     console.error('[WA webhook] pós-gravação', msg.id, err)
@@ -250,6 +256,7 @@ export async function registrarEco(
     if (error || !nova) throw new Error(`criar conversa: ${error?.message}`)
     conversaId = nova.id as string
   }
+  await pausarBot(supabase, ctx.filialId, conversaId)
 
   const { data: gravada, error: erroMsg } = await supabase
     .from('wa_mensagens')

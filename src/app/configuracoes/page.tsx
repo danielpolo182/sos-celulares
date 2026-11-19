@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatarCNPJ, formatarCPF, formatarTelefone, validarCNPJ, validarCPF, validarTelefone } from '@/lib/validators'
 import { AVISOS, ConfigAvisos, MODELOS_AVISO, lerConfigAvisos, lerListaDeDias } from '@/lib/whatsapp/avisos'
+import { ConfigBot, lerConfigBot, lerNumerosDeTeste } from '@/lib/whatsapp/botRegras'
 
 // ─── Tipos ────────────────────────────────────────────────
 type WaConfig = {
@@ -277,6 +278,9 @@ export default function ConfiguracoesPage() {
   const [waAvisos, setWaAvisos] = useState<ConfigAvisos | null>(null)
   const [waLembreteDias, setWaLembreteDias] = useState('')
   const [waModeloCopiado, setWaModeloCopiado] = useState('')
+  // null enquanto a migração das regras do agente não foi rodada
+  const [waBot, setWaBot] = useState<ConfigBot | null>(null)
+  const [waNumerosTeste, setWaNumerosTeste] = useState('')
   const [waWabaId, setWaWabaId] = useState('')
   const [waDiag, setWaDiag] = useState<{ ok: boolean; linhas: string[] } | null>(null)
   const [waDiagLoading, setWaDiagLoading] = useState(false)
@@ -386,6 +390,12 @@ export default function ConfiguracoesPage() {
       const cfgAvisos = lerConfigAvisos(waAv.data.avisos)
       setWaAvisos(cfgAvisos)
       setWaLembreteDias(cfgAvisos.lembrete_dias.join(', '))
+    }
+    const waBotCfg = await supabase.from('wa_config').select('bot_config').single()
+    if (!waBotCfg.error && waBotCfg.data) {
+      const cfgBot = lerConfigBot(waBotCfg.data.bot_config)
+      setWaBot(cfgBot)
+      setWaNumerosTeste(cfgBot.numeros_teste.join(', '))
     }
     const { data: pixCfg } = await supabase
       .from('pix_config')
@@ -538,7 +548,19 @@ export default function ConfiguracoesPage() {
       erroAvisos = !!res.error
       if (!res.error) { setWaAvisos(avisos); setWaLembreteDias(avisos.lembrete_dias.join(', ')) }
     }
-    setWaMsg(error ? '❌ Erro ao salvar' : erroAvisos ? '❌ Conexão salva, mas os avisos automáticos não foram gravados' : '✅ Configurações salvas!')
+    let erroBot = false
+    if (!error && waBot) {
+      const bot_config: ConfigBot = { ...waBot, numeros_teste: lerNumerosDeTeste(waNumerosTeste) }
+      const res = await supabase.from('wa_config').update({ bot_config }).eq('filial_id', perfil.filial_id)
+      erroBot = !!res.error
+      if (!res.error) { setWaBot(bot_config); setWaNumerosTeste(bot_config.numeros_teste.join(', ')) }
+    }
+    setWaMsg(
+      error ? '❌ Erro ao salvar'
+        : erroAvisos ? '❌ Conexão salva, mas os avisos automáticos não foram gravados'
+        : erroBot ? '❌ Conexão salva, mas as regras do agente não foram gravadas'
+        : '✅ Configurações salvas!'
+    )
     setWaSaving(false)
   }
 
@@ -1441,6 +1463,26 @@ export default function ConfiguracoesPage() {
               <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Prompt do sistema</label>
               <textarea rows={5} style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }} value={waConfig?.bot_prompt ?? ''} onChange={e => setWaConfig(c => c ? { ...c, bot_prompt: e.target.value } : c)} />
               <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Modelo: Claude Haiku 4.5 · Use [HUMANO] para instruir quando transferir para atendente.</div>
+              {waBot ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 14 }}>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Pausa quando alguém da loja responde (minutos)</label>
+                    <input name="wa-bot-pausa" type="number" min={1} style={{ width: 120, padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} value={waBot.pausa_min} onChange={e => setWaBot(c => c ? { ...c, pausa_min: Math.max(1, parseInt(e.target.value, 10) || 1) } : c)} />
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>O agente responde primeiro. Quando alguém responde pelo celular ou pelo Inbox, ele fica calado naquela conversa por esse tempo.</div>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Números de teste (opcional)</label>
+                    <input name="wa-bot-numeros-teste" autoComplete="off" style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} value={waNumerosTeste} onChange={e => setWaNumerosTeste(e.target.value)} placeholder="41 98765-4321, 41 91234-5678" />
+                    <div style={{ fontSize: 11, color: waNumerosTeste.trim() ? '#b45309' : '#94a3b8', marginTop: 4 }}>
+                      {waNumerosTeste.trim() ? 'Modo de teste: o agente só responde a estes números.' : 'Vazio: o agente responde a todos os clientes.'}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#92400e', marginTop: 12 }}>
+                  Para usar a pausa por atendente e o modo de teste, rode antes o arquivo <code>supabase-whatsapp-bot-migration.sql</code> no banco.
+                </div>
+              )}
             </div>
 
             {/* Seção 3: Templates */}
