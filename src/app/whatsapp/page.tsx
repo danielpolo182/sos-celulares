@@ -21,9 +21,35 @@ type Mensagem = {
   tipo: string | null
   media_path: string | null
   media_nome: string | null
+  status_entrega?: string | null
+  erro_entrega?: string | null
 }
 
 const CAMPOS_MENSAGEM = 'id, direcao, conteudo, criado_em, tipo, media_path, media_nome'
+// Colunas de entrega vêm de uma migração posterior; a tela funciona sem elas
+const CAMPOS_COM_ENTREGA = `${CAMPOS_MENSAGEM}, status_entrega, erro_entrega`
+
+// Traduz os motivos de falha mais comuns devolvidos pela Meta
+function motivoFalha(erro: string | null | undefined): string {
+  if (!erro) return 'a Meta não informou o motivo'
+  if (erro.includes('130497')) return 'a Meta não permite que esta conta envie para usuários deste país'
+  if (erro.includes('131047')) return 'passou da janela de 24h desde a última mensagem do cliente'
+  if (erro.includes('131026')) return 'o número não pode receber mensagens do WhatsApp'
+  return erro
+}
+
+function StatusEntrega({ m }: { m: Mensagem }) {
+  if (m.direcao !== 'saida' || !m.status_entrega) return null
+  if (m.status_entrega === 'failed') {
+    return <div style={{ color: '#fca5a5', marginTop: 2 }}>⚠ Não entregue: {motivoFalha(m.erro_entrega)}</div>
+  }
+  const lida = m.status_entrega === 'read'
+  return (
+    <span style={{ marginLeft: 4, color: lida ? '#60a5fa' : '#64748b' }} title={lida ? 'Lida' : m.status_entrega === 'delivered' ? 'Entregue' : 'Enviada'}>
+      {m.status_entrega === 'sent' ? '✓' : '✓✓'}
+    </span>
+  )
+}
 
 // Texto que o webhook grava quando a mídia chega sem legenda
 const ROTULOS_MIDIA = ['📷 Foto', '🎤 Áudio', '🎬 Vídeo', '📄 Documento', 'Figurinha']
@@ -108,12 +134,14 @@ export default function WhatsAppInboxPage() {
   }, [])
 
   const carregarMensagens = useCallback(async (id: string) => {
-    const { data } = await supabase
+    const buscar = (campos: string) => supabase
       .from('wa_mensagens')
-      .select(CAMPOS_MENSAGEM)
+      .select(campos)
       .eq('conversa_id', id)
       .order('criado_em', { ascending: true })
-    setMensagens((data as Mensagem[]) ?? [])
+    let { data, error } = await buscar(CAMPOS_COM_ENTREGA)
+    if (error) ({ data, error } = await buscar(CAMPOS_MENSAGEM))
+    setMensagens((data as unknown as Mensagem[]) ?? [])
   }, [supabase])
 
   // A mensagem de mídia chega antes de o servidor terminar de baixar o arquivo.
@@ -124,7 +152,7 @@ export default function WhatsAppInboxPage() {
       const { data } = await supabase.from('wa_mensagens').select(CAMPOS_MENSAGEM).eq('id', id).maybeSingle()
       const atual = data as Mensagem | null
       if (atual?.media_path) {
-        setMensagens(prev => prev.map(m => m.id === id ? atual : m))
+        setMensagens(prev => prev.map(m => m.id === id ? { ...m, ...atual } : m))
       } else if (tentativa < esperas.length - 1) {
         buscarMidia(id, tentativa + 1)
       } else {
@@ -209,6 +237,9 @@ export default function WhatsAppInboxPage() {
     setErroEnvio(null)
     setTexto('')
     await carregarConversas()
+    // A Meta avisa a entrega (ou a falha) segundos depois; recarrega para mostrar o estado
+    const conversa = selecionada
+    setTimeout(() => carregarMensagens(conversa), 5000)
   }
 
   async function resolver() {
@@ -352,6 +383,7 @@ export default function WhatsAppInboxPage() {
                   </div>
                   <div style={{ fontSize: 10, color: '#475569', marginTop: 3, textAlign: m.direcao === 'saida' ? 'right' : 'left' }}>
                     {formatTime(m.criado_em)}
+                    <StatusEntrega m={m} />
                   </div>
                 </div>
               ))}

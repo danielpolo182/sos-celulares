@@ -75,8 +75,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'WhatsApp não configurado em Configurações → WhatsApp' }, { status: 500 })
     }
 
+    let waMessageId: string | null = null
     try {
-      await sendMessage({ phone_number_id: config.phone_number_id, access_token: config.access_token }, conversa.telefone, texto)
+      waMessageId = await sendMessage({ phone_number_id: config.phone_number_id, access_token: config.access_token }, conversa.telefone, texto)
     } catch (err) {
       const detalhe = err instanceof Error ? err.message : String(err)
       // 131047: a Meta só aceita texto livre até 24h após a última mensagem do cliente
@@ -88,7 +89,7 @@ export async function POST(request: NextRequest) {
       }, { status: 502 })
     }
 
-    await supabase.from('wa_mensagens').insert({ conversa_id: conversaId, direcao: 'saida', conteudo: texto })
+    await supabase.from('wa_mensagens').insert({ conversa_id: conversaId, direcao: 'saida', conteudo: texto, wa_message_id: waMessageId })
     // Quem responde pela caixa de entrada assume a conversa: o bot para de responder
     await supabase.from('wa_conversas').update({ atualizado_em: new Date().toISOString(), status: 'humano' }).eq('id', conversaId)
 

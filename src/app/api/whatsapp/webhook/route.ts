@@ -28,10 +28,53 @@ type MensagemRecebida = {
   contacts?: { name?: { formatted_name?: string }; phones?: { phone?: string }[] }[]
 }
 
+type StatusRecebido = {
+  id?: string
+  status?: string
+  errors?: { code?: number; title?: string; message?: string }[]
+}
+
 type ValorWebhook = {
   metadata?: { phone_number_id?: string }
   contacts?: { profile?: { name?: string } }[]
   messages?: MensagemRecebida[]
+  statuses?: StatusRecebido[]
+}
+
+// Estados que podem anteceder cada um: os avisos chegam fora de ordem e um
+// "delivered" atrasado não pode apagar um "read".
+const STATUS_ANTERIORES: Record<string, string[]> = {
+  sent: [],
+  delivered: ['sent'],
+  read: ['sent', 'delivered'],
+}
+
+/** Grava na mensagem enviada o estado de entrega avisado pela Meta. */
+async function registrarStatus(st: StatusRecebido, supabase: SupabaseClient): Promise<void> {
+  if (!st.id || !st.status) return
+
+  if (st.status === 'failed') {
+    const erro = st.errors?.[0]
+    console.warn('[WA webhook] entrega falhou', { codigo: erro?.code, motivo: erro?.title })
+    const { error } = await supabase
+      .from('wa_mensagens')
+      .update({
+        status_entrega: 'failed',
+        erro_entrega: erro ? `${erro.code ?? ''} ${erro.title ?? erro.message ?? ''}`.trim() : null,
+      })
+      .eq('wa_message_id', st.id)
+    if (error) console.error('[WA webhook] gravar status', error.message)
+    return
+  }
+
+  const anteriores = STATUS_ANTERIORES[st.status]
+  if (!anteriores) return
+  const { error } = await supabase
+    .from('wa_mensagens')
+    .update({ status_entrega: st.status })
+    .eq('wa_message_id', st.id)
+    .or(['status_entrega.is.null', ...anteriores.map(s => `status_entrega.eq.${s}`)].join(','))
+  if (error) console.error('[WA webhook] gravar status', error.message)
 }
 
 type ConfigFilial = { filial_id: string; phone_number_id: string; access_token: string; bot_ativo: boolean }
@@ -212,8 +255,8 @@ async function processarMensagem(
     if (escalou) {
       await escalateToHuman(conversaId, { ...waConfig, filial_id: config.filial_id }, supabase)
     } else {
-      await sendMessage(waConfig, msg.from, resposta)
-      await supabase.from('wa_mensagens').insert({ conversa_id: conversaId, direcao: 'saida', conteudo: resposta })
+      const waMessageId = await sendMessage(waConfig, msg.from, resposta)
+      await supabase.from('wa_mensagens').insert({ conversa_id: conversaId, direcao: 'saida', conteudo: resposta, wa_message_id: waMessageId })
     }
   } catch (err) {
     console.error('[WA webhook] pós-gravação', msg.id, err)
@@ -264,7 +307,9 @@ export async function POST(request: NextRequest) {
   for (const entry of body.entry ?? []) {
     for (const change of entry.changes ?? []) {
       const value = change.value
-      // Eventos de status (enviado, entregue, lido) não têm messages
+      // Avisos de entrega das mensagens que nós enviamos (enviada, entregue, lida, falhou)
+      for (const st of value?.statuses ?? []) await registrarStatus(st, supabase)
+
       if (!value?.messages?.length) continue
 
       const phoneNumberId = value.metadata?.phone_number_id

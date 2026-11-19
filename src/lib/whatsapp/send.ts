@@ -21,7 +21,14 @@ export function normalizarDestino(to: string): string {
   return digitos
 }
 
-export async function sendMessage(config: WaConfig, to: string, text: string): Promise<void> {
+// A Meta responde 200 assim que aceita a mensagem; a entrega (ou a falha) chega
+// depois, pelo webhook, identificada por este id.
+async function idDaMensagem(res: Response): Promise<string | null> {
+  const json = (await res.json().catch(() => null)) as { messages?: { id?: string }[] } | null
+  return json?.messages?.[0]?.id ?? null
+}
+
+export async function sendMessage(config: WaConfig, to: string, text: string): Promise<string | null> {
   const res = await fetch(`${META_API}/${config.phone_number_id}/messages`, {
     method: 'POST',
     headers: {
@@ -40,6 +47,7 @@ export async function sendMessage(config: WaConfig, to: string, text: string): P
     console.error('[WA sendMessage]', err)
     throw new Error(`Meta API error: ${err}`)
   }
+  return idDaMensagem(res)
 }
 
 export async function sendTemplate(
@@ -48,7 +56,7 @@ export async function sendTemplate(
   templateName: string,
   params: string[],
   languageCode = 'pt_BR'
-): Promise<void> {
+): Promise<string | null> {
   const components =
     params.length > 0
       ? [{ type: 'body', parameters: params.map(p => ({ type: 'text', text: p })) }]
@@ -72,4 +80,5 @@ export async function sendTemplate(
     console.error('[WA sendTemplate]', err)
     throw new Error(`Meta API error: ${err}`)
   }
+  return idDaMensagem(res)
 }
