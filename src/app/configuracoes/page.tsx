@@ -241,6 +241,39 @@ export default function ConfiguracoesPage() {
   const [waConfig, setWaConfig] = useState<WaConfig | null>(null)
   const [waSaving, setWaSaving] = useState(false)
   const [waMsg, setWaMsg] = useState('')
+  const [waWabaId, setWaWabaId] = useState('')
+  const [waDiag, setWaDiag] = useState<{ ok: boolean; linhas: string[] } | null>(null)
+  const [waDiagLoading, setWaDiagLoading] = useState(false)
+
+  async function diagnosticarWa(assinar: boolean) {
+    setWaDiagLoading(true); setWaDiag(null)
+    try {
+      const res = await fetch('/api/whatsapp/diagnostico', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wabaId: waWabaId.trim() || undefined, assinar }),
+      })
+      const d = await res.json() as {
+        numero?: { telefone: string | null; nome: string | null; status: string | null }
+        assinatura?: { apps: string[]; assinouAgora: boolean }
+        error?: string
+      }
+      const linhas: string[] = []
+      if (d.numero) linhas.push(`Número: ${d.numero.telefone ?? '—'}${d.numero.nome ? ` (${d.numero.nome})` : ''}${d.numero.status ? ` · status ${d.numero.status}` : ''}`)
+      if (d.assinatura) {
+        if (d.assinatura.assinouAgora) linhas.push('App assinado na conta agora.')
+        linhas.push(d.assinatura.apps.length > 0
+          ? `Apps assinados nesta conta: ${d.assinatura.apps.join(', ')}`
+          : 'Nenhum app assinado nesta conta: a Meta não entrega as mensagens recebidas. Clique em "Assinar app na conta".')
+      } else if (res.ok) {
+        linhas.push('Token e número conferem. Informe o ID da conta do WhatsApp para conferir a assinatura do app.')
+      }
+      if (d.error) linhas.push(`Erro: ${d.error}`)
+      setWaDiag({ ok: res.ok && (!d.assinatura || d.assinatura.apps.length > 0), linhas })
+    } catch {
+      setWaDiag({ ok: false, linhas: ['Não foi possível falar com o servidor.'] })
+    }
+    setWaDiagLoading(false)
+  }
 
   // Banco de aparelhos — scraping por marca
   const [userEmail, setUserEmail] = useState<string | null>(null)
@@ -1237,6 +1270,33 @@ export default function ConfiguracoesPage() {
                 {/* Com www: o domínio sem www responde com redirecionamento, que a Meta não segue ao verificar o webhook */}
                 URL do Webhook:{' '}<strong>https://www.octaos.com.br/api/whatsapp/webhook</strong>
                 <button onClick={() => navigator.clipboard.writeText('https://www.octaos.com.br/api/whatsapp/webhook')} style={{ marginLeft: 8, padding: '2px 8px', background: '#0369a1', color: '#fff', border: 'none', borderRadius: 4, fontSize: 11, cursor: 'pointer' }}>Copiar</button>
+              </div>
+
+              {/* Diagnóstico: token, número e assinatura do app na conta do WhatsApp */}
+              <div style={{ marginTop: 16, border: '1px solid #e2e8f0', borderRadius: 8, padding: '14px 16px' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>Verificar conexão</div>
+                <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 10px', lineHeight: 1.5 }}>
+                  Usa o token salvo acima. Para a Meta entregar as mensagens recebidas, o app precisa estar assinado na conta do WhatsApp.
+                  O ID da conta aparece na Meta como &quot;Identificação da conta de mensagens&quot;, na mesma tela do Phone Number ID.
+                </p>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <input name="wa-waba-id" autoComplete="off" inputMode="numeric" data-lpignore="true" data-1p-ignore
+                    style={{ flex: 1, minWidth: 220, padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }}
+                    value={waWabaId} onChange={e => setWaWabaId(e.target.value.trim())} placeholder="ID da conta do WhatsApp (só números)" />
+                  <button onClick={() => diagnosticarWa(false)} disabled={waDiagLoading}
+                    style={{ padding: '9px 14px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: waDiagLoading ? 'wait' : 'pointer', color: '#0f172a' }}>
+                    {waDiagLoading ? 'Verificando...' : 'Verificar'}
+                  </button>
+                  <button onClick={() => diagnosticarWa(true)} disabled={waDiagLoading || !waWabaId}
+                    style={{ padding: '9px 14px', background: waDiagLoading || !waWabaId ? '#93c5fd' : '#2563eb', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: waDiagLoading || !waWabaId ? 'not-allowed' : 'pointer', color: '#fff' }}>
+                    Assinar app na conta
+                  </button>
+                </div>
+                {waDiag && (
+                  <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 8, fontSize: 12, lineHeight: 1.6, background: waDiag.ok ? '#f0fdf4' : '#fef2f2', border: `1px solid ${waDiag.ok ? '#bbf7d0' : '#fecaca'}`, color: waDiag.ok ? '#166534' : '#991b1b' }}>
+                    {waDiag.linhas.map((l, i) => <div key={i}>{l}</div>)}
+                  </div>
+                )}
               </div>
             </div>
 
