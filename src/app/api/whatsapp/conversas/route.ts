@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { sendMessage } from '@/lib/whatsapp/send'
 import { buscarConfigEnvio } from '@/lib/whatsapp/config'
-import { liberarBot, pausarBot } from '@/lib/whatsapp/botRegras'
+import { liberarBot, pausarBot, pausarBotManualmente } from '@/lib/whatsapp/botRegras'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,6 +24,21 @@ export async function GET() {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // Estado do agente por conversa. Consulta à parte: sem a migração das regras
+  // do agente a coluna não existe, e a lista precisa continuar funcionando.
+  const ids = (conversas ?? []).map(c => c.id)
+  const pausas = new Map<string, string | null>()
+  let agenteDisponivel = false
+  if (ids.length > 0) {
+    const res = await supabase.from('wa_conversas').select('id, bot_pausado_ate').in('id', ids)
+    if (!res.error) {
+      agenteDisponivel = true
+      for (const linha of res.data ?? []) pausas.set(linha.id, linha.bot_pausado_ate ?? null)
+    }
+  }
+  const { data: cfg } = await supabase.from('wa_config').select('bot_ativo').maybeSingle()
+  const agenteLigado = cfg?.bot_ativo === true
+
   const data = (conversas ?? []).map(c => {
     const ultima = Array.isArray(c.wa_mensagens) ? c.wa_mensagens[0] : undefined
     return {
@@ -34,16 +49,20 @@ export async function GET() {
       atualizado_em: c.atualizado_em,
       ultima_mensagem: ultima?.conteudo ?? '',
       ultima_direcao: ultima?.direcao ?? 'entrada',
+      // Só presentes quando o banco já tem as regras do agente
+      ...(agenteDisponivel ? { agente_ligado: agenteLigado, agente_pausado_ate: pausas.get(c.id) ?? null } : {}),
     }
   })
 
   return NextResponse.json(data)
 }
 
-// POST /api/whatsapp/conversas — enviar mensagem ou resolver conversa
+type Acao = 'enviar' | 'resolver' | 'pausar_agente' | 'retomar_agente'
+
+// POST /api/whatsapp/conversas — enviar mensagem, resolver conversa, pausar ou retomar o agente
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
-  const body = await request.json() as { conversaId: string; acao: 'enviar' | 'resolver'; texto?: string }
+  const body = await request.json() as { conversaId: string; acao: Acao; texto?: string }
 
   const { conversaId, acao, texto } = body
 
@@ -62,6 +81,14 @@ export async function POST(request: NextRequest) {
   if (acao === 'resolver') {
     await supabase.from('wa_conversas').update({ status: 'resolvida' }).eq('id', conversaId)
     await liberarBot(supabase, conversaId)
+    return NextResponse.json({ ok: true })
+  }
+
+  if (acao === 'pausar_agente' || acao === 'retomar_agente') {
+    const ok = acao === 'pausar_agente'
+      ? await pausarBotManualmente(supabase, conversaId)
+      : await liberarBot(supabase, conversaId)
+    if (!ok) return NextResponse.json({ error: 'Não foi possível alterar o agente nesta conversa.' }, { status: 500 })
     return NextResponse.json({ ok: true })
   }
 

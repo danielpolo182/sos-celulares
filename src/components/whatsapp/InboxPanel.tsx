@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useId } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { agentePausado, pausaEhManual } from '@/lib/whatsapp/botRegras'
 
 type Conversa = {
   id: string
@@ -11,6 +12,9 @@ type Conversa = {
   atualizado_em: string
   ultima_mensagem: string
   ultima_direcao: 'entrada' | 'saida'
+  // Ausentes enquanto o banco não tem as regras do agente (migração não rodada)
+  agente_ligado?: boolean
+  agente_pausado_ate?: string | null
 }
 
 type Mensagem = {
@@ -126,6 +130,7 @@ export default function InboxPanel({ ativo = true, titulo = false, larguraLista 
   const [filtro, setFiltro] = useState<'todas' | 'humano' | 'bot'>('todas')
   const [toast, setToast] = useState<string | null>(null)
   const [erroEnvio, setErroEnvio] = useState<string | null>(null)
+  const [alterandoAgente, setAlterandoAgente] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   const conversaAtual = conversas.find(c => c.id === selecionada) ?? null
@@ -223,8 +228,28 @@ export default function InboxPanel({ ativo = true, titulo = false, larguraLista 
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [mensagens])
 
+  async function alternarAgente() {
+    if (!selecionada || !conversaAtual || alterandoAgente) return
+    setAlterandoAgente(true)
+    const res = await fetch('/api/whatsapp/conversas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        conversaId: selecionada,
+        acao: agentePausado(conversaAtual.agente_pausado_ate) ? 'retomar_agente' : 'pausar_agente',
+      }),
+    })
+    if (!res.ok) {
+      const erro = await res.json().catch(() => null) as { error?: string } | null
+      setErroEnvio(erro?.error ?? 'Não foi possível alterar o agente nesta conversa.')
+    }
+    await carregarConversas()
+    setAlterandoAgente(false)
+  }
+
   async function enviar() {
-    if (!texto.trim() || !selecionada) return
+    // `enviando` barra o segundo Enter enquanto o primeiro envio ainda não voltou
+    if (!texto.trim() || !selecionada || enviando) return
     setEnviando(true)
     const res = await fetch('/api/whatsapp/conversas', {
       method: 'POST',
@@ -354,6 +379,33 @@ export default function InboxPanel({ ativo = true, titulo = false, larguraLista 
                   {conversaAtual?.nome_contato && <span style={{ color: '#64748b' }}> · {conversaAtual.telefone}</span>}
                 </div>
               </div>
+              {conversaAtual && conversaAtual.agente_pausado_ate !== undefined && (() => {
+                const ate = conversaAtual.agente_pausado_ate
+                const pausado = agentePausado(ate)
+                if (!conversaAtual.agente_ligado) {
+                  return <span style={{ fontSize: 11, color: '#64748b' }} title="Ligue o chatbot em Configurações → WhatsApp API">Agente desligado</span>
+                }
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                    <span style={{ fontSize: 11, color: pausado ? '#fcd34d' : '#6ee7b7' }}>
+                      {!pausado ? 'Agente ativo' : pausaEhManual(ate) ? 'Agente pausado' : `Agente pausado até ${formatTime(ate as string)}`}
+                    </span>
+                    <button
+                      onClick={alternarAgente}
+                      disabled={alterandoAgente}
+                      title={pausado ? 'O agente volta a responder as próximas mensagens desta conversa' : 'O agente para de responder nesta conversa até você retomar'}
+                      style={{
+                        padding: '6px 12px', borderRadius: 8, fontSize: 12, cursor: alterandoAgente ? 'wait' : 'pointer',
+                        border: `1px solid ${pausado ? 'rgba(110,231,183,0.4)' : 'rgba(252,211,77,0.4)'}`,
+                        background: pausado ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.12)',
+                        color: pausado ? '#6ee7b7' : '#fcd34d',
+                      }}
+                    >
+                      {pausado ? '▶ Retomar agente' : '⏸ Pausar agente'}
+                    </button>
+                  </div>
+                )
+              })()}
               {conversaAtual?.status !== 'resolvida' && (
                 <button
                   onClick={resolver}

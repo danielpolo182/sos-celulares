@@ -47,18 +47,40 @@ async function carregarConfigBot(supabase: SupabaseClient, filialId: string): Pr
   return lerConfigBot(data?.bot_config)
 }
 
+/** Pausa sem prazo, ligada pelo botão da conversa; só termina quando alguém retoma o agente. */
+export const PAUSA_MANUAL = '9999-12-31T00:00:00.000Z'
+
+export const pausaEhManual = (ate: string | null | undefined) => !!ate && new Date(ate).getUTCFullYear() >= 9000
+
+export const agentePausado = (ate: string | null | undefined, agora = Date.now()) =>
+  !!ate && new Date(ate).getTime() > agora
+
 /** Alguém da loja assumiu a conversa: o agente fica calado nela pelo tempo configurado. */
 export async function pausarBot(supabase: SupabaseClient, filialId: string, conversaId: string): Promise<void> {
   const config = await carregarConfigBot(supabase, filialId)
   if (!config) return
   const ate = new Date(Date.now() + config.pausa_min * 60_000).toISOString()
+
+  // Uma pausa mais longa já em vigor (a manual, por exemplo) não pode ser encurtada
+  const { data, error: erroLeitura } = await supabase.from('wa_conversas').select('bot_pausado_ate').eq('id', conversaId).maybeSingle()
+  if (erroLeitura) return
+  const atual = data?.bot_pausado_ate as string | null | undefined
+  if (atual && new Date(atual).getTime() >= new Date(ate).getTime()) return
+
   const { error } = await supabase.from('wa_conversas').update({ bot_pausado_ate: ate }).eq('id', conversaId)
   if (error) console.error('[WA bot] pausar', error.message)
 }
 
-/** Conversa encerrada: a próxima mensagem do cliente volta a ser do agente. */
-export async function liberarBot(supabase: SupabaseClient, conversaId: string): Promise<void> {
-  await supabase.from('wa_conversas').update({ bot_pausado_ate: null }).eq('id', conversaId)
+/** Conversa encerrada ou agente retomado: a próxima mensagem do cliente volta a ser dele. */
+export async function liberarBot(supabase: SupabaseClient, conversaId: string): Promise<boolean> {
+  const { error } = await supabase.from('wa_conversas').update({ bot_pausado_ate: null }).eq('id', conversaId)
+  return !error
+}
+
+/** Pausa pedida pelo atendente no botão da conversa. */
+export async function pausarBotManualmente(supabase: SupabaseClient, conversaId: string): Promise<boolean> {
+  const { error } = await supabase.from('wa_conversas').update({ bot_pausado_ate: PAUSA_MANUAL, status: 'humano' }).eq('id', conversaId)
+  return !error
 }
 
 /**
