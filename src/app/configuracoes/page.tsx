@@ -497,7 +497,7 @@ export default function ConfiguracoesPage() {
       setWaMsg('❌ O Phone Number ID deve ter só números'); setWaSaving(false); return
     }
     if (waConfig.provedor === 'ycloud' && waConfig.ycloud_numero && !/^\+\d{10,15}$/.test(waConfig.ycloud_numero)) {
-      setWaMsg('❌ O número da loja deve estar no formato internacional, ex.: +5541992550123'); setWaSaving(false); return
+      setWaMsg('❌ O número da loja deve estar no formato internacional, ex.: +554192550123'); setWaSaving(false); return
     }
     if (waConfig.provedor === 'ycloud') {
       const erroChave = erroChaveYCloud(waConfig.ycloud_api_key)
@@ -1383,7 +1383,8 @@ export default function ConfiguracoesPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 12 }}>
                   <div>
                     <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Número da loja (formato internacional)</label>
-                    <input name="wa-ycloud-numero" autoComplete="off" data-lpignore="true" data-1p-ignore style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} value={waConfig.ycloud_numero ?? ''} onChange={e => setWaConfig(c => c ? { ...c, ycloud_numero: e.target.value.replace(/[^\d+]/g, '') } : c)} placeholder="+5541992550123" />
+                    <input name="wa-ycloud-numero" autoComplete="off" data-lpignore="true" data-1p-ignore style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} value={waConfig.ycloud_numero ?? ''} onChange={e => setWaConfig(c => c ? { ...c, ycloud_numero: e.target.value.replace(/[^\d+]/g, '') } : c)} placeholder="+554192550123" />
+                    <div style={{ marginTop: 4, fontSize: 11, color: '#64748b' }}>Exatamente como aparece em YCloud → WhatsApp accounts (pode vir sem o nono dígito).</div>
                   </div>
                   <div>
                     <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>API Key da YCloud</label>

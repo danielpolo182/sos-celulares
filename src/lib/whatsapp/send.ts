@@ -12,7 +12,10 @@ export type WaConfigMeta = {
 export type WaConfigYCloud = {
   provedor: 'ycloud'
   ycloud_api_key: string
-  /** Número da loja em formato internacional, ex.: +5541992550123 */
+  /**
+   * Número da loja como a YCloud o registrou, ex.: +554192550123. Com o nono
+   * dígito a mais o envio é recusado (WHATSAPP_PHONE_NUMBER_UNAVAILABLE).
+   */
   ycloud_numero: string
 }
 
