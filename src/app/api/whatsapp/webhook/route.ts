@@ -233,6 +233,7 @@ export async function POST(request: NextRequest) {
   const recebida = Buffer.from(signature)
   const esperada = Buffer.from(expected)
   if (recebida.length !== esperada.length || !crypto.timingSafeEqual(recebida, esperada)) {
+    console.warn('[WA webhook] assinatura inválida', { temAssinatura: signature.length > 0, bytes: rawBody.length })
     return NextResponse.json({ error: 'invalid signature' }, { status: 401 })
   }
 
@@ -247,6 +248,11 @@ export async function POST(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
+
+  const totalMensagens = (body.entry ?? [])
+    .flatMap(e => e.changes ?? [])
+    .reduce((n, c) => n + (c.value?.messages?.length ?? 0), 0)
+  console.log('[WA webhook] evento recebido', { mensagens: totalMensagens })
 
   const configs = new Map<string, ConfigFilial | null>()
   let falhou = false
@@ -278,6 +284,7 @@ export async function POST(request: NextRequest) {
       for (const msg of value.messages) {
         try {
           await processarMensagem(msg, nomeContato, config, supabase)
+          console.log('[WA webhook] mensagem processada', { tipo: msg.type, phoneNumberId })
         } catch (err) {
           console.error('[WA webhook] falha ao gravar', msg.id, err)
           falhou = true
