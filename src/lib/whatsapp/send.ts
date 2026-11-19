@@ -1,5 +1,5 @@
 // src/lib/whatsapp/send.ts
-const META_API = 'https://graph.facebook.com/v19.0'
+export const META_API = 'https://graph.facebook.com/v26.0'
 
 export type WaConfig = {
   phone_number_id: string

@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 type Conversa = {
   id: string
   telefone: string
+  nome_contato: string | null
   status: 'bot' | 'humano' | 'resolvida'
   atualizado_em: string
   ultima_mensagem: string
@@ -17,6 +18,51 @@ type Mensagem = {
   direcao: 'entrada' | 'saida'
   conteudo: string
   criado_em: string
+  tipo: string | null
+  media_path: string | null
+  media_nome: string | null
+}
+
+const CAMPOS_MENSAGEM = 'id, direcao, conteudo, criado_em, tipo, media_path, media_nome'
+
+// Texto que o webhook grava quando a mídia chega sem legenda
+const ROTULOS_MIDIA = ['📷 Foto', '🎤 Áudio', '🎬 Vídeo', '📄 Documento', 'Figurinha']
+
+function CorpoMensagem({ m }: { m: Mensagem }) {
+  const tipo = m.tipo ?? 'texto'
+  if (tipo === 'texto') return <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.conteudo}</span>
+
+  const legenda = ROTULOS_MIDIA.includes(m.conteudo) || m.conteudo === m.media_nome ? null : m.conteudo
+
+  if (!m.media_path) {
+    // O arquivo é baixado logo após a mensagem ser gravada; depois de um tempo, deu erro
+    const recente = Date.now() - new Date(m.criado_em).getTime() < 90_000
+    return (
+      <span style={{ fontStyle: 'italic', opacity: 0.8 }}>
+        {m.conteudo} — {recente ? 'baixando arquivo…' : 'arquivo indisponível'}
+      </span>
+    )
+  }
+
+  const src = `/api/whatsapp/media/${m.id}`
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {(tipo === 'imagem' || tipo === 'figurinha') && (
+        <a href={src} target="_blank" rel="noopener noreferrer">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={src} alt={m.conteudo} style={{ maxWidth: tipo === 'figurinha' ? 120 : 260, maxHeight: 320, borderRadius: 8, display: 'block' }} />
+        </a>
+      )}
+      {tipo === 'audio' && <audio controls preload="none" src={src} style={{ maxWidth: 260 }} />}
+      {tipo === 'video' && <video controls preload="none" src={src} style={{ maxWidth: 280, borderRadius: 8 }} />}
+      {tipo === 'documento' && (
+        <a href={src} target="_blank" rel="noopener noreferrer" style={{ color: '#93c5fd', textDecoration: 'underline' }}>
+          📄 {m.media_nome ?? 'Abrir documento'}
+        </a>
+      )}
+      {legenda && <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{legenda}</span>}
+    </div>
+  )
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -51,6 +97,7 @@ export default function WhatsAppInboxPage() {
   const [enviando, setEnviando] = useState(false)
   const [filtro, setFiltro] = useState<'todas' | 'humano' | 'bot'>('todas')
   const [toast, setToast] = useState<string | null>(null)
+  const [erroEnvio, setErroEnvio] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   const conversaAtual = conversas.find(c => c.id === selecionada) ?? null
@@ -63,7 +110,7 @@ export default function WhatsAppInboxPage() {
   const carregarMensagens = useCallback(async (id: string) => {
     const { data } = await supabase
       .from('wa_mensagens')
-      .select('id, direcao, conteudo, criado_em')
+      .select(CAMPOS_MENSAGEM)
       .eq('conversa_id', id)
       .order('criado_em', { ascending: true })
     setMensagens((data as Mensagem[]) ?? [])
@@ -80,7 +127,13 @@ export default function WhatsAppInboxPage() {
     const channel = supabase
       .channel(`wa_msgs_${selecionada}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'wa_mensagens', filter: `conversa_id=eq.${selecionada}` }, payload => {
-        setMensagens(prev => [...prev, payload.new as Mensagem])
+        const nova = payload.new as Mensagem
+        setMensagens(prev => prev.some(m => m.id === nova.id) ? prev : [...prev, nova])
+      })
+      // O caminho do arquivo chega num UPDATE, depois que o webhook termina o download
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wa_mensagens', filter: `conversa_id=eq.${selecionada}` }, payload => {
+        const atualizada = payload.new as Mensagem
+        setMensagens(prev => prev.map(m => m.id === atualizada.id ? { ...m, ...atualizada } : m))
       })
       .subscribe()
 
@@ -107,7 +160,7 @@ export default function WhatsAppInboxPage() {
         if (msg.direcao !== 'entrada') return
         const conv = conversas.find(c => c.id === msg.conversa_id)
         if (conv?.status === 'humano' && conv.id !== selecionada) {
-          setToast(`Nova mensagem de ${conv.telefone}`)
+          setToast(`Nova mensagem de ${conv.nome_contato ?? conv.telefone}`)
           setTimeout(() => setToast(null), 4000)
         }
       })
@@ -122,13 +175,20 @@ export default function WhatsAppInboxPage() {
   async function enviar() {
     if (!texto.trim() || !selecionada) return
     setEnviando(true)
-    await fetch('/api/whatsapp/conversas', {
+    const res = await fetch('/api/whatsapp/conversas', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ conversaId: selecionada, acao: 'enviar', texto }),
     })
-    setTexto('')
     setEnviando(false)
+    if (!res.ok) {
+      // Mantém o texto digitado para a pessoa tentar de novo
+      const erro = await res.json().catch(() => null) as { error?: string } | null
+      setErroEnvio(erro?.error ?? 'Não foi possível enviar a mensagem.')
+      return
+    }
+    setErroEnvio(null)
+    setTexto('')
     await carregarConversas()
   }
 
@@ -193,7 +253,7 @@ export default function WhatsAppInboxPage() {
           {conversasFiltradas.map(c => (
             <div
               key={c.id}
-              onClick={() => setSelecionada(c.id)}
+              onClick={() => { setSelecionada(c.id); setErroEnvio(null) }}
               style={{
                 padding: '12px 14px', borderBottom: '1px solid rgba(255,255,255,0.05)',
                 cursor: 'pointer',
@@ -204,7 +264,7 @@ export default function WhatsAppInboxPage() {
               onMouseLeave={e => { if (selecionada !== c.id) (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>{c.telefone}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.telefone}>{c.nome_contato ?? c.telefone}</span>
                 <span style={{ fontSize: 10, color: '#64748b' }}>{formatDate(c.atualizado_em)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -234,9 +294,10 @@ export default function WhatsAppInboxPage() {
             {/* Header conversa */}
             <div style={{ padding: '14px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: 12, background: '#1e293b' }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#f1f5f9' }}>{conversaAtual?.telefone}</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#f1f5f9' }}>{conversaAtual?.nome_contato ?? conversaAtual?.telefone}</div>
                 <div style={{ fontSize: 11, color: STATUS_COLOR[conversaAtual?.status ?? 'bot'] }}>
                   {STATUS_LABEL[conversaAtual?.status ?? 'bot']}
+                  {conversaAtual?.nome_contato && <span style={{ color: '#64748b' }}> · {conversaAtual.telefone}</span>}
                 </div>
               </div>
               {conversaAtual?.status !== 'resolvida' && (
@@ -268,7 +329,7 @@ export default function WhatsAppInboxPage() {
                     lineHeight: 1.4,
                     border: m.direcao === 'entrada' ? '1px solid rgba(255,255,255,0.08)' : 'none',
                   }}>
-                    {m.conteudo}
+                    <CorpoMensagem m={m} />
                   </div>
                   <div style={{ fontSize: 10, color: '#475569', marginTop: 3, textAlign: m.direcao === 'saida' ? 'right' : 'left' }}>
                     {formatTime(m.criado_em)}
@@ -277,6 +338,13 @@ export default function WhatsAppInboxPage() {
               ))}
               <div ref={bottomRef} />
             </div>
+
+            {erroEnvio && (
+              <div style={{ padding: '8px 16px', background: '#7f1d1d', color: '#fecaca', fontSize: 12, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                <span>{erroEnvio}</span>
+                <button onClick={() => setErroEnvio(null)} style={{ background: 'none', border: 'none', color: '#fecaca', cursor: 'pointer' }}>×</button>
+              </div>
+            )}
 
             {/* Input */}
             {conversaAtual?.status !== 'resolvida' && (

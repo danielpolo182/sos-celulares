@@ -6,18 +6,28 @@ Lista de ações que precisam ser feitas manualmente fora do código.
 
 ## WhatsApp Business API (Meta)
 
+- [ ] **Rodar `supabase-whatsapp-fase3-migration.sql` no Supabase**
+  - Substitui o `supabase-whatsapp-migration.sql` (cria as tabelas, as colunas de mídia e o bucket `wa-media`)
+  - Sem ela a caixa de entrada `/whatsapp` não carrega e o webhook não grava mensagens
+
 - [ ] **Adicionar `META_APP_SECRET` nas variáveis de ambiente do Vercel**
   - Onde encontrar: Meta for Developers → seu App → Settings → Basic → App Secret
   - Variável: `META_APP_SECRET`
+  - Obrigatória: sem ela o webhook recusa todos os eventos (resposta 503)
 
 - [ ] **Adicionar `ANTHROPIC_API_KEY` nas variáveis de ambiente do Vercel**
   - Onde obter: console.anthropic.com → API Keys
   - Variável: `ANTHROPIC_API_KEY`
+  - Só é necessária para o bot; sem ela as mensagens chegam e a conversa vai para atendimento humano
 
 - [ ] **Configurar URL do webhook no Meta Business Manager**
-  - URL: `https://<seu-dominio>/api/whatsapp/webhook`
+  - URL: `https://www.octaos.com.br/api/whatsapp/webhook` (com `www`)
   - Campos a assinar: `messages`
   - Verify Token: copiar do painel Configurações → WhatsApp API
+
+- [ ] **Número oficial (41 99255-0123) em coexistência**
+  - A Meta só permite manter o número no aplicativo e na API ao mesmo tempo via Tech Provider ou parceiro
+  - Até lá, os testes usam o número de teste do app da Meta
 
 - [ ] **Criar e aguardar aprovação dos 5 templates de notificação de OS**
   - `os_aberta` — parâmetros: nome, número da OS

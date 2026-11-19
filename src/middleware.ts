@@ -30,9 +30,11 @@ export async function middleware(request: NextRequest) {
   const isRoot = path === '/'
   const isCadastro = path === '/cadastro'
   const isAuthCallback = path.startsWith('/auth/callback')
+  // Chamado pela Meta, sem sessão; a rota valida a assinatura de cada evento
+  const isWaWebhook = path === '/api/whatsapp/webhook'
 
   // Não autenticado — redireciona para login
-  if (!user && !isLoginPage && !isRoot && !isCadastro && !isAuthCallback) {
+  if (!user && !isLoginPage && !isRoot && !isCadastro && !isAuthCallback && !isWaWebhook) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)

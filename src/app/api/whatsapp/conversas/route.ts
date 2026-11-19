@@ -1,52 +1,37 @@
 // src/app/api/whatsapp/conversas/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
 import { sendMessage } from '@/lib/whatsapp/send'
 
 export const dynamic = 'force-dynamic'
 
-async function makeSupabase() {
-  const cookieStore = await cookies()
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => cookieStore.getAll(),
-        setAll: (values: { name: string; value: string; options: Record<string, unknown> }[]) =>
-          values.forEach(({ name, value, options }) => cookieStore.set(name, value, options)),
-      },
-    }
-  )
-}
-
 // GET /api/whatsapp/conversas — lista conversas com última mensagem
 export async function GET() {
-  const supabase = await makeSupabase()
+  const supabase = await createClient()
 
   const { data: conversas, error } = await supabase
     .from('wa_conversas')
     .select(`
-      id, telefone, status, atualizado_em,
+      id, telefone, nome_contato, status, atualizado_em,
       wa_mensagens(conteudo, direcao, criado_em)
     `)
     .order('atualizado_em', { ascending: false })
+    .order('criado_em', { referencedTable: 'wa_mensagens', ascending: false })
+    .limit(1, { referencedTable: 'wa_mensagens' })
     .limit(50)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Agrega última mensagem por conversa
   const data = (conversas ?? []).map(c => {
-    const msgs = Array.isArray(c.wa_mensagens) ? c.wa_mensagens : []
-    const sorted = [...msgs].sort((a, b) => new Date(b.criado_em).getTime() - new Date(a.criado_em).getTime())
+    const ultima = Array.isArray(c.wa_mensagens) ? c.wa_mensagens[0] : undefined
     return {
       id: c.id,
       telefone: c.telefone,
+      nome_contato: c.nome_contato,
       status: c.status,
       atualizado_em: c.atualizado_em,
-      ultima_mensagem: sorted[0]?.conteudo ?? '',
-      ultima_direcao: sorted[0]?.direcao ?? 'entrada',
+      ultima_mensagem: ultima?.conteudo ?? '',
+      ultima_direcao: ultima?.direcao ?? 'entrada',
     }
   })
 
@@ -55,7 +40,7 @@ export async function GET() {
 
 // POST /api/whatsapp/conversas — enviar mensagem ou resolver conversa
 export async function POST(request: NextRequest) {
-  const supabase = await makeSupabase()
+  const supabase = await createClient()
   const body = await request.json() as { conversaId: string; acao: 'enviar' | 'resolver'; texto?: string }
 
   const { conversaId, acao, texto } = body
@@ -87,12 +72,25 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (!config?.phone_number_id || !config?.access_token) {
-      return NextResponse.json({ error: 'wa_config não configurada' }, { status: 500 })
+      return NextResponse.json({ error: 'WhatsApp não configurado em Configurações → WhatsApp' }, { status: 500 })
     }
 
-    await sendMessage({ phone_number_id: config.phone_number_id, access_token: config.access_token }, conversa.telefone, texto)
+    try {
+      await sendMessage({ phone_number_id: config.phone_number_id, access_token: config.access_token }, conversa.telefone, texto)
+    } catch (err) {
+      const detalhe = err instanceof Error ? err.message : String(err)
+      // 131047: a Meta só aceita texto livre até 24h após a última mensagem do cliente
+      const foraDaJanela = detalhe.includes('131047')
+      return NextResponse.json({
+        error: foraDaJanela
+          ? 'Fora da janela de 24h: o cliente precisa mandar uma mensagem antes, ou use um modelo aprovado.'
+          : `A Meta recusou o envio: ${detalhe}`,
+      }, { status: 502 })
+    }
+
     await supabase.from('wa_mensagens').insert({ conversa_id: conversaId, direcao: 'saida', conteudo: texto })
-    await supabase.from('wa_conversas').update({ atualizado_em: new Date().toISOString() }).eq('id', conversaId)
+    // Quem responde pela caixa de entrada assume a conversa: o bot para de responder
+    await supabase.from('wa_conversas').update({ atualizado_em: new Date().toISOString(), status: 'humano' }).eq('id', conversaId)
 
     return NextResponse.json({ ok: true })
   }
