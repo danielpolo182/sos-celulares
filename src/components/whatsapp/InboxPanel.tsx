@@ -372,6 +372,9 @@ export default function InboxPanel({ ativo = true, titulo = false, larguraLista 
                   style={{
                     alignSelf: m.direcao === 'saida' ? 'flex-end' : 'flex-start',
                     maxWidth: '70%',
+                    // Coluna flexível: o balão fica do tamanho do texto mesmo com um aviso mais largo embaixo
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: m.direcao === 'saida' ? 'flex-end' : 'flex-start',
                   }}
                 >
                   <div style={{
