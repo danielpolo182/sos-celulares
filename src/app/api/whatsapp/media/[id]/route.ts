@@ -32,6 +32,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     .createSignedUrl(msg.media_path, 3600)
 
   if (error || !assinada?.signedUrl) {
+    console.error('[WA media] link assinado', error?.message)
     return NextResponse.json({ error: 'falha ao gerar link' }, { status: 500 })
   }
   return NextResponse.redirect(assinada.signedUrl)

@@ -116,6 +116,24 @@ export default function WhatsAppInboxPage() {
     setMensagens((data as Mensagem[]) ?? [])
   }, [supabase])
 
+  // A mensagem de mídia chega antes de o servidor terminar de baixar o arquivo.
+  // Não depende só do aviso em tempo real: consulta de novo algumas vezes.
+  const buscarMidia = useCallback((id: string, tentativa = 0) => {
+    const esperas = [3000, 6000, 12000, 30000, 60000]
+    setTimeout(async () => {
+      const { data } = await supabase.from('wa_mensagens').select(CAMPOS_MENSAGEM).eq('id', id).maybeSingle()
+      const atual = data as Mensagem | null
+      if (atual?.media_path) {
+        setMensagens(prev => prev.map(m => m.id === id ? atual : m))
+      } else if (tentativa < esperas.length - 1) {
+        buscarMidia(id, tentativa + 1)
+      } else {
+        // Redesenha para trocar "baixando arquivo…" por "arquivo indisponível"
+        setMensagens(prev => [...prev])
+      }
+    }, esperas[tentativa])
+  }, [supabase])
+
   useEffect(() => {
     carregarConversas()
   }, [carregarConversas])
@@ -129,6 +147,7 @@ export default function WhatsAppInboxPage() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'wa_mensagens', filter: `conversa_id=eq.${selecionada}` }, payload => {
         const nova = payload.new as Mensagem
         setMensagens(prev => prev.some(m => m.id === nova.id) ? prev : [...prev, nova])
+        if (nova.tipo && nova.tipo !== 'texto' && !nova.media_path) buscarMidia(nova.id)
       })
       // O caminho do arquivo chega num UPDATE, depois que o webhook termina o download
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wa_mensagens', filter: `conversa_id=eq.${selecionada}` }, payload => {
@@ -138,7 +157,7 @@ export default function WhatsAppInboxPage() {
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
-  }, [selecionada, supabase, carregarMensagens])
+  }, [selecionada, supabase, carregarMensagens, buscarMidia])
 
   // Realtime para novas conversas / badge
   useEffect(() => {

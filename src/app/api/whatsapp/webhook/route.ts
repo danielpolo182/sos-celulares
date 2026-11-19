@@ -188,10 +188,14 @@ async function processarMensagem(
     if (norm.media) {
       const salvo = await baixarESalvarMidia(waConfig, norm.media.id, `${config.filial_id}/${conversaId}`, supabase)
       if (salvo) {
-        await supabase
+        const { error: erroMidia } = await supabase
           .from('wa_mensagens')
           .update({ media_path: salvo.path, media_mime: salvo.mime })
           .eq('id', gravada.id)
+        if (erroMidia) console.error('[WA media] gravar caminho', erroMidia.message)
+        else console.log('[WA media] arquivo salvo', { tipo: norm.tipo, mime: salvo.mime })
+      } else {
+        console.error('[WA media] arquivo não salvo', { tipo: norm.tipo })
       }
     }
 
