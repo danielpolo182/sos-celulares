@@ -209,7 +209,8 @@ export default function Sidebar() {
   }
 
   async function logout() {
-    await supabase.auth.signOut()
+    // Só este navegador: o padrão do Supabase encerra a sessão em todos os aparelhos do usuário
+    await supabase.auth.signOut({ scope: 'local' })
     router.push('/login')
   }
 
