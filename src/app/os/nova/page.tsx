@@ -573,6 +573,14 @@ export default function NovaOSPage() {
 
     try { await supabase.from('events').insert({ type: 'OS_CRIADA', entity: 'os', payload: { clienteId, defeito, modelo: modeloSelecionado?.modelo } }) } catch { /* non-critical */ }
 
+    // Aviso de entrada pelo WhatsApp; só sai se a loja tiver ligado esse aviso
+    fetch('/api/whatsapp/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ osId: osData.id, evento: 'entrada' }),
+      keepalive: true,
+    }).catch(() => {})
+
     setSaving(false)
 
     // Abre modal de ações pós-salvamento

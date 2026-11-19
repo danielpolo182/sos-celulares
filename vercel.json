@@ -8,6 +8,10 @@
     {
       "path": "/api/scraping",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/whatsapp/lembretes",
+      "schedule": "0 13 * * *"
     }
   ]
 }

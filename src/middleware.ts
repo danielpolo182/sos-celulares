@@ -32,9 +32,11 @@ export async function middleware(request: NextRequest) {
   const isAuthCallback = path.startsWith('/auth/callback')
   // Chamados pela Meta e pela YCloud, sem sessão; cada rota valida a assinatura do evento
   const isWaWebhook = path === '/api/whatsapp/webhook' || path.startsWith('/api/whatsapp/ycloud/')
+  // Rotina diária chamada pelo agendador da Vercel, sem sessão; a rota exige o CRON_SECRET
+  const isWaCron = path === '/api/whatsapp/lembretes'
 
   // Não autenticado — redireciona para login
-  if (!user && !isLoginPage && !isRoot && !isCadastro && !isAuthCallback && !isWaWebhook) {
+  if (!user && !isLoginPage && !isRoot && !isCadastro && !isAuthCallback && !isWaWebhook && !isWaCron) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)

@@ -58,6 +58,18 @@ export function normalizarDestino(to: string): string {
   return digitos
 }
 
+/**
+ * As duas formas em que um celular brasileiro pode estar gravado, com e sem o
+ * nono dígito: o cadastro do cliente costuma ter o 9 e o id do WhatsApp, não.
+ */
+export function variantesDeTelefone(telefone: string): string[] {
+  const d = telefone.replace(/\D/g, '')
+  if (!d.startsWith('55')) return [d]
+  if (d.length === 13 && d[4] === '9') return [d, `${d.slice(0, 4)}${d.slice(5)}`]
+  if (d.length === 12 && /[6-9]/.test(d[4])) return [d, `${d.slice(0, 4)}9${d.slice(4)}`]
+  return [d]
+}
+
 type CorpoMensagem =
   | { type: 'text'; text: { body: string } }
   | { type: 'template'; template: { name: string; language: { code: string }; components: unknown[] } }

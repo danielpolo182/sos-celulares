@@ -5,7 +5,7 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { processBot } from './bot'
 import { escalateToHuman } from './escalate'
-import { sendMessage, WaConfig } from './send'
+import { sendMessage, variantesDeTelefone, WaConfig } from './send'
 import { MidiaSalva } from './media'
 
 export type MidiaRecebida = { id: string; mime_type?: string; caption?: string; filename?: string; link?: string }
@@ -130,7 +130,7 @@ export async function processarMensagem(
   const { data: existente } = await supabase
     .from('wa_conversas')
     .select('id, status')
-    .eq('telefone', telefone)
+    .in('telefone', variantesDeTelefone(telefone))
     .eq('filial_id', ctx.filialId)
     .order('atualizado_em', { ascending: false })
     .limit(1)
@@ -228,7 +228,7 @@ export async function registrarEco(
   const { data: existente } = await supabase
     .from('wa_conversas')
     .select('id')
-    .eq('telefone', telefone)
+    .in('telefone', variantesDeTelefone(telefone))
     .eq('filial_id', ctx.filialId)
     .order('atualizado_em', { ascending: false })
     .limit(1)

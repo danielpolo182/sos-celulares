@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatarCNPJ, formatarCPF, formatarTelefone, validarCNPJ, validarCPF, validarTelefone } from '@/lib/validators'
+import { AVISOS, ConfigAvisos, MODELOS_AVISO, lerConfigAvisos, lerListaDeDias } from '@/lib/whatsapp/avisos'
 
 // ─── Tipos ────────────────────────────────────────────────
 type WaConfig = {
@@ -272,6 +273,10 @@ export default function ConfiguracoesPage() {
   const [waSaving, setWaSaving] = useState(false)
   const [waMsg, setWaMsg] = useState('')
   const [waYCloudDisponivel, setWaYCloudDisponivel] = useState(false)
+  // null enquanto a migração dos avisos não foi rodada
+  const [waAvisos, setWaAvisos] = useState<ConfigAvisos | null>(null)
+  const [waLembreteDias, setWaLembreteDias] = useState('')
+  const [waModeloCopiado, setWaModeloCopiado] = useState('')
   const [waWabaId, setWaWabaId] = useState('')
   const [waDiag, setWaDiag] = useState<{ ok: boolean; linhas: string[] } | null>(null)
   const [waDiagLoading, setWaDiagLoading] = useState(false)
@@ -374,6 +379,13 @@ export default function ConfiguracoesPage() {
       setWaYCloudDisponivel(false)
       const { data: waCfg } = await supabase.from('wa_config').select(waBase).single()
       if (waCfg) setWaConfig(waCfg as WaConfig)
+    }
+    // Consulta à parte: se a coluna ainda não existir, o resto da tela não é afetado
+    const waAv = await supabase.from('wa_config').select('avisos').single()
+    if (!waAv.error && waAv.data) {
+      const cfgAvisos = lerConfigAvisos(waAv.data.avisos)
+      setWaAvisos(cfgAvisos)
+      setWaLembreteDias(cfgAvisos.lembrete_dias.join(', '))
     }
     const { data: pixCfg } = await supabase
       .from('pix_config')
@@ -519,7 +531,14 @@ export default function ConfiguracoesPage() {
         ycloud_numero: waConfig.ycloud_numero || null,
       } : {}),
     })
-    setWaMsg(error ? '❌ Erro ao salvar' : '✅ Configurações salvas!')
+    let erroAvisos = false
+    if (!error && waAvisos) {
+      const avisos: ConfigAvisos = { ...waAvisos, lembrete_dias: lerListaDeDias(waLembreteDias) }
+      const res = await supabase.from('wa_config').update({ avisos }).eq('filial_id', perfil.filial_id)
+      erroAvisos = !!res.error
+      if (!res.error) { setWaAvisos(avisos); setWaLembreteDias(avisos.lembrete_dias.join(', ')) }
+    }
+    setWaMsg(error ? '❌ Erro ao salvar' : erroAvisos ? '❌ Conexão salva, mas os avisos automáticos não foram gravados' : '✅ Configurações salvas!')
     setWaSaving(false)
   }
 
@@ -1426,21 +1445,59 @@ export default function ConfiguracoesPage() {
 
             {/* Seção 3: Templates */}
             <div style={{ marginBottom: 32, borderTop: '1px solid #f1f5f9', paddingTop: 24 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 12 }}>Templates de Notificação de OS</div>
-              {[
-                { status: 'aberta', template: 'os_aberta', vars: '{{nome}}, {{numero}}' },
-                { status: 'em_andamento', template: 'os_em_andamento', vars: '{{nome}}, {{numero}}' },
-                { status: 'pronta', template: 'os_pronta', vars: '{{nome}}, {{numero}}, {{valor}}' },
-                { status: 'entregue', template: 'os_entregue', vars: '{{nome}}, {{numero}}' },
-                { status: 'cancelada', template: 'os_cancelada', vars: '{{nome}}, {{numero}}' },
-              ].map(t => (
-                <div key={t.status} style={{ display: 'grid', gridTemplateColumns: '120px 1fr 130px', gap: 8, alignItems: 'center', background: '#f8fafc', borderRadius: 6, padding: '8px 12px', marginBottom: 6 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>{t.status}</div>
-                  <div style={{ fontSize: 11, color: '#64748b', fontFamily: 'monospace' }}>{t.template} · {t.vars}</div>
-                  <a href="https://business.facebook.com/wa/manage/message-templates/" target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#2563eb', textDecoration: 'none' }}>Criar no Meta →</a>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>Avisos automáticos de OS</div>
+              <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12, lineHeight: 1.5 }}>
+                Cada aviso usa um modelo de mensagem cadastrado no provedor com o nome e o texto abaixo. Ligue o aviso só depois de a Meta aprovar o modelo; antes disso o envio é recusado.
+              </div>
+              {!waAvisos && (
+                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#92400e', marginBottom: 12 }}>
+                  Para ligar os avisos, rode antes o arquivo <code>supabase-whatsapp-avisos-migration.sql</code> no banco.
                 </div>
-              ))}
-              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>Templates criados no Meta Business Manager. Aprovação leva 24-48h.</div>
+              )}
+              {AVISOS.map(aviso => {
+                const m = MODELOS_AVISO[aviso]
+                const ligado = !!waAvisos?.[aviso]
+                return (
+                  <div key={aviso} style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 12px', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{m.titulo}</div>
+                        <div style={{ fontSize: 11, color: '#64748b' }}>{m.quando} · modelo <code>{m.modelo}</code></div>
+                      </div>
+                      <div
+                        role="switch"
+                        aria-checked={ligado}
+                        aria-label={`Aviso: ${m.titulo}`}
+                        onClick={() => setWaAvisos(c => c ? { ...c, [aviso]: !c[aviso] } : c)}
+                        style={{ flexShrink: 0, width: 40, height: 22, borderRadius: 11, cursor: waAvisos ? 'pointer' : 'not-allowed', opacity: waAvisos ? 1 : 0.5, background: ligado ? '#2563eb' : '#cbd5e1', position: 'relative', transition: 'background 0.2s' }}
+                      >
+                        <div style={{ position: 'absolute', top: 3, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.2s', left: ligado ? 21 : 3 }} />
+                      </div>
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 12, color: '#334155', lineHeight: 1.5, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '8px 10px' }}>{m.texto}</div>
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(m.texto); setWaModeloCopiado(aviso); setTimeout(() => setWaModeloCopiado(''), 2000) }}
+                      style={{ marginTop: 6, padding: '2px 8px', background: 'none', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: 4, fontSize: 11, cursor: 'pointer' }}
+                    >
+                      {waModeloCopiado === aviso ? 'Copiado ✓' : 'Copiar texto'}
+                    </button>
+                    {aviso === 'lembrete' && waAvisos && (
+                      <div style={{ marginTop: 8 }}>
+                        <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 4 }}>Dias depois de pronta em que o lembrete sai (separados por vírgula)</label>
+                        <input name="wa-lembrete-dias" autoComplete="off" style={{ width: 160, padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} value={waLembreteDias} onChange={e => setWaLembreteDias(e.target.value.replace(/[^\d, ]/g, ''))} placeholder="7, 30" />
+                      </div>
+                    )}
+                    {aviso === 'ultimo_aviso' && waAvisos && (
+                      <div style={{ marginTop: 8 }}>
+                        <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 4 }}>Dias depois de pronta em que o último aviso sai</label>
+                        <input name="wa-ultimo-aviso-dias" type="number" min={1} style={{ width: 100, padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} value={waAvisos.ultimo_aviso_dias} onChange={e => setWaAvisos(c => c ? { ...c, ultimo_aviso_dias: Math.max(1, parseInt(e.target.value, 10) || 1) } : c)} />
+                        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Só sai com o prazo de retirada impresso na OS já vencido. A taxa citada é a mesma impressa na OS.</div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>Lembretes e último aviso são verificados uma vez por dia, pela manhã, e valem para as OS que ficarem prontas a partir de agora.</div>
             </div>
 
             {waMsg && <div style={{ marginBottom: 12, fontSize: 13, color: waMsg.startsWith('✅') ? '#059669' : '#dc2626' }}>{waMsg}</div>}
