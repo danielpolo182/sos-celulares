@@ -30,6 +30,8 @@ function erroChaveYCloud(valor: string | null | undefined): string | null {
   if (!valor) return null
   if (/^https?:/i.test(valor) || valor.includes('/')) return 'Isto é um endereço, não a chave. Copie em YCloud → Developers → API key.'
   if (valor.startsWith('whsec_')) return 'Este é o segredo do webhook. A chave fica em YCloud → Developers → API key.'
+  // E-mail, senha com símbolos ou texto com espaço: preenchimento automático do navegador, não uma chave
+  if (!/^[A-Za-z0-9_-]{16,}$/.test(valor)) return 'Isto não parece uma chave de API. Copie em YCloud → Developers → API key.'
   return null
 }
 
@@ -38,6 +40,19 @@ function erroSegredoYCloud(valor: string | null | undefined): string | null {
   if (/^https?:/i.test(valor)) return 'Isto é o endereço do webhook, não o segredo. Copie o valor "Secret" na lista de Webhooks da YCloud.'
   if (!valor.startsWith('whsec_')) return 'O segredo do webhook começa com "whsec_". Copie o valor "Secret" na lista de Webhooks da YCloud.'
   return null
+}
+
+/** Situação de uma credencial cujo valor salvo não é mostrado no campo. */
+function EstadoCredencial({ salva, erroDaSalva, nova, erro }: { salva: boolean; erroDaSalva: string | null; nova: string; erro: string | null }) {
+  if (nova) return <AvisoCredencial valor={nova} erro={erro} />
+  const ok = salva && !erroDaSalva
+  return (
+    <div style={{ marginTop: 4, fontSize: 11, color: ok ? '#16a34a' : '#dc2626' }}>
+      {ok ? '✓ Salva. Deixe o campo vazio para manter.'
+        : salva ? '⚠ O valor salvo está em formato inválido. Cole de novo.'
+        : '⚠ Ainda não cadastrada.'}
+    </div>
+  )
 }
 
 function AvisoCredencial({ valor, erro }: { valor: string | null | undefined; erro: string | null }) {
@@ -281,6 +296,9 @@ export default function ConfiguracoesPage() {
   const [waAvisos, setWaAvisos] = useState<ConfigAvisos | null>(null)
   const [waLembreteDias, setWaLembreteDias] = useState('')
   const [waModeloCopiado, setWaModeloCopiado] = useState('')
+  // Valores novos colados nos campos de credencial da YCloud; vazios quando não há troca
+  const [waChaveNova, setWaChaveNova] = useState('')
+  const [waSegredoNovo, setWaSegredoNovo] = useState('')
   // null enquanto a migração das regras do agente não foi rodada
   const [waBot, setWaBot] = useState<ConfigBot | null>(null)
   const [waNumerosTeste, setWaNumerosTeste] = useState('')
@@ -587,10 +605,13 @@ export default function ConfiguracoesPage() {
       setWaMsg('❌ O número da loja deve estar no formato internacional, ex.: +554192550123'); setWaSaving(false); return
     }
     if (waConfig.provedor === 'ycloud') {
-      const erroChave = erroChaveYCloud(waConfig.ycloud_api_key)
-      const erroSegredo = erroSegredoYCloud(waConfig.ycloud_webhook_secret)
+      const erroChave = erroChaveYCloud(waChaveNova)
+      const erroSegredo = erroSegredoYCloud(waSegredoNovo)
       if (erroChave) { setWaMsg(`❌ API Key da YCloud: ${erroChave}`); setWaSaving(false); return }
       if (erroSegredo) { setWaMsg(`❌ Segredo do webhook: ${erroSegredo}`); setWaSaving(false); return }
+      // Sem o segredo o OctaOS recusa todo evento do WhatsApp; sem a chave, nada é enviado
+      if (!waChaveNova && (!waConfig.ycloud_api_key || erroChaveYCloud(waConfig.ycloud_api_key))) { setWaMsg('❌ Falta a API Key da YCloud: sem ela o OctaOS não consegue enviar mensagens.'); setWaSaving(false); return }
+      if (!waSegredoNovo && (!waConfig.ycloud_webhook_secret || erroSegredoYCloud(waConfig.ycloud_webhook_secret))) { setWaMsg('❌ Falta o Segredo do webhook: sem ele o OctaOS recusa as mensagens recebidas.'); setWaSaving(false); return }
     }
     const { error } = await supabase.from('wa_config').upsert({
       filial_id: perfil.filial_id,
@@ -601,11 +622,20 @@ export default function ConfiguracoesPage() {
       bot_prompt: waConfig.bot_prompt,
       ...(waYCloudDisponivel ? {
         provedor: waConfig.provedor ?? 'meta',
-        ycloud_api_key: waConfig.ycloud_api_key || null,
-        ycloud_webhook_secret: waConfig.ycloud_webhook_secret || null,
+        // Credencial só é gravada quando um valor novo foi colado; a que está salva nunca é regravada nem apagada daqui
+        ...(waChaveNova ? { ycloud_api_key: waChaveNova } : {}),
+        ...(waSegredoNovo ? { ycloud_webhook_secret: waSegredoNovo } : {}),
         ycloud_numero: waConfig.ycloud_numero || null,
       } : {}),
     })
+    if (!error && (waChaveNova || waSegredoNovo)) {
+      setWaConfig(c => c ? {
+        ...c,
+        ycloud_api_key: waChaveNova || c.ycloud_api_key,
+        ycloud_webhook_secret: waSegredoNovo || c.ycloud_webhook_secret,
+      } : c)
+      setWaChaveNova(''); setWaSegredoNovo('')
+    }
     let erroAvisos = false
     if (!error && waAvisos) {
       const avisos: ConfigAvisos = { ...waAvisos, lembrete_dias: lerListaDeDias(waLembreteDias) }
@@ -1495,14 +1525,15 @@ export default function ConfiguracoesPage() {
                   </div>
                   <div>
                     <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>API Key da YCloud</label>
-                    <input name="wa-ycloud-api-key" type="text" autoComplete="off" spellCheck={false} data-lpignore="true" data-1p-ignore style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', ['WebkitTextSecurity' as string]: 'disc' } as React.CSSProperties} value={waConfig.ycloud_api_key ?? ''} onChange={e => setWaConfig(c => c ? { ...c, ycloud_api_key: e.target.value.trim() } : c)} placeholder="Painel YCloud → Developers → API Keys" />
-                    <AvisoCredencial valor={waConfig.ycloud_api_key} erro={erroChaveYCloud(waConfig.ycloud_api_key)} />
+                    {/* O valor salvo não volta para o campo: assim nem um salvamento com o campo vazio nem o preenchimento automático do navegador conseguem apagá-lo */}
+                    <input name="wa-ycloud-api-key" type="text" autoComplete="off" spellCheck={false} data-lpignore="true" data-1p-ignore style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', ['WebkitTextSecurity' as string]: 'disc' } as React.CSSProperties} value={waChaveNova} onChange={e => setWaChaveNova(e.target.value.trim())} placeholder={waConfig.ycloud_api_key ? 'Cole aqui só para trocar a chave' : 'Painel YCloud → Developers → API Keys'} />
+                    <EstadoCredencial salva={!!waConfig.ycloud_api_key} erroDaSalva={erroChaveYCloud(waConfig.ycloud_api_key)} nova={waChaveNova} erro={erroChaveYCloud(waChaveNova)} />
                   </div>
                 </div>
                 <div style={{ marginBottom: 12 }}>
                   <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Segredo do webhook (a YCloud mostra ao criar o endpoint)</label>
-                  <input name="wa-ycloud-webhook-secret" type="text" autoComplete="off" spellCheck={false} data-lpignore="true" data-1p-ignore style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', ['WebkitTextSecurity' as string]: 'disc' } as React.CSSProperties} value={waConfig.ycloud_webhook_secret ?? ''} onChange={e => setWaConfig(c => c ? { ...c, ycloud_webhook_secret: e.target.value.trim() } : c)} placeholder="whsec_..." />
-                  <AvisoCredencial valor={waConfig.ycloud_webhook_secret} erro={erroSegredoYCloud(waConfig.ycloud_webhook_secret)} />
+                  <input name="wa-ycloud-webhook-secret" type="text" autoComplete="off" spellCheck={false} data-lpignore="true" data-1p-ignore style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', ['WebkitTextSecurity' as string]: 'disc' } as React.CSSProperties} value={waSegredoNovo} onChange={e => setWaSegredoNovo(e.target.value.trim())} placeholder={waConfig.ycloud_webhook_secret ? 'Cole aqui só para trocar o segredo' : 'whsec_...'} />
+                  <EstadoCredencial salva={!!waConfig.ycloud_webhook_secret} erroDaSalva={erroSegredoYCloud(waConfig.ycloud_webhook_secret)} nova={waSegredoNovo} erro={erroSegredoYCloud(waSegredoNovo)} />
                 </div>
                 <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#0369a1', lineHeight: 1.6 }}>
                   URL do Webhook para cadastrar na YCloud:{' '}
