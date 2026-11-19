@@ -12,6 +12,11 @@ type WaConfig = {
   verify_token: string
   bot_ativo: boolean
   bot_prompt: string
+  // Presentes só depois da migração da YCloud
+  provedor?: 'meta' | 'ycloud'
+  ycloud_api_key?: string | null
+  ycloud_webhook_secret?: string | null
+  ycloud_numero?: string | null
 }
 
 type Config = {
@@ -241,6 +246,7 @@ export default function ConfiguracoesPage() {
   const [waConfig, setWaConfig] = useState<WaConfig | null>(null)
   const [waSaving, setWaSaving] = useState(false)
   const [waMsg, setWaMsg] = useState('')
+  const [waYCloudDisponivel, setWaYCloudDisponivel] = useState(false)
   const [waWabaId, setWaWabaId] = useState('')
   const [waDiag, setWaDiag] = useState<{ ok: boolean; linhas: string[] } | null>(null)
   const [waDiagLoading, setWaDiagLoading] = useState(false)
@@ -330,11 +336,20 @@ export default function ConfiguracoesPage() {
     setConfigs((c ?? []) as Config[])
     setQualidades((q ?? []) as Qualidade[])
     setNumeracoes((n ?? []) as NumeracaoConfig[])
-    const { data: waCfg } = await supabase
+    const waBase = 'phone_number_id, access_token, verify_token, bot_ativo, bot_prompt'
+    const waCompleto = await supabase
       .from('wa_config')
-      .select('phone_number_id, access_token, verify_token, bot_ativo, bot_prompt')
+      .select(`${waBase}, provedor, ycloud_api_key, ycloud_webhook_secret, ycloud_numero`)
       .single()
-    if (waCfg) setWaConfig(waCfg as WaConfig)
+    if (!waCompleto.error) {
+      setWaYCloudDisponivel(true)
+      if (waCompleto.data) setWaConfig(waCompleto.data as WaConfig)
+    } else {
+      // Banco sem as colunas da YCloud (migração não rodada): a tela segue só com a Meta
+      setWaYCloudDisponivel(false)
+      const { data: waCfg } = await supabase.from('wa_config').select(waBase).single()
+      if (waCfg) setWaConfig(waCfg as WaConfig)
+    }
     const { data: pixCfg } = await supabase
       .from('pix_config')
       .select('mp_access_token, mp_webhook_secret, ativo')
@@ -456,6 +471,9 @@ export default function ConfiguracoesPage() {
     if (waConfig.phone_number_id && !/^\d+$/.test(waConfig.phone_number_id)) {
       setWaMsg('❌ O Phone Number ID deve ter só números'); setWaSaving(false); return
     }
+    if (waConfig.provedor === 'ycloud' && waConfig.ycloud_numero && !/^\+\d{10,15}$/.test(waConfig.ycloud_numero)) {
+      setWaMsg('❌ O número da loja deve estar no formato internacional, ex.: +5541992550123'); setWaSaving(false); return
+    }
     const { error } = await supabase.from('wa_config').upsert({
       filial_id: perfil.filial_id,
       phone_number_id: waConfig.phone_number_id || null,
@@ -463,6 +481,12 @@ export default function ConfiguracoesPage() {
       verify_token: waConfig.verify_token,
       bot_ativo: waConfig.bot_ativo,
       bot_prompt: waConfig.bot_prompt,
+      ...(waYCloudDisponivel ? {
+        provedor: waConfig.provedor ?? 'meta',
+        ycloud_api_key: waConfig.ycloud_api_key || null,
+        ycloud_webhook_secret: waConfig.ycloud_webhook_secret || null,
+        ycloud_numero: waConfig.ycloud_numero || null,
+      } : {}),
     })
     setWaMsg(error ? '❌ Erro ao salvar' : '✅ Configurações salvas!')
     setWaSaving(false)
@@ -1248,7 +1272,27 @@ export default function ConfiguracoesPage() {
 
             {/* Seção 1: Conexão */}
             <div style={{ marginBottom: 32 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 12 }}>Conexão Meta Business</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 12 }}>Conexão</div>
+
+              {waYCloudDisponivel && (
+                <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+                  {([
+                    ['meta', 'Meta direto', 'O número fica só na API'],
+                    ['ycloud', 'YCloud (coexistência)', 'O número continua no aplicativo do celular'],
+                  ] as const).map(([valor, titulo, descricao]) => {
+                    const ativo = (waConfig?.provedor ?? 'meta') === valor
+                    return (
+                      <button key={valor} onClick={() => setWaConfig(c => c ? { ...c, provedor: valor } : c)}
+                        style={{ flex: 1, minWidth: 200, textAlign: 'left', padding: '10px 14px', borderRadius: 8, cursor: 'pointer', border: ativo ? '2px solid #2563eb' : '1px solid #e2e8f0', background: ativo ? '#eff6ff' : '#fff' }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: ativo ? '#1d4ed8' : '#0f172a' }}>{titulo}</div>
+                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{descricao}</div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+
+              {(waConfig?.provedor ?? 'meta') === 'meta' && (<>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 12 }}>
                 <div>
                   <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Phone Number ID</label>
@@ -1302,6 +1346,32 @@ export default function ConfiguracoesPage() {
                   </div>
                 )}
               </div>
+              </>)}
+
+              {waConfig?.provedor === 'ycloud' && (<>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 12 }}>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Número da loja (formato internacional)</label>
+                    <input name="wa-ycloud-numero" autoComplete="off" data-lpignore="true" data-1p-ignore style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} value={waConfig.ycloud_numero ?? ''} onChange={e => setWaConfig(c => c ? { ...c, ycloud_numero: e.target.value.replace(/[^\d+]/g, '') } : c)} placeholder="+5541992550123" />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>API Key da YCloud</label>
+                    <input name="wa-ycloud-api-key" type="text" autoComplete="off" spellCheck={false} data-lpignore="true" data-1p-ignore style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', ['WebkitTextSecurity' as string]: 'disc' } as React.CSSProperties} value={waConfig.ycloud_api_key ?? ''} onChange={e => setWaConfig(c => c ? { ...c, ycloud_api_key: e.target.value.trim() } : c)} placeholder="Painel YCloud → Developers → API Keys" />
+                  </div>
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Segredo do webhook (a YCloud mostra ao criar o endpoint)</label>
+                  <input name="wa-ycloud-webhook-secret" type="text" autoComplete="off" spellCheck={false} data-lpignore="true" data-1p-ignore style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', ['WebkitTextSecurity' as string]: 'disc' } as React.CSSProperties} value={waConfig.ycloud_webhook_secret ?? ''} onChange={e => setWaConfig(c => c ? { ...c, ycloud_webhook_secret: e.target.value.trim() } : c)} placeholder="whsec_..." />
+                </div>
+                <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#0369a1', lineHeight: 1.6 }}>
+                  URL do Webhook para cadastrar na YCloud:{' '}
+                  <strong style={{ wordBreak: 'break-all' }}>{`https://www.octaos.com.br/api/whatsapp/ycloud/${waConfig.verify_token}`}</strong>
+                  <button onClick={() => navigator.clipboard.writeText(`https://www.octaos.com.br/api/whatsapp/ycloud/${waConfig.verify_token}`)} style={{ marginLeft: 8, padding: '2px 8px', background: '#0369a1', color: '#fff', border: 'none', borderRadius: 4, fontSize: 11, cursor: 'pointer' }}>Copiar</button>
+                  <div style={{ marginTop: 6 }}>
+                    Eventos a ativar: <code>whatsapp.inbound_message.received</code>, <code>whatsapp.message.updated</code> e <code>whatsapp.smb.message.echoes</code>.
+                  </div>
+                </div>
+              </>)}
             </div>
 
             {/* Seção 2: Bot */}

@@ -1,6 +1,7 @@
 // src/lib/whatsapp/notify.ts
 import { createClient } from '@supabase/supabase-js'
 import { sendTemplate } from './send'
+import { buscarConfigEnvio } from './config'
 
 type TemplateConfig = {
   name: string
@@ -60,19 +61,14 @@ export async function notifyStatusChange(osId: string, newStatus: string): Promi
   if (!cliente?.telefone) return
   if ((os.wa_enviado as Record<string, boolean> | null)?.[newStatus]) return
 
-  const { data: config } = await supabase
-    .from('wa_config')
-    .select('phone_number_id, access_token')
-    .eq('filial_id', os.filial_id)
-    .single()
-
-  if (!config?.phone_number_id || !config?.access_token) return
+  const envio = await buscarConfigEnvio(supabase, os.filial_id)
+  if (!envio) return
 
   const raw = (cliente.telefone as string).replace(/\D/g, '')
   const to = raw.startsWith('55') ? raw : `55${raw}`
 
   await sendTemplate(
-    { phone_number_id: config.phone_number_id, access_token: config.access_token },
+    envio,
     to,
     template.name,
     template.params({ clientes: { nome: cliente.nome as string | null }, numero: os.numero, valor_final: os.valor_final, valor_orcamento: os.valor_orcamento })

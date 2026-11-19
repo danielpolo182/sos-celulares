@@ -1,10 +1,44 @@
 // src/lib/whatsapp/send.ts
 export const META_API = 'https://graph.facebook.com/v26.0'
+export const YCLOUD_API = 'https://api.ycloud.com/v2'
 
-export type WaConfig = {
+export type WaConfigMeta = {
+  provedor?: 'meta'
   phone_number_id: string
   access_token: string
 }
+
+/** Parceiro usado na coexistência: o número continua no aplicativo WhatsApp Business. */
+export type WaConfigYCloud = {
+  provedor: 'ycloud'
+  ycloud_api_key: string
+  /** Número da loja em formato internacional, ex.: +5541992550123 */
+  ycloud_numero: string
+}
+
+export type WaConfig = WaConfigMeta | WaConfigYCloud
+
+type LinhaWaConfig = {
+  provedor?: string | null
+  phone_number_id?: string | null
+  access_token?: string | null
+  ycloud_api_key?: string | null
+  ycloud_numero?: string | null
+}
+
+/** Monta a configuração de envio a partir da linha de wa_config; null se faltar credencial do provedor escolhido. */
+export function configDeEnvio(linha: LinhaWaConfig | null | undefined): WaConfig | null {
+  if (!linha) return null
+  if (linha.provedor === 'ycloud') {
+    if (!linha.ycloud_api_key || !linha.ycloud_numero) return null
+    return { provedor: 'ycloud', ycloud_api_key: linha.ycloud_api_key, ycloud_numero: linha.ycloud_numero }
+  }
+  if (!linha.phone_number_id || !linha.access_token) return null
+  return { provedor: 'meta', phone_number_id: linha.phone_number_id, access_token: linha.access_token }
+}
+
+/** Colunas de wa_config que configDeEnvio precisa. */
+export const COLUNAS_ENVIO = 'provedor, phone_number_id, access_token, ycloud_api_key, ycloud_numero'
 
 /**
  * O WhatsApp identifica celulares de boa parte do Brasil sem o nono dígito
@@ -21,33 +55,40 @@ export function normalizarDestino(to: string): string {
   return digitos
 }
 
-// A Meta responde 200 assim que aceita a mensagem; a entrega (ou a falha) chega
-// depois, pelo webhook, identificada por este id.
-async function idDaMensagem(res: Response): Promise<string | null> {
-  const json = (await res.json().catch(() => null)) as { messages?: { id?: string }[] } | null
-  return json?.messages?.[0]?.id ?? null
+type CorpoMensagem =
+  | { type: 'text'; text: { body: string } }
+  | { type: 'template'; template: { name: string; language: { code: string }; components: unknown[] } }
+
+// Os dois provedores respondem 200 assim que aceitam a mensagem; a entrega (ou a
+// falha) chega depois, pelo webhook, identificada pelo id devolvido aqui.
+async function enviar(config: WaConfig, to: string, corpo: CorpoMensagem, rotulo: string): Promise<string | null> {
+  const destino = normalizarDestino(to)
+
+  const res = config.provedor === 'ycloud'
+    ? await fetch(`${YCLOUD_API}/whatsapp/messages/sendDirectly`, {
+        method: 'POST',
+        headers: { 'X-API-Key': config.ycloud_api_key, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: config.ycloud_numero, to: `+${destino}`, ...corpo }),
+      })
+    : await fetch(`${META_API}/${config.phone_number_id}/messages`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${config.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messaging_product: 'whatsapp', to: destino, ...corpo }),
+      })
+
+  if (!res.ok) {
+    const err = await res.text()
+    console.error(`[WA ${rotulo}]`, err)
+    throw new Error(`Erro do provedor: ${err}`)
+  }
+
+  const json = (await res.json().catch(() => null)) as { id?: string; messages?: { id?: string }[] } | null
+  // YCloud devolve o id na raiz; a Meta, em messages[0].id
+  return json?.id ?? json?.messages?.[0]?.id ?? null
 }
 
 export async function sendMessage(config: WaConfig, to: string, text: string): Promise<string | null> {
-  const res = await fetch(`${META_API}/${config.phone_number_id}/messages`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${config.access_token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to: normalizarDestino(to),
-      type: 'text',
-      text: { body: text },
-    }),
-  })
-  if (!res.ok) {
-    const err = await res.text()
-    console.error('[WA sendMessage]', err)
-    throw new Error(`Meta API error: ${err}`)
-  }
-  return idDaMensagem(res)
+  return enviar(config, to, { type: 'text', text: { body: text } }, 'sendMessage')
 }
 
 export async function sendTemplate(
@@ -62,23 +103,10 @@ export async function sendTemplate(
       ? [{ type: 'body', parameters: params.map(p => ({ type: 'text', text: p })) }]
       : []
 
-  const res = await fetch(`${META_API}/${config.phone_number_id}/messages`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${config.access_token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to: normalizarDestino(to),
-      type: 'template',
-      template: { name: templateName, language: { code: languageCode }, components },
-    }),
-  })
-  if (!res.ok) {
-    const err = await res.text()
-    console.error('[WA sendTemplate]', err)
-    throw new Error(`Meta API error: ${err}`)
-  }
-  return idDaMensagem(res)
+  return enviar(
+    config,
+    to,
+    { type: 'template', template: { name: templateName, language: { code: languageCode }, components } },
+    'sendTemplate'
+  )
 }

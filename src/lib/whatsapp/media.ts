@@ -1,6 +1,6 @@
 // src/lib/whatsapp/media.ts
 import { SupabaseClient } from '@supabase/supabase-js'
-import { META_API, WaConfig } from './send'
+import { META_API, WaConfigMeta } from './send'
 
 export const WA_MEDIA_BUCKET = 'wa-media'
 
@@ -26,17 +26,59 @@ const EXT_POR_MIME: Record<string, string> = {
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
 }
 
+export type MidiaSalva = { path: string; mime: string }
+
 /**
- * Baixa uma mídia recebida pela Cloud API e guarda no bucket privado.
- * A URL da Meta expira em minutos e o media id em ~30 dias, por isso persistimos o arquivo.
+ * Baixa um arquivo e guarda no bucket privado. Os links dos provedores expiram
+ * (minutos a dias), por isso o arquivo é persistido do nosso lado.
  * Retorna null se não conseguir (a mensagem continua registrada, só sem o arquivo).
  */
+async function baixarParaBucket(
+  url: string,
+  headers: Record<string, string>,
+  mimeInformado: string | null | undefined,
+  destino: { pasta: string; nome: string },
+  supabase: SupabaseClient
+): Promise<MidiaSalva | null> {
+  const res = await fetch(url, { headers })
+  if (!res.ok) {
+    console.error('[WA media] download', destino.nome, res.status)
+    return null
+  }
+  const tamanho = Number(res.headers.get('content-length') ?? 0)
+  if (tamanho > MAX_BYTES) {
+    console.error('[WA media] arquivo grande demais', destino.nome, tamanho)
+    return null
+  }
+  const buffer = Buffer.from(await res.arrayBuffer())
+  if (buffer.length > MAX_BYTES) {
+    console.error('[WA media] arquivo grande demais', destino.nome, buffer.length)
+    return null
+  }
+
+  // "audio/ogg; codecs=opus" -> "audio/ogg"
+  const mime = (mimeInformado ?? res.headers.get('content-type') ?? 'application/octet-stream')
+    .split(';')[0]
+    .trim()
+  const path = `${destino.pasta}/${destino.nome}.${EXT_POR_MIME[mime] ?? 'bin'}`
+
+  const { error } = await supabase.storage
+    .from(WA_MEDIA_BUCKET)
+    .upload(path, buffer, { contentType: mime, upsert: true })
+  if (error) {
+    console.error('[WA media] upload', destino.nome, error.message)
+    return null
+  }
+  return { path, mime }
+}
+
+/** Mídia recebida direto da Cloud API da Meta: resolve o media id em uma URL temporária e baixa. */
 export async function baixarESalvarMidia(
-  config: WaConfig,
+  config: WaConfigMeta,
   mediaId: string,
   pasta: string,
   supabase: SupabaseClient
-): Promise<{ path: string; mime: string } | null> {
+): Promise<MidiaSalva | null> {
   const auth = { Authorization: `Bearer ${config.access_token}` }
 
   const metaRes = await fetch(`${META_API}/${mediaId}`, { headers: auth })
@@ -44,32 +86,28 @@ export async function baixarESalvarMidia(
     console.error('[WA media] metadados', mediaId, await metaRes.text())
     return null
   }
-  const meta = (await metaRes.json()) as { url?: string; mime_type?: string; file_size?: number }
-  if (!meta.url) return null
-  if ((meta.file_size ?? 0) > MAX_BYTES) {
-    console.error('[WA media] arquivo grande demais', mediaId, meta.file_size)
+  const meta = (await metaRes.json()) as { url?: string; mime_type?: string }
+  if (!meta.url) {
+    console.error('[WA media] metadados sem url', mediaId)
     return null
   }
+  return baixarParaBucket(meta.url, auth, meta.mime_type, { pasta, nome: mediaId }, supabase)
+}
 
-  const binRes = await fetch(meta.url, { headers: auth })
-  if (!binRes.ok) {
-    console.error('[WA media] download', mediaId, binRes.status)
+/** Mídia recebida pela YCloud: o evento já traz o link de download. */
+export async function baixarESalvarMidiaYCloud(
+  apiKey: string,
+  midia: { link: string; id: string; mime: string | null },
+  pasta: string,
+  supabase: SupabaseClient
+): Promise<MidiaSalva | null> {
+  // A chave só acompanha o pedido quando o link é mesmo da YCloud
+  let headers: Record<string, string> = {}
+  try {
+    if (new URL(midia.link).hostname === 'api.ycloud.com') headers = { 'X-API-Key': apiKey }
+  } catch {
+    console.error('[WA media] link inválido', midia.id)
     return null
   }
-  const buffer = Buffer.from(await binRes.arrayBuffer())
-
-  // "audio/ogg; codecs=opus" -> "audio/ogg"
-  const mime = (meta.mime_type ?? binRes.headers.get('content-type') ?? 'application/octet-stream')
-    .split(';')[0]
-    .trim()
-  const path = `${pasta}/${mediaId}.${EXT_POR_MIME[mime] ?? 'bin'}`
-
-  const { error } = await supabase.storage
-    .from(WA_MEDIA_BUCKET)
-    .upload(path, buffer, { contentType: mime, upsert: true })
-  if (error) {
-    console.error('[WA media] upload', mediaId, error.message)
-    return null
-  }
-  return { path, mime }
+  return baixarParaBucket(midia.link, headers, midia.mime, { pasta, nome: midia.id }, supabase)
 }

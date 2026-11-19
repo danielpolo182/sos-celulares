@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { sendMessage } from '@/lib/whatsapp/send'
+import { buscarConfigEnvio } from '@/lib/whatsapp/config'
 
 export const dynamic = 'force-dynamic'
 
@@ -65,19 +66,14 @@ export async function POST(request: NextRequest) {
   if (acao === 'enviar') {
     if (!texto?.trim()) return NextResponse.json({ error: 'texto é obrigatório' }, { status: 400 })
 
-    const { data: config } = await supabase
-      .from('wa_config')
-      .select('phone_number_id, access_token')
-      .eq('filial_id', conversa.filial_id)
-      .single()
-
-    if (!config?.phone_number_id || !config?.access_token) {
+    const envio = await buscarConfigEnvio(supabase, conversa.filial_id)
+    if (!envio) {
       return NextResponse.json({ error: 'WhatsApp não configurado em Configurações → WhatsApp' }, { status: 500 })
     }
 
     let waMessageId: string | null = null
     try {
-      waMessageId = await sendMessage({ phone_number_id: config.phone_number_id, access_token: config.access_token }, conversa.telefone, texto)
+      waMessageId = await sendMessage(envio, conversa.telefone, texto)
     } catch (err) {
       const detalhe = err instanceof Error ? err.message : String(err)
       // 131047: a Meta só aceita texto livre até 24h após a última mensagem do cliente
@@ -85,7 +81,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         error: foraDaJanela
           ? 'Fora da janela de 24h: o cliente precisa mandar uma mensagem antes, ou use um modelo aprovado.'
-          : `A Meta recusou o envio: ${detalhe}`,
+          : `O envio foi recusado: ${detalhe}`,
       }, { status: 502 })
     }
 
