@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { formatarCNPJ, formatarCPF, formatarTelefone, validarCNPJ, validarCPF, validarTelefone } from '@/lib/validators'
 import { AVISOS, ConfigAvisos, MODELOS_AVISO, lerConfigAvisos, lerListaDeDias } from '@/lib/whatsapp/avisos'
 import { ConfigBot, lerConfigBot, lerNumerosDeTeste } from '@/lib/whatsapp/botRegras'
+import { LIMITE_MB, TIPO_POR_MIME } from '@/lib/whatsapp/materiais'
 
 // ─── Tipos ────────────────────────────────────────────────
 type WaConfig = {
@@ -281,6 +282,14 @@ export default function ConfiguracoesPage() {
   // null enquanto a migração das regras do agente não foi rodada
   const [waBot, setWaBot] = useState<ConfigBot | null>(null)
   const [waNumerosTeste, setWaNumerosTeste] = useState('')
+  // null enquanto a tabela de materiais do agente não existe
+  const [waMateriais, setWaMateriais] = useState<{ id: string; titulo: string; quando_enviar: string; tipo: string; legenda: string | null }[] | null>(null)
+  const [matTitulo, setMatTitulo] = useState('')
+  const [matQuando, setMatQuando] = useState('')
+  const [matLegenda, setMatLegenda] = useState('')
+  const [matEnviando, setMatEnviando] = useState(false)
+  const [matMsg, setMatMsg] = useState('')
+  const matArquivo = useRef<HTMLInputElement>(null)
   // null enquanto a tabela de respostas memorizadas não existe
   const [waMemoria, setWaMemoria] = useState<{ id: string; assunto: string; resposta: string; criado_em: string; valido_ate: string | null }[] | null>(null)
   const [waWabaId, setWaWabaId] = useState('')
@@ -401,6 +410,8 @@ export default function ConfiguracoesPage() {
     }
     const memoria = await supabase.from('wa_conhecimento').select('id, assunto, resposta, criado_em, valido_ate').order('criado_em', { ascending: false }).limit(100)
     if (!memoria.error) setWaMemoria(memoria.data ?? [])
+    const materiais = await supabase.from('wa_materiais').select('id, titulo, quando_enviar, tipo, legenda').order('criado_em', { ascending: true })
+    if (!materiais.error) setWaMateriais(materiais.data ?? [])
     const { data: pixCfg } = await supabase
       .from('pix_config')
       .select('mp_access_token, mp_webhook_secret, ativo')
@@ -509,6 +520,49 @@ export default function ConfiguracoesPage() {
     if (u) { setUEditId(u.id); setUNome(u.nome); setUEmail(u.email ?? ''); setUPapel(u.papel as Cargo); setUAtivo(u.ativo) }
     else { setUEditId(null); setUNome(''); setUEmail(''); setUPapel('tecnico'); setUAtivo(true) }
     setUModal(true)
+  }
+
+  const carregarMateriais = useCallback(async () => {
+    const res = await supabase.from('wa_materiais').select('id, titulo, quando_enviar, tipo, legenda').order('criado_em', { ascending: true })
+    if (!res.error) setWaMateriais(res.data ?? [])
+  }, [supabase])
+
+  async function adicionarMaterial() {
+    const arquivo = matArquivo.current?.files?.[0]
+    if (!arquivo) { setMatMsg('❌ Escolha o arquivo.'); return }
+    const tipo = TIPO_POR_MIME[arquivo.type]
+    if (!tipo) { setMatMsg('❌ Formato não aceito. Use vídeo MP4, imagem JPG ou PNG, ou PDF.'); return }
+    if (arquivo.size > LIMITE_MB[tipo] * 1024 * 1024) { setMatMsg(`❌ O WhatsApp aceita ${tipo} de até ${LIMITE_MB[tipo]} MB; este tem ${(arquivo.size / 1048576).toFixed(1)} MB.`); return }
+    if (!matTitulo.trim() || !matQuando.trim()) { setMatMsg('❌ Informe o título e quando o agente deve enviar.'); return }
+
+    const chamar = async (corpo: unknown) => {
+      const res = await fetch('/api/whatsapp/materiais', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? `erro ${res.status}`)
+      return json as { path?: string; token?: string }
+    }
+
+    setMatEnviando(true)
+    try {
+      setMatMsg('Preparando o envio…')
+      const { path, token } = await chamar({ acao: 'preparar', mime: arquivo.type, tamanho: arquivo.size })
+      setMatMsg(`Enviando o arquivo (${(arquivo.size / 1048576).toFixed(1)} MB)…`)
+      const envio = await supabase.storage.from('wa-media').uploadToSignedUrl(path as string, token as string, arquivo, { contentType: arquivo.type })
+      if (envio.error) throw new Error(envio.error.message)
+      await chamar({ acao: 'registrar', path, mime: arquivo.type, titulo: matTitulo, quando_enviar: matQuando, legenda: matLegenda })
+      setMatTitulo(''); setMatQuando(''); setMatLegenda('')
+      if (matArquivo.current) matArquivo.current.value = ''
+      setMatMsg('✅ Material cadastrado.')
+      await carregarMateriais()
+    } catch (e) {
+      setMatMsg(`❌ ${e instanceof Error ? e.message : String(e)}`)
+    }
+    setMatEnviando(false)
+  }
+
+  async function removerMaterial(id: string) {
+    const res = await fetch(`/api/whatsapp/materiais?id=${id}`, { method: 'DELETE' })
+    if (res.ok) setWaMateriais(lista => lista ? lista.filter(m => m.id !== id) : lista)
   }
 
   async function esquecerResposta(id: string) {
@@ -1507,6 +1561,32 @@ export default function ConfiguracoesPage() {
               ) : (
                 <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#92400e', marginTop: 12 }}>
                   Para usar a pausa por atendente, o modo de teste e as consultas ao responsável, rode antes o arquivo <code>supabase-whatsapp-agente-migration.sql</code> no banco.
+                </div>
+              )}
+              {waMateriais && (
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Materiais que o agente pode enviar ({waMateriais.length})</div>
+                  {waMateriais.map(m => (
+                    <div key={m.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: '#f8fafc', borderRadius: 6, padding: '8px 10px', marginBottom: 6 }}>
+                      <div style={{ flex: 1, minWidth: 0, fontSize: 12, color: '#334155', lineHeight: 1.45 }}>
+                        <strong>{m.tipo === 'video' ? '🎬' : m.tipo === 'imagem' ? '🖼' : '📄'} {m.titulo}</strong>
+                        <div>Enviar quando: {m.quando_enviar}</div>
+                        {m.legenda && <div style={{ color: '#64748b' }}>Legenda: {m.legenda}</div>}
+                      </div>
+                      <button onClick={() => removerMaterial(m.id)} title="O agente deixa de enviar este material" style={{ flexShrink: 0, padding: '3px 8px', background: 'none', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 4, fontSize: 11, cursor: 'pointer' }}>Remover</button>
+                    </div>
+                  ))}
+                  <div style={{ border: '1px dashed #cbd5e1', borderRadius: 8, padding: 12, display: 'grid', gap: 8 }}>
+                    <input name="wa-material-titulo" autoComplete="off" style={{ width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, fontFamily: 'inherit' }} value={matTitulo} onChange={e => setMatTitulo(e.target.value)} placeholder="Título, ex.: Diferença entre as qualidades de tela" />
+                    <input name="wa-material-quando" autoComplete="off" style={{ width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, fontFamily: 'inherit' }} value={matQuando} onChange={e => setMatQuando(e.target.value)} placeholder="Quando enviar, ex.: quando o cliente perguntar a diferença entre tela original, OLED e Incell" />
+                    <input name="wa-material-legenda" autoComplete="off" style={{ width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, fontFamily: 'inherit' }} value={matLegenda} onChange={e => setMatLegenda(e.target.value)} placeholder="Legenda que vai junto (opcional)" />
+                    <input ref={matArquivo} type="file" accept="video/mp4,image/jpeg,image/png,application/pdf" style={{ fontSize: 12 }} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <button onClick={adicionarMaterial} disabled={matEnviando} style={{ padding: '7px 14px', background: matEnviando ? '#a5b4fc' : '#2563eb', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: matEnviando ? 'not-allowed' : 'pointer' }}>{matEnviando ? 'Enviando…' : 'Adicionar material'}</button>
+                      <span style={{ fontSize: 11, color: '#94a3b8' }}>Vídeo MP4 até 16 MB · imagem até 5 MB · PDF</span>
+                    </div>
+                    {matMsg && <div style={{ fontSize: 12, color: matMsg.startsWith('❌') ? '#dc2626' : matMsg.startsWith('✅') ? '#059669' : '#475569' }}>{matMsg}</div>}
+                  </div>
                 </div>
               )}
               {waMemoria && (

@@ -5,6 +5,7 @@ import { SupabaseClient } from '@supabase/supabase-js'
 import { buscarPecasParaModelo, TipoPeca } from '@/lib/fornecedores'
 import { WaConfig } from './send'
 import { abrirConsulta, buscarConhecimento } from './consultas'
+import { enviarMaterial, listarMateriais } from './materiais'
 
 // Modelo rápido e de baixo custo, adequado ao volume de um atendimento por
 // mensagem. WA_BOT_MODEL troca por um mais capaz sem mexer no código.
@@ -87,6 +88,19 @@ const TOOLS: Anthropic.Tool[] = [
   },
 ]
 
+// Só entra na lista de ferramentas quando a loja tem algum material cadastrado
+const FERRAMENTA_MATERIAL: Anthropic.Tool = {
+  name: 'enviar_material',
+  description: 'Envia ao cliente um vídeo, imagem ou documento da biblioteca da loja. Use quando a conversa se encaixar na situação descrita para o material.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      material_id: { type: 'string', description: 'Identificador do material, como aparece na lista de materiais disponíveis' },
+    },
+    required: ['material_id'],
+  },
+}
+
 // O id do WhatsApp de números brasileiros pode vir sem o nono dígito,
 // então a busca compara só os 8 dígitos finais.
 async function buscarCliente(supabase: SupabaseClient, filialId: string, telefone: string) {
@@ -158,6 +172,10 @@ async function executeTool(toolName: string, toolInput: Record<string, string>, 
       (avisos ? `\n${avisos}` : '')
   }
 
+  if (toolName === 'enviar_material') {
+    return enviarMaterial({ supabase, filialId, conversaId: ctx.conversaId, envio: ctx.envio, materialId: toolInput.material_id ?? '' })
+  }
+
   if (toolName === 'perguntar_ao_responsavel') {
     return abrirConsulta({
       supabase, filialId, conversaId: ctx.conversaId, envio: ctx.envio,
@@ -219,10 +237,17 @@ export async function processBot(
   filialId: string,
   envio: WaConfig
 ): Promise<{ resposta: string; escalou: boolean }> {
-  const [{ data: waConfig }, loja] = await Promise.all([
+  const [{ data: waConfig }, loja, materiais] = await Promise.all([
     supabase.from('wa_config').select('bot_prompt').eq('filial_id', filialId).maybeSingle(),
     dadosDaLoja(supabase),
+    listarMateriais(supabase, filialId),
   ])
+  const tools = materiais.length > 0 ? [...TOOLS, FERRAMENTA_MATERIAL] : TOOLS
+  const secaoMateriais = materiais.length === 0 ? '' : [
+    'Materiais que você pode enviar com enviar_material (cada um no máximo uma vez por conversa):',
+    ...materiais.map(m => `- ${m.id} | ${m.tipo} "${m.titulo}": ${m.quando_enviar}`),
+    '', '',
+  ].join('\n')
 
   // O prompt da loja define o tom; as regras abaixo valem sempre, porque o
   // webhook depende do marcador [HUMANO] e as ferramentas dependem do telefone.
@@ -243,7 +268,7 @@ Orçamentos de reparo:
 - Os valores de buscar_pecas_fornecedores são custo de fornecedor, informação interna da loja. Nunca informe esses valores nem cite fornecedores ao cliente.
 - Todo preço que você passar é uma estimativa, sujeita à avaliação do aparelho na loja. Diga isso junto com o valor.
 
-Use perguntar_ao_responsavel também para qualquer outra dúvida que você não saiba responder com segurança, como prazo, desconto ou garantia de um caso específico.
+${secaoMateriais}Use perguntar_ao_responsavel também para qualquer outra dúvida que você não saiba responder com segurança, como prazo, desconto ou garantia de um caso específico.
 
 Se o cliente pedir para falar com uma pessoa, ou estiver irritado com o atendimento, responda APENAS com: [HUMANO]`
 
@@ -258,7 +283,7 @@ Se o cliente pedir para falar com uma pessoa, ou estiver irritado com o atendime
     model: MODELO,
     max_tokens: MAX_TOKENS,
     system: sysPrompt,
-    tools: TOOLS,
+    tools,
     messages,
   })
 

@@ -73,6 +73,9 @@ export function variantesDeTelefone(telefone: string): string[] {
 type CorpoMensagem =
   | { type: 'text'; text: { body: string } }
   | { type: 'template'; template: { name: string; language: { code: string }; components: unknown[] } }
+  | { type: 'video'; video: { link: string; caption?: string } }
+  | { type: 'image'; image: { link: string; caption?: string } }
+  | { type: 'document'; document: { link: string; caption?: string; filename?: string } }
 
 // Os dois provedores respondem 200 assim que aceitam a mensagem; a entrega (ou a
 // falha) chega depois, pelo webhook, identificada pelo id devolvido aqui.
@@ -142,4 +145,26 @@ export async function sendTemplateIds(
     { type: 'template', template: { name: templateName, language: { code: languageCode }, components } },
     'sendTemplate'
   )
+}
+
+export type TipoMidia = 'video' | 'image' | 'document'
+
+/**
+ * Envia um arquivo por link (o provedor baixa na hora, então um link assinado
+ * de curta duração serve). Como texto livre, só passa dentro da janela de 24h.
+ */
+export async function sendMedia(
+  config: WaConfig,
+  to: string,
+  tipo: TipoMidia,
+  link: string,
+  legenda?: string | null,
+  nomeDoArquivo?: string | null
+): Promise<string | null> {
+  const caption = legenda?.trim() || undefined
+  const corpo: CorpoMensagem =
+    tipo === 'video' ? { type: 'video', video: { link, caption } }
+      : tipo === 'image' ? { type: 'image', image: { link, caption } }
+      : { type: 'document', document: { link, caption, filename: nomeDoArquivo ?? undefined } }
+  return (await enviar(config, to, corpo, 'sendMedia'))[0] ?? null
 }

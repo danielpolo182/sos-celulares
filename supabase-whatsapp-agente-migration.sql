@@ -71,3 +71,24 @@ CREATE TABLE IF NOT EXISTS fornecedor_pecas (
 ALTER TABLE fornecedor_pecas ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "leitura_autenticados" ON fornecedor_pecas;
 CREATE POLICY "leitura_autenticados" ON fornecedor_pecas FOR SELECT TO authenticated USING (true);
+
+-- Vídeos, imagens e documentos que o agente pode enviar (ex.: explicação das qualidades de tela)
+CREATE TABLE IF NOT EXISTS wa_materiais (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  filial_id     UUID NOT NULL,
+  titulo        TEXT NOT NULL,
+  -- Em que situação o agente deve enviar; é lido por ele
+  quando_enviar TEXT NOT NULL,
+  tipo          TEXT NOT NULL CHECK (tipo IN ('video', 'imagem', 'documento')),
+  media_path    TEXT NOT NULL,
+  media_mime    TEXT NOT NULL,
+  legenda       TEXT,
+  ativo         BOOLEAN NOT NULL DEFAULT TRUE,
+  criado_em     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE wa_materiais ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "rls_filial" ON wa_materiais;
+CREATE POLICY "rls_filial" ON wa_materiais
+  USING (filial_id = public.get_filial_id())
+  WITH CHECK (filial_id = public.get_filial_id());
