@@ -6,6 +6,21 @@ export type WaConfig = {
   access_token: string
 }
 
+/**
+ * O WhatsApp identifica celulares de boa parte do Brasil sem o nono dígito
+ * (55 + DDD + 8 dígitos), e é assim que o número chega no webhook. A Meta
+ * aceita os dois formatos no envio, mas a lista de destinatários do número de
+ * teste só casa com o formato completo; por isso o 9 é recolocado.
+ * Fixos (assinante começando em 2 a 5) e números de outros países não mudam.
+ */
+export function normalizarDestino(to: string): string {
+  const digitos = to.replace(/\D/g, '')
+  if (digitos.length === 12 && digitos.startsWith('55') && /[6-9]/.test(digitos[4])) {
+    return `${digitos.slice(0, 4)}9${digitos.slice(4)}`
+  }
+  return digitos
+}
+
 export async function sendMessage(config: WaConfig, to: string, text: string): Promise<void> {
   const res = await fetch(`${META_API}/${config.phone_number_id}/messages`, {
     method: 'POST',
@@ -15,7 +30,7 @@ export async function sendMessage(config: WaConfig, to: string, text: string): P
     },
     body: JSON.stringify({
       messaging_product: 'whatsapp',
-      to,
+      to: normalizarDestino(to),
       type: 'text',
       text: { body: text },
     }),
@@ -47,7 +62,7 @@ export async function sendTemplate(
     },
     body: JSON.stringify({
       messaging_product: 'whatsapp',
-      to,
+      to: normalizarDestino(to),
       type: 'template',
       template: { name: templateName, language: { code: languageCode }, components },
     }),
