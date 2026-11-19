@@ -19,6 +19,31 @@ type WaConfig = {
   ycloud_numero?: string | null
 }
 
+// Os campos de credencial são mascarados: sem esta conferência, um valor colado
+// no campo errado (o endereço do webhook, por exemplo) passa despercebido.
+function erroChaveYCloud(valor: string | null | undefined): string | null {
+  if (!valor) return null
+  if (/^https?:/i.test(valor) || valor.includes('/')) return 'Isto é um endereço, não a chave. Copie em YCloud → Developers → API key.'
+  if (valor.startsWith('whsec_')) return 'Este é o segredo do webhook. A chave fica em YCloud → Developers → API key.'
+  return null
+}
+
+function erroSegredoYCloud(valor: string | null | undefined): string | null {
+  if (!valor) return null
+  if (/^https?:/i.test(valor)) return 'Isto é o endereço do webhook, não o segredo. Copie o valor "Secret" na lista de Webhooks da YCloud.'
+  if (!valor.startsWith('whsec_')) return 'O segredo do webhook começa com "whsec_". Copie o valor "Secret" na lista de Webhooks da YCloud.'
+  return null
+}
+
+function AvisoCredencial({ valor, erro }: { valor: string | null | undefined; erro: string | null }) {
+  if (!valor) return null
+  return (
+    <div style={{ marginTop: 4, fontSize: 11, color: erro ? '#dc2626' : '#16a34a' }}>
+      {erro ? `⚠ ${erro}` : `✓ ${valor.length} caracteres, formato esperado`}
+    </div>
+  )
+}
+
 type Config = {
   id: string; chave: string; valor: string
   descricao: string | null; categoria: string; versao: number
@@ -473,6 +498,12 @@ export default function ConfiguracoesPage() {
     }
     if (waConfig.provedor === 'ycloud' && waConfig.ycloud_numero && !/^\+\d{10,15}$/.test(waConfig.ycloud_numero)) {
       setWaMsg('❌ O número da loja deve estar no formato internacional, ex.: +5541992550123'); setWaSaving(false); return
+    }
+    if (waConfig.provedor === 'ycloud') {
+      const erroChave = erroChaveYCloud(waConfig.ycloud_api_key)
+      const erroSegredo = erroSegredoYCloud(waConfig.ycloud_webhook_secret)
+      if (erroChave) { setWaMsg(`❌ API Key da YCloud: ${erroChave}`); setWaSaving(false); return }
+      if (erroSegredo) { setWaMsg(`❌ Segredo do webhook: ${erroSegredo}`); setWaSaving(false); return }
     }
     const { error } = await supabase.from('wa_config').upsert({
       filial_id: perfil.filial_id,
@@ -1357,11 +1388,13 @@ export default function ConfiguracoesPage() {
                   <div>
                     <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>API Key da YCloud</label>
                     <input name="wa-ycloud-api-key" type="text" autoComplete="off" spellCheck={false} data-lpignore="true" data-1p-ignore style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', ['WebkitTextSecurity' as string]: 'disc' } as React.CSSProperties} value={waConfig.ycloud_api_key ?? ''} onChange={e => setWaConfig(c => c ? { ...c, ycloud_api_key: e.target.value.trim() } : c)} placeholder="Painel YCloud → Developers → API Keys" />
+                    <AvisoCredencial valor={waConfig.ycloud_api_key} erro={erroChaveYCloud(waConfig.ycloud_api_key)} />
                   </div>
                 </div>
                 <div style={{ marginBottom: 12 }}>
                   <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Segredo do webhook (a YCloud mostra ao criar o endpoint)</label>
                   <input name="wa-ycloud-webhook-secret" type="text" autoComplete="off" spellCheck={false} data-lpignore="true" data-1p-ignore style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', ['WebkitTextSecurity' as string]: 'disc' } as React.CSSProperties} value={waConfig.ycloud_webhook_secret ?? ''} onChange={e => setWaConfig(c => c ? { ...c, ycloud_webhook_secret: e.target.value.trim() } : c)} placeholder="whsec_..." />
+                  <AvisoCredencial valor={waConfig.ycloud_webhook_secret} erro={erroSegredoYCloud(waConfig.ycloud_webhook_secret)} />
                 </div>
                 <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#0369a1', lineHeight: 1.6 }}>
                   URL do Webhook para cadastrar na YCloud:{' '}
