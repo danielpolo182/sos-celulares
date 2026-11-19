@@ -88,7 +88,15 @@ function decodificarHtml(s: string): string {
 }
 
 export async function buscarFixcell(consulta: string): Promise<PecaFornecedor[]> {
-  const url = `${FIXCELL_BUSCA}?loja=${FIXCELL_LOJA}&palavra_busca=${encodeURIComponent(consulta.trim())}`
+  return (await buscarFixcellPagina(consulta, 1)).pecas
+}
+
+/**
+ * Uma página (15 itens) da busca da loja. Com a consulta vazia a loja lista
+ * todos os produtos, que é como o catálogo inteiro é capturado.
+ */
+export async function buscarFixcellPagina(consulta: string, pagina: number): Promise<{ pecas: PecaFornecedor[]; ultimaPagina: number }> {
+  const url = `${FIXCELL_BUSCA}?loja=${FIXCELL_LOJA}&palavra_busca=${encodeURIComponent(consulta.trim())}&pg=${pagina}`
   const res = await fetch(url, {
     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
     signal: AbortSignal.timeout(TEMPO_LIMITE_MS),
@@ -103,7 +111,8 @@ export async function buscarFixcell(consulta: string): Promise<PecaFornecedor[]>
     const preco = parseFloat(m[3].replace(/\./g, '').replace(',', '.'))
     if (!isNaN(preco)) produtos.push({ fornecedor: 'fixcell', url: m[1], nome: decodificarHtml(m[2]), preco })
   }
-  return produtos
+  const paginas = [...html.matchAll(/[?&]pg=(\d+)/g)].map(p => Number(p[1]))
+  return { pecas: produtos, ultimaPagina: Math.max(pagina, ...paginas) }
 }
 
 // ── Cache ─────────────────────────────────────────────────────────────────
@@ -113,12 +122,15 @@ function clienteDeServico() {
   return url && chave ? createClient(url, chave) : null
 }
 
-/** Guarda o custo mais recente de cada peça vista. Falha aqui nunca derruba a busca. */
-export async function guardarPecas(pecas: PecaFornecedor[], consulta: string): Promise<void> {
-  if (pecas.length === 0) return
+/**
+ * Guarda o custo mais recente de cada peça vista. Falha aqui nunca derruba a
+ * busca; o retorno diz se a gravação aconteceu (false com a tabela ausente).
+ */
+export async function guardarPecas(pecas: PecaFornecedor[], consulta: string): Promise<boolean> {
+  if (pecas.length === 0) return true
   try {
     const supabase = clienteDeServico()
-    if (!supabase) return
+    if (!supabase) return false
     const agora = new Date().toISOString()
     // A mesma peça pode aparecer duas vezes numa busca; o upsert não aceita chave repetida no mesmo lote
     const unicas = new Map(pecas.map(p => [`${p.fornecedor}|${p.nome}`, p]))
@@ -131,20 +143,24 @@ export async function guardarPecas(pecas: PecaFornecedor[], consulta: string): P
     )
     // Tabela ausente (migração não rodada) cai aqui e é ignorada
     if (error) console.warn('[fornecedores] cache não gravado:', error.message)
+    return !error
   } catch (e) {
     console.warn('[fornecedores] cache não gravado:', e)
+    return false
   }
 }
 
-async function pecasGuardadas(fornecedor: Fornecedor, consulta: string): Promise<PecaFornecedor[]> {
+/** Peças guardadas cujo nome traz todas as palavras do modelo, vistas nos últimos 30 dias. */
+async function pecasGuardadas(fornecedor: Fornecedor, palavrasDoModelo: string[]): Promise<PecaFornecedor[]> {
   const supabase = clienteDeServico()
-  if (!supabase) return []
-  const { data } = await supabase
+  if (!supabase || palavrasDoModelo.length === 0) return []
+  let consulta = supabase
     .from('fornecedor_pecas')
     .select('fornecedor, nome, codigo, preco, url')
     .eq('fornecedor', fornecedor)
-    .eq('consulta', consulta)
     .gte('atualizado_em', new Date(Date.now() - 30 * 86_400_000).toISOString())
+  for (const palavra of palavrasDoModelo) consulta = consulta.ilike('nome', `%${palavra}%`)
+  const { data } = await consulta.limit(200)
   return (data ?? []).map(p => ({
     fornecedor, nome: p.nome as string, preco: Number(p.preco),
     codigo: (p.codigo as string | null) ?? undefined, url: (p.url as string | null) ?? undefined,
@@ -236,6 +252,12 @@ export function filtrarPecasDoTipo(pecas: PecaFornecedor[], tipo: TipoPeca): Pec
   })
 }
 
+export const TIPOS_DE_PECA: TipoPeca[] = ['tela', 'bateria', 'conector']
+
+/** Texto de busca que cada fornecedor entende para um modelo e um tipo de peça. */
+export const consultaParaModelo = (fornecedor: Fornecedor, modelo: string, tipo: TipoPeca) =>
+  `${TERMO_DE_BUSCA[tipo][fornecedor]} ${nomeBaseDoModelo(modelo)}`
+
 const TERMO_DE_BUSCA: Record<TipoPeca, Record<Fornecedor, string>> = {
   tela: { iplay: 'frontal', fixcell: 'frontal' },
   bateria: { iplay: 'bateria', fixcell: 'bateria' },
@@ -259,7 +281,7 @@ export async function buscarPecasParaModelo(modelo: string, tipo: TipoPeca): Pro
   const resultado: ResultadoBuscaPecas = { pecas: [], falhas: [], doCache: [] }
 
   await Promise.all(fornecedores.map(async ([fornecedor, buscar]) => {
-    const consulta = `${TERMO_DE_BUSCA[tipo][fornecedor]} ${base}`
+    const consulta = consultaParaModelo(fornecedor, modelo, tipo)
     try {
       const encontradas = await buscar(consulta)
       await guardarPecas(encontradas, consulta)
@@ -267,7 +289,7 @@ export async function buscarPecasParaModelo(modelo: string, tipo: TipoPeca): Pro
     } catch (e) {
       console.warn(`[fornecedores] ${fornecedor} falhou:`, e instanceof Error ? e.message : e)
       resultado.falhas.push(fornecedor)
-      const guardadas = filtrarPecasDoTipo(filtrarPecasDoModelo(await pecasGuardadas(fornecedor, consulta), modelo), tipo)
+      const guardadas = filtrarPecasDoTipo(filtrarPecasDoModelo(await pecasGuardadas(fornecedor, base.split(' ').filter(Boolean)), modelo), tipo)
       if (guardadas.length > 0) { resultado.pecas.push(...guardadas); resultado.doCache.push(fornecedor) }
     }
   }))
