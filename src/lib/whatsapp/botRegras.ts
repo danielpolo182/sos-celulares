@@ -16,6 +16,11 @@ export type ConfigBot = {
   consulta_timeout_min: number
   /** Dias em que uma resposta do responsável continua valendo para perguntas iguais. */
   conhecimento_validade_dias: number
+  /**
+   * Textos que o próprio aplicativo WhatsApp Business envia sozinho (saudação,
+   * ausência). Chegam como mensagem da loja, mas não são alguém assumindo a conversa.
+   */
+  mensagens_automaticas: string[]
 }
 
 export const BOT_PADRAO: ConfigBot = {
@@ -24,6 +29,7 @@ export const BOT_PADRAO: ConfigBot = {
   dono_telefone: '',
   consulta_timeout_min: 30,
   conhecimento_validade_dias: 30,
+  mensagens_automaticas: [],
 }
 
 const comDDI = (n: string) => (n.startsWith('55') && n.length >= 12 ? n : `55${n}`)
@@ -44,7 +50,19 @@ export function lerConfigBot(bruto: unknown): ConfigBot {
     dono_telefone: dono.length >= 10 ? dono : '',
     consulta_timeout_min: inteiro(b.consulta_timeout_min, BOT_PADRAO.consulta_timeout_min),
     conhecimento_validade_dias: inteiro(b.conhecimento_validade_dias, BOT_PADRAO.conhecimento_validade_dias),
+    mensagens_automaticas: Array.isArray(b.mensagens_automaticas)
+      ? b.mensagens_automaticas.map(m => String(m).trim()).filter(m => m.length >= 3)
+      : [],
   }
+}
+
+// Compara ignorando maiúsculas, acentos, pontuação e espaços a mais
+const simplificar = (s: string) =>
+  s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
+export function ehMensagemAutomatica(texto: string, config: ConfigBot): boolean {
+  const t = simplificar(texto)
+  return t.length > 0 && config.mensagens_automaticas.some(m => simplificar(m) === t)
 }
 
 /** Compara dois telefones aceitando DDI ausente e o nono dígito a mais ou a menos. */
@@ -97,6 +115,16 @@ export async function pausarBot(supabase: SupabaseClient, filialId: string, conv
 
   const { error } = await supabase.from('wa_conversas').update({ bot_pausado_ate: ate }).eq('id', conversaId)
   if (error) console.error('[WA bot] pausar', error.message)
+}
+
+/**
+ * Mensagem enviada pelo aplicativo do celular. Pausa o agente, a não ser que
+ * seja uma das mensagens automáticas do aplicativo cadastradas pela loja.
+ */
+export async function pausarBotPorMensagemDoApp(supabase: SupabaseClient, filialId: string, conversaId: string, texto: string): Promise<void> {
+  const config = await carregarConfigBot(supabase, filialId)
+  if (!config || ehMensagemAutomatica(texto, config)) return
+  await pausarBot(supabase, filialId, conversaId)
 }
 
 /** Conversa encerrada ou agente retomado: a próxima mensagem do cliente volta a ser dele. */

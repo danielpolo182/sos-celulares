@@ -4,7 +4,7 @@
 // para os tipos daqui e chama estas funções.
 import { SupabaseClient } from '@supabase/supabase-js'
 import { processBot } from './bot'
-import { botPodeResponder, pausarBot } from './botRegras'
+import { botPodeResponder, pausarBot, pausarBotPorMensagemDoApp } from './botRegras'
 import { tratarRespostaDoResponsavel } from './consultas'
 import { escalateToHuman } from './escalate'
 import { sendMessage, variantesDeTelefone, WaConfig } from './send'
@@ -265,7 +265,7 @@ export async function registrarEco(
     if (error || !nova) throw new Error(`criar conversa: ${error?.message}`)
     conversaId = nova.id as string
   }
-  await pausarBot(supabase, ctx.filialId, conversaId)
+  await pausarBotPorMensagemDoApp(supabase, ctx.filialId, conversaId, norm.conteudo)
 
   const { data: gravada, error: erroMsg } = await supabase
     .from('wa_mensagens')

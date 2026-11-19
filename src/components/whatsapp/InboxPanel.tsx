@@ -228,15 +228,15 @@ export default function InboxPanel({ ativo = true, titulo = false, larguraLista 
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [mensagens])
 
-  async function alternarAgente() {
-    if (!selecionada || !conversaAtual || alterandoAgente) return
+  async function alternarAgente(conversa: Conversa | null = conversaAtual) {
+    if (!conversa || alterandoAgente) return
     setAlterandoAgente(true)
     const res = await fetch('/api/whatsapp/conversas', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        conversaId: selecionada,
-        acao: agentePausado(conversaAtual.agente_pausado_ate) ? 'retomar_agente' : 'pausar_agente',
+        conversaId: conversa.id,
+        acao: agentePausado(conversa.agente_pausado_ate) ? 'retomar_agente' : 'pausar_agente',
       }),
     })
     if (!res.ok) {
@@ -343,7 +343,30 @@ export default function InboxPanel({ ativo = true, titulo = false, larguraLista 
               onMouseLeave={e => { if (selecionada !== c.id) (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3, gap: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.telefone}>{c.nome_contato ?? c.telefone}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.telefone}>{c.nome_contato ?? c.telefone}</span>
+                  {c.agente_ligado && c.agente_pausado_ate !== undefined && (() => {
+                    const pausado = agentePausado(c.agente_pausado_ate)
+                    return (
+                      <button
+                        onClick={e => { e.stopPropagation(); alternarAgente(c) }}
+                        disabled={alterandoAgente}
+                        aria-label={pausado ? `Retomar o agente na conversa de ${c.nome_contato ?? c.telefone}` : `Pausar o agente na conversa de ${c.nome_contato ?? c.telefone}`}
+                        title={pausado ? 'Agente pausado nesta conversa. Clique para ele voltar a responder.' : 'Agente respondendo nesta conversa. Clique para pausar.'}
+                        style={{
+                          flexShrink: 0, display: 'flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 10, fontSize: 10, fontWeight: 600,
+                          cursor: alterandoAgente ? 'wait' : 'pointer',
+                          border: `1px solid ${pausado ? 'rgba(148,163,184,0.4)' : 'rgba(110,231,183,0.5)'}`,
+                          background: pausado ? 'rgba(148,163,184,0.12)' : 'rgba(16,185,129,0.15)',
+                          color: pausado ? '#94a3b8' : '#6ee7b7',
+                        }}
+                      >
+                        <i className={`ti ${pausado ? 'ti-robot-off' : 'ti-robot'}`} style={{ fontSize: 12 }} />
+                        {pausado ? 'IA pausada' : 'IA ativa'}
+                      </button>
+                    )
+                  })()}
+                </span>
                 <span style={{ fontSize: 10, color: '#64748b', flexShrink: 0 }}>{formatDate(c.atualizado_em)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -391,7 +414,7 @@ export default function InboxPanel({ ativo = true, titulo = false, larguraLista 
                       {!pausado ? 'Agente ativo' : pausaEhManual(ate) ? 'Agente pausado' : `Agente pausado até ${formatTime(ate as string)}`}
                     </span>
                     <button
-                      onClick={alternarAgente}
+                      onClick={() => alternarAgente()}
                       disabled={alterandoAgente}
                       title={pausado ? 'O agente volta a responder as próximas mensagens desta conversa' : 'O agente para de responder nesta conversa até você retomar'}
                       style={{

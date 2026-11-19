@@ -22,6 +22,8 @@ type WaConfig = {
   ycloud_numero?: string | null
 }
 
+const QUEBRA = String.fromCharCode(10)
+
 // Os campos de credencial são mascarados: sem esta conferência, um valor colado
 // no campo errado (o endereço do webhook, por exemplo) passa despercebido.
 function erroChaveYCloud(valor: string | null | undefined): string | null {
@@ -1556,6 +1558,11 @@ export default function ConfiguracoesPage() {
                       <input name="wa-bot-validade" type="number" min={1} style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} value={waBot.conhecimento_validade_dias} onChange={e => setWaBot(c => c ? { ...c, conhecimento_validade_dias: Math.max(1, parseInt(e.target.value, 10) || 1) } : c)} />
                     </div>
                     <div style={{ gridColumn: '1 / -1', fontSize: 11, color: '#94a3b8' }}>Sem resposta no prazo, o cliente é avisado e a conversa fica pendente. Cada resposta sua vale para perguntas iguais durante a validade.</div>
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Mensagens automáticas do aplicativo (uma por linha)</label>
+                    <textarea name="wa-bot-mensagens-automaticas" rows={2} style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }} value={waBot.mensagens_automaticas.join(QUEBRA)} onChange={e => setWaBot(c => c ? { ...c, mensagens_automaticas: e.target.value.split(QUEBRA) } : c)} placeholder="Cole aqui o texto da saudação e da mensagem de ausência do WhatsApp Business" />
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Toda mensagem enviada pelo celular pausa o agente. As que estiverem aqui, com o texto idêntico, não pausam.</div>
                   </div>
                 </div>
               ) : (
