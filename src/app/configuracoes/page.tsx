@@ -254,21 +254,25 @@ export default function ConfiguracoesPage() {
       })
       const d = await res.json() as {
         numero?: { telefone: string | null; nome: string | null; status: string | null }
-        assinatura?: { apps: string[]; assinouAgora: boolean }
+        assinatura?: { apps: string[]; assinouAgora: boolean; appAtual: string | null; appAtualAssinado: boolean | null }
         error?: string
       }
       const linhas: string[] = []
       if (d.numero) linhas.push(`Número: ${d.numero.telefone ?? '—'}${d.numero.nome ? ` (${d.numero.nome})` : ''}${d.numero.status ? ` · status ${d.numero.status}` : ''}`)
-      if (d.assinatura) {
-        if (d.assinatura.assinouAgora) linhas.push('App assinado na conta agora.')
-        linhas.push(d.assinatura.apps.length > 0
-          ? `Apps assinados nesta conta: ${d.assinatura.apps.join(', ')}`
-          : 'Nenhum app assinado nesta conta: a Meta não entrega as mensagens recebidas. Clique em "Assinar app na conta".')
+      const a = d.assinatura
+      if (a) {
+        if (a.assinouAgora) linhas.push('Pedido de assinatura enviado à Meta.')
+        linhas.push(a.apps.length > 0 ? `Apps assinados nesta conta: ${a.apps.join(', ')}` : 'Nenhum app assinado nesta conta.')
+        const nomeApp = a.appAtual ? ` ${a.appAtual}` : ' deste token'
+        if (a.appAtualAssinado === true) linhas.push(`O app${nomeApp} está assinado: as mensagens recebidas serão entregues.`)
+        if (a.appAtualAssinado === false) linhas.push(`O app${nomeApp} NÃO está assinado: a Meta não entrega as mensagens recebidas. Clique em "Assinar app na conta".`)
       } else if (res.ok) {
         linhas.push('Token e número conferem. Informe o ID da conta do WhatsApp para conferir a assinatura do app.')
       }
       if (d.error) linhas.push(`Erro: ${d.error}`)
-      setWaDiag({ ok: res.ok && (!d.assinatura || d.assinatura.apps.length > 0), linhas })
+      // Sem conseguir identificar o app do token, cai no critério antigo (haver algum app assinado)
+      const assinaturaOk = !a || (a.appAtualAssinado ?? a.apps.length > 0)
+      setWaDiag({ ok: res.ok && assinaturaOk, linhas })
     } catch {
       setWaDiag({ ok: false, linhas: ['Não foi possível falar com o servidor.'] })
     }

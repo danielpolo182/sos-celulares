@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
 
   const resposta: {
     numero: { telefone: string | null; nome: string | null; status: string | null }
-    assinatura?: { apps: string[]; assinouAgora: boolean }
+    assinatura?: { apps: string[]; assinouAgora: boolean; appAtual: string | null; appAtualAssinado: boolean | null }
   } = {
     numero: {
       telefone: numero.json.display_phone_number ?? null,
@@ -86,9 +86,18 @@ export async function POST(request: NextRequest) {
     }, { status: 502 })
   }
 
+  // A conta de teste já vem com um app interno da Meta assinado, então "lista não vazia"
+  // não basta: o que importa é o app dono deste token estar nela.
+  const appDoToken = await chamarMeta<{ id?: string; name?: string }>(`${META_API}/app?fields=id,name`, config.access_token)
+  const assinados = lista.json.data ?? []
+
   resposta.assinatura = {
-    apps: (lista.json.data ?? []).map(a => a.whatsapp_business_api_data?.name ?? a.whatsapp_business_api_data?.id ?? 'app sem nome'),
+    apps: assinados.map(a => a.whatsapp_business_api_data?.name ?? a.whatsapp_business_api_data?.id ?? 'app sem nome'),
     assinouAgora: !!assinar,
+    appAtual: appDoToken.ok ? (appDoToken.json.name ?? null) : null,
+    appAtualAssinado: appDoToken.ok && !!appDoToken.json.id
+      ? assinados.some(a => a.whatsapp_business_api_data?.id === appDoToken.json.id)
+      : null,
   }
   return NextResponse.json(resposta)
 }
