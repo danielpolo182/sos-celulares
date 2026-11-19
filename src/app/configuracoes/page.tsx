@@ -415,6 +415,10 @@ export default function ConfiguracoesPage() {
     if (!user) { setWaSaving(false); return }
     const { data: perfil } = await supabase.from('perfis').select('filial_id').eq('id', user.id).single()
     if (!perfil?.filial_id) { setWaMsg('❌ Filial não encontrada'); setWaSaving(false); return }
+    // Barra valores que não podem ser um Phone Number ID (ex.: preenchimento automático do navegador)
+    if (waConfig.phone_number_id && !/^\d+$/.test(waConfig.phone_number_id)) {
+      setWaMsg('❌ O Phone Number ID deve ter só números'); setWaSaving(false); return
+    }
     const { error } = await supabase.from('wa_config').upsert({
       filial_id: perfil.filial_id,
       phone_number_id: waConfig.phone_number_id || null,
@@ -1211,11 +1215,15 @@ export default function ConfiguracoesPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 12 }}>
                 <div>
                   <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Phone Number ID</label>
-                  <input style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} value={waConfig?.phone_number_id ?? ''} onChange={e => setWaConfig(c => c ? { ...c, phone_number_id: e.target.value } : c)} placeholder="1234567890123456" />
+                  <input name="wa-phone-number-id" autoComplete="off" inputMode="numeric" data-lpignore="true" data-1p-ignore style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} value={waConfig?.phone_number_id ?? ''} onChange={e => setWaConfig(c => c ? { ...c, phone_number_id: e.target.value.trim() } : c)} placeholder="1234567890123456" />
+                  {waConfig?.phone_number_id && !/^\d+$/.test(waConfig.phone_number_id) && (
+                    <p style={{ fontSize: 11, color: '#b91c1c', marginTop: 4 }}>O Phone Number ID tem só números. Confira se o navegador não preencheu este campo sozinho.</p>
+                  )}
                 </div>
                 <div>
                   <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Access Token</label>
-                  <input style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} type="password" value={waConfig?.access_token ?? ''} onChange={e => setWaConfig(c => c ? { ...c, access_token: e.target.value } : c)} placeholder="EAAxxxxx..." />
+                  {/* Campo de texto mascarado: com type="password" o navegador trata o par de campos como login e preenche e-mail e senha salvos */}
+                  <input name="wa-access-token" type="text" autoComplete="off" spellCheck={false} data-lpignore="true" data-1p-ignore style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', ['WebkitTextSecurity' as string]: 'disc' } as React.CSSProperties} value={waConfig?.access_token ?? ''} onChange={e => setWaConfig(c => c ? { ...c, access_token: e.target.value.trim() } : c)} placeholder="EAAxxxxx..." />
                 </div>
               </div>
               <div style={{ marginBottom: 12 }}>
@@ -1226,8 +1234,9 @@ export default function ConfiguracoesPage() {
                 </div>
               </div>
               <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#0369a1' }}>
-                URL do Webhook:{' '}<strong>https://octaos.com.br/api/whatsapp/webhook</strong>
-                <button onClick={() => navigator.clipboard.writeText('https://octaos.com.br/api/whatsapp/webhook')} style={{ marginLeft: 8, padding: '2px 8px', background: '#0369a1', color: '#fff', border: 'none', borderRadius: 4, fontSize: 11, cursor: 'pointer' }}>Copiar</button>
+                {/* Com www: o domínio sem www responde com redirecionamento, que a Meta não segue ao verificar o webhook */}
+                URL do Webhook:{' '}<strong>https://www.octaos.com.br/api/whatsapp/webhook</strong>
+                <button onClick={() => navigator.clipboard.writeText('https://www.octaos.com.br/api/whatsapp/webhook')} style={{ marginLeft: 8, padding: '2px 8px', background: '#0369a1', color: '#fff', border: 'none', borderRadius: 4, fontSize: 11, cursor: 'pointer' }}>Copiar</button>
               </div>
             </div>
 
