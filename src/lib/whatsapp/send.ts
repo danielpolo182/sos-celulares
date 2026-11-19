@@ -76,7 +76,7 @@ type CorpoMensagem =
 
 // Os dois provedores respondem 200 assim que aceitam a mensagem; a entrega (ou a
 // falha) chega depois, pelo webhook, identificada pelo id devolvido aqui.
-async function enviar(config: WaConfig, to: string, corpo: CorpoMensagem, rotulo: string): Promise<string | null> {
+async function enviar(config: WaConfig, to: string, corpo: CorpoMensagem, rotulo: string): Promise<string[]> {
   const destino = normalizarDestino(to)
 
   const res = config.provedor === 'ycloud'
@@ -97,12 +97,20 @@ async function enviar(config: WaConfig, to: string, corpo: CorpoMensagem, rotulo
     throw new Error(`Erro do provedor: ${err}`)
   }
 
-  const json = (await res.json().catch(() => null)) as { id?: string; messages?: { id?: string }[] } | null
-  // YCloud devolve o id na raiz; a Meta, em messages[0].id
-  return json?.id ?? json?.messages?.[0]?.id ?? null
+  const json = (await res.json().catch(() => null)) as { id?: string; wamid?: string; messages?: { id?: string }[] } | null
+  // YCloud devolve o id dela na raiz (e o do WhatsApp em wamid, quando já existe); a Meta, em messages[0].id
+  return [json?.id, json?.wamid, json?.messages?.[0]?.id].filter((v): v is string => !!v)
 }
 
 export async function sendMessage(config: WaConfig, to: string, text: string): Promise<string | null> {
+  return (await sendMessageIds(config, to, text))[0] ?? null
+}
+
+/**
+ * Como sendMessage, devolvendo todos os identificadores da mensagem: quem
+ * responde citando-a informa o id do WhatsApp, que nem sempre é o primeiro.
+ */
+export async function sendMessageIds(config: WaConfig, to: string, text: string): Promise<string[]> {
   return enviar(config, to, { type: 'text', text: { body: text } }, 'sendMessage')
 }
 
@@ -113,6 +121,16 @@ export async function sendTemplate(
   params: string[],
   languageCode = 'pt_BR'
 ): Promise<string | null> {
+  return (await sendTemplateIds(config, to, templateName, params, languageCode))[0] ?? null
+}
+
+export async function sendTemplateIds(
+  config: WaConfig,
+  to: string,
+  templateName: string,
+  params: string[],
+  languageCode = 'pt_BR'
+): Promise<string[]> {
   const components =
     params.length > 0
       ? [{ type: 'body', parameters: params.map(p => ({ type: 'text', text: p })) }]

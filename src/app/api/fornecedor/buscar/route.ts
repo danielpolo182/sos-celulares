@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { buscarIPlay, guardarPecas } from '@/lib/fornecedores'
 
 export const dynamic = 'force-dynamic'
-
-const BOT_BASE = 'https://bot.gestorv3.com/api/v1'
-const BOT_ID   = 'iplay-cwb-web'
 
 export interface ProdutoFornecedor {
   codigo: string
@@ -11,80 +9,18 @@ export interface ProdutoFornecedor {
   preco: number
 }
 
-function getText(node: unknown): string {
-  if (!node || typeof node !== 'object') return ''
-  const n = node as Record<string, unknown>
-  if (typeof n.text === 'string') return n.text
-  if (Array.isArray(n.children)) return (n.children as unknown[]).map(getText).join('')
-  return ''
-}
-
-function parseProducts(messages: unknown[]): ProdutoFornecedor[] {
-  if (!Array.isArray(messages) || messages.length === 0) return []
-
-  // O bot passou a devolver os resultados em blocos de parágrafo (type: 'p'),
-  // não mais num bloco 'variable'. Juntamos o texto de todos os blocos de todas
-  // as mensagens e aplicamos o regex sobre o texto completo.
-  let fullText = ''
-  for (const msg of messages) {
-    const richText = ((msg as Record<string, unknown>)?.content as Record<string, unknown>)?.richText
-    if (Array.isArray(richText)) fullText += richText.map(getText).join('\n') + '\n'
-  }
-  if (!fullText.trim()) return []
-
-  const produtos: ProdutoFornecedor[] = []
-  const regex = /\d+\s*-\s*(\d+)\s*-\s*(.+?)\s*-\s*\[R\$\s*([\d,.]+)\]/g
-  let m: RegExpExecArray | null
-  while ((m = regex.exec(fullText)) !== null) {
-    produtos.push({
-      codigo: m[1].trim(),
-      nome: m[2].trim(),
-      preco: parseFloat(m[3].replace('.', '').replace(',', '.')),
-    })
-  }
-  return produtos
-}
-
+// Busca livre no catálogo da iPlay (tela de OS e recondicionamento)
 export async function POST(req: NextRequest) {
   try {
     const { query } = await req.json() as { query: string }
     if (!query?.trim()) return NextResponse.json({ error: 'query obrigatória' }, { status: 400 })
 
-    async function continueChat(sessionId: string, message: string) {
-      const res = await fetch(`${BOT_BASE}/sessions/${sessionId}/continueChat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message }),
-      })
-      if (!res.ok) throw new Error(`continueChat falhou: ${res.status}`)
-      return res.json() as Promise<{ messages?: unknown[] }>
-    }
+    const pecas = await buscarIPlay(query)
+    await guardarPecas(pecas, query.trim().toLowerCase())
 
-    // 1. Inicia sessão
-    const startRes = await fetch(`${BOT_BASE}/typebots/${BOT_ID}/startChat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    })
-
-    if (!startRes.ok) {
-      const t = await startRes.text()
-      return NextResponse.json({ error: `startChat falhou: ${startRes.status} — ${t.slice(0, 300)}` }, { status: 502 })
-    }
-
-    const startData = await startRes.json() as { sessionId?: string }
-    const sessionId = startData.sessionId
-    if (!sessionId) return NextResponse.json({ error: 'sessionId ausente no startChat' }, { status: 502 })
-
-    // 2. Bot pede "Digite iplay para continuar" — respondemos automaticamente
-    await continueChat(sessionId, 'iplay')
-
-    // 3. Agora enviamos a busca real
-    const chatData = await continueChat(sessionId, query.trim())
-    const produtos = parseProducts(chatData.messages ?? [])
-
+    const produtos: ProdutoFornecedor[] = pecas.map(p => ({ codigo: p.codigo ?? '', nome: p.nome, preco: p.preco }))
     return NextResponse.json({ produtos, total: produtos.length })
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return NextResponse.json({ error: String(err) }, { status: 502 })
   }
 }

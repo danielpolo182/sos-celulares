@@ -93,7 +93,8 @@ function dadosDoAviso(os: OsParaAviso, nome: string | null, loja: InfoLoja, agor
   }
 }
 
-async function registrarNaConversa(
+/** Grava na conversa do destinatário uma mensagem que o sistema enviou por conta própria. */
+export async function registrarNaConversa(
   supabase: SupabaseClient,
   filialId: string,
   destino: string,

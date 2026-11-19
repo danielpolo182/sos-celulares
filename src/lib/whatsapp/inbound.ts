@@ -5,6 +5,7 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { processBot } from './bot'
 import { botPodeResponder, pausarBot } from './botRegras'
+import { tratarRespostaDoResponsavel } from './consultas'
 import { escalateToHuman } from './escalate'
 import { sendMessage, variantesDeTelefone, WaConfig } from './send'
 import { MidiaSalva } from './media'
@@ -16,6 +17,8 @@ export type MensagemRecebida = {
   from: string
   id?: string
   type?: string
+  /** Presente quando a mensagem responde citando outra: id da mensagem citada */
+  context?: { id?: string }
   text?: { body?: string }
   image?: MidiaRecebida
   audio?: MidiaRecebida
@@ -189,6 +192,12 @@ export async function processarMensagem(
     await gravarMidia(gravada.id, norm, `${ctx.filialId}/${conversaId}`, ctx)
 
     if (!ctx.botAtivo || !ctx.envio) return
+
+    // Resposta do responsável a uma consulta do agente: é repassada ao cliente e não segue como atendimento
+    if (norm.tipo === 'texto' && await tratarRespostaDoResponsavel({
+      supabase, filialId: ctx.filialId, envio: ctx.envio, remetente: telefone, texto: norm.conteudo, citada: msg.context?.id ?? null,
+    })) return
+
     if (!(await botPodeResponder(supabase, ctx.filialId, conversaId, telefone, status))) return
     const envio = { ...ctx.envio, filial_id: ctx.filialId }
 
@@ -199,7 +208,7 @@ export async function processarMensagem(
       return
     }
 
-    const { resposta, escalou } = await processBot(norm.conteudo, telefone, conversaId, supabase, ctx.filialId)
+    const { resposta, escalou } = await processBot(norm.conteudo, telefone, conversaId, supabase, ctx.filialId, ctx.envio)
 
     if (escalou) {
       await escalateToHuman(conversaId, envio, supabase)

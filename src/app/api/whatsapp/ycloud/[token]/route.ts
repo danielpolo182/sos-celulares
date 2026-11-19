@@ -8,6 +8,7 @@ import { baixarESalvarMidiaYCloud } from '@/lib/whatsapp/media'
 import { configDeEnvio } from '@/lib/whatsapp/send'
 import { assinaturaYCloudValida } from '@/lib/whatsapp/ycloud'
 import { ContextoEntrada, MensagemRecebida, processarMensagem, registrarEco, registrarStatus } from '@/lib/whatsapp/inbound'
+import { expirarConsultas } from '@/lib/whatsapp/consultas'
 
 export const maxDuration = 60
 
@@ -104,6 +105,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // 500 faz a YCloud reentregar; o que já foi gravado é ignorado pelo índice único
     console.error('[WA ycloud] falha ao processar', evento.type, err)
     return NextResponse.json({ error: 'storage failure' }, { status: 500 })
+  }
+
+  // Não há agendador de minutos: o prazo das consultas ao responsável é conferido a cada evento
+  if (ctx.botAtivo && ctx.envio) {
+    try {
+      await expirarConsultas(supabase, ctx.filialId, ctx.envio)
+    } catch (err) {
+      console.error('[WA ycloud] prazo das consultas', err)
+    }
   }
 
   return NextResponse.json({ ok: true })

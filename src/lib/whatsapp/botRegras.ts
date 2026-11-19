@@ -10,20 +10,49 @@ export type ConfigBot = {
   pausa_min: number
   /** Se houver números aqui, o agente só responde a eles (modo de teste). */
   numeros_teste: string[]
+  /** WhatsApp de quem o agente consulta quando não sabe responder; vazio desliga as consultas. */
+  dono_telefone: string
+  /** Minutos que o agente espera a resposta do responsável antes de avisar o cliente e marcar a conversa como pendente. */
+  consulta_timeout_min: number
+  /** Dias em que uma resposta do responsável continua valendo para perguntas iguais. */
+  conhecimento_validade_dias: number
 }
 
-export const BOT_PADRAO: ConfigBot = { pausa_min: 120, numeros_teste: [] }
+export const BOT_PADRAO: ConfigBot = {
+  pausa_min: 120,
+  numeros_teste: [],
+  dono_telefone: '',
+  consulta_timeout_min: 30,
+  conhecimento_validade_dias: 30,
+}
+
+const comDDI = (n: string) => (n.startsWith('55') && n.length >= 12 ? n : `55${n}`)
 
 export function lerConfigBot(bruto: unknown): ConfigBot {
   const b = (bruto && typeof bruto === 'object' ? bruto : {}) as Record<string, unknown>
-  const pausa = Number(b.pausa_min)
+  const inteiro = (valor: unknown, padrao: number) => {
+    const n = Number(valor)
+    return Number.isFinite(n) && n >= 1 ? Math.round(n) : padrao
+  }
   const numeros = Array.isArray(b.numeros_teste)
     ? b.numeros_teste.map(n => String(n).replace(/\D/g, '')).filter(n => n.length >= 10)
     : []
+  const dono = String(b.dono_telefone ?? '').replace(/\D/g, '')
   return {
-    pausa_min: Number.isFinite(pausa) && pausa >= 1 ? Math.round(pausa) : BOT_PADRAO.pausa_min,
+    pausa_min: inteiro(b.pausa_min, BOT_PADRAO.pausa_min),
     numeros_teste: [...new Set(numeros)],
+    dono_telefone: dono.length >= 10 ? dono : '',
+    consulta_timeout_min: inteiro(b.consulta_timeout_min, BOT_PADRAO.consulta_timeout_min),
+    conhecimento_validade_dias: inteiro(b.conhecimento_validade_dias, BOT_PADRAO.conhecimento_validade_dias),
   }
+}
+
+/** Compara dois telefones aceitando DDI ausente e o nono dígito a mais ou a menos. */
+export function mesmoTelefone(a: string, b: string): boolean {
+  const da = a.replace(/\D/g, ''), db = b.replace(/\D/g, '')
+  if (da.length < 10 || db.length < 10) return false
+  const formas = new Set(variantesDeTelefone(comDDI(da)))
+  return variantesDeTelefone(comDDI(db)).some(v => formas.has(v))
 }
 
 /** Converte "41 98703-3569, 41 99999-0000" na lista de números só com dígitos. */
@@ -31,7 +60,6 @@ export function lerNumerosDeTeste(texto: string): string[] {
   return [...new Set(texto.split(/[,;\n]+/).map(n => n.replace(/\D/g, '')).filter(n => n.length >= 10))]
 }
 
-const comDDI = (n: string) => (n.startsWith('55') && n.length >= 12 ? n : `55${n}`)
 
 /** Sem números de teste, vale para todos; com eles, só para quem está na lista (com ou sem o nono dígito). */
 export function numeroLiberadoParaBot(telefone: string, config: ConfigBot): boolean {
@@ -40,7 +68,7 @@ export function numeroLiberadoParaBot(telefone: string, config: ConfigBot): bool
   return config.numeros_teste.some(n => variantesDeTelefone(comDDI(n)).some(v => formas.has(v)))
 }
 
-async function carregarConfigBot(supabase: SupabaseClient, filialId: string): Promise<ConfigBot | null> {
+export async function carregarConfigBot(supabase: SupabaseClient, filialId: string): Promise<ConfigBot | null> {
   const { data, error } = await supabase.from('wa_config').select('bot_config').eq('filial_id', filialId).maybeSingle()
   // Erro aqui é o banco sem a coluna (migração não rodada)
   if (error) return null

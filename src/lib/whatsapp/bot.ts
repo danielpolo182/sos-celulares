@@ -1,9 +1,18 @@
 // src/lib/whatsapp/bot.ts
+// Agente de atendimento do WhatsApp.
 import Anthropic from '@anthropic-ai/sdk'
 import { SupabaseClient } from '@supabase/supabase-js'
+import { buscarPecasParaModelo, TipoPeca } from '@/lib/fornecedores'
+import { WaConfig } from './send'
+import { abrirConsulta, buscarConhecimento } from './consultas'
 
-const MODELO = 'claude-haiku-4-5-20251001'
-const MAX_RODADAS_FERRAMENTA = 5
+// Modelo rápido e de baixo custo, adequado ao volume de um atendimento por
+// mensagem. WA_BOT_MODEL troca por um mais capaz sem mexer no código.
+const MODELO = process.env.WA_BOT_MODEL || 'claude-haiku-5-5'
+const MAX_RODADAS_FERRAMENTA = 6
+// O raciocínio do modelo conta neste limite; a resposta em si é curta
+const MAX_TOKENS = 4096
+const MENSAGENS_DE_HISTORICO = 20
 
 // Criado sob demanda: o webhook importa este módulo mesmo com o bot desligado,
 // e a falta da ANTHROPIC_API_KEY não pode impedir o recebimento de mensagens.
@@ -27,36 +36,53 @@ const STATUS_OS: Record<string, string> = {
   cancelada: 'cancelada',
 }
 
+const TIPOS_DE_PECA: TipoPeca[] = ['tela', 'bateria', 'conector']
+
 const TOOLS: Anthropic.Tool[] = [
   {
     name: 'buscar_os_por_telefone',
-    description: 'Busca ordens de serviço abertas ou recentes do cliente pelo número de telefone.',
+    description: 'Busca as ordens de serviço mais recentes do cliente pelo telefone, com status e valor. Use quando ele perguntar sobre um aparelho que deixou na loja.',
     input_schema: {
       type: 'object',
       properties: {
-        telefone: { type: 'string', description: 'Número de telefone do cliente (somente dígitos)' },
+        telefone: { type: 'string', description: 'Telefone do cliente (somente dígitos)' },
       },
       required: ['telefone'],
     },
   },
   {
-    name: 'buscar_cliente_por_telefone',
-    description: 'Busca dados do cliente pelo número de telefone.',
+    name: 'consultar_respostas_anteriores',
+    description: 'Procura o que o responsável da loja já respondeu sobre um assunto parecido (preço de um serviço para um modelo, prazo, política). Chame antes de perguntar ao responsável.',
     input_schema: {
       type: 'object',
       properties: {
-        telefone: { type: 'string', description: 'Número de telefone do cliente (somente dígitos)' },
+        assunto: { type: 'string', description: 'Serviço e modelo do aparelho, ex.: "troca de tela Samsung Galaxy A54 5G"' },
       },
-      required: ['telefone'],
+      required: ['assunto'],
     },
   },
   {
-    name: 'get_info_loja',
-    description: 'Retorna informações da loja como nome, endereço e contato.',
+    name: 'buscar_pecas_fornecedores',
+    description: 'Consulta nos fornecedores da loja as peças disponíveis para um aparelho e o CUSTO de cada uma. Informação interna, para montar a pergunta ao responsável: nunca repasse esses valores nem o nome dos fornecedores ao cliente.',
     input_schema: {
       type: 'object',
-      properties: {},
-      required: [],
+      properties: {
+        modelo: { type: 'string', description: 'Marca e modelo completos, com variante e 4G/5G quando houver. Ex.: "Samsung Galaxy A54 5G", "iPhone 13 Pro Max"' },
+        tipo: { type: 'string', enum: TIPOS_DE_PECA, description: 'tela (display/frontal), bateria ou conector (de carga)' },
+      },
+      required: ['modelo', 'tipo'],
+    },
+  },
+  {
+    name: 'perguntar_ao_responsavel',
+    description: 'Envia uma pergunta ao responsável da loja pelo WhatsApp dele quando você não sabe responder com segurança: preço de um reparo, prazo, disponibilidade, desconto, caso fora do comum. A resposta chega depois e é repassada ao cliente automaticamente.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        assunto: { type: 'string', description: 'Título curto e reutilizável: serviço e modelo. Ex.: "troca de tela Samsung Galaxy A54 5G"' },
+        pergunta: { type: 'string', description: 'Pergunta completa para o responsável: o que o cliente quer, modelo, defeito relatado e, em orçamento, as opções de peça com o custo de cada uma.' },
+      },
+      required: ['assunto', 'pergunta'],
     },
   },
 ]
@@ -78,12 +104,11 @@ async function buscarCliente(supabase: SupabaseClient, filialId: string, telefon
 
 const reais = (v: number) => `R$ ${v.toFixed(2).replace('.', ',')}`
 
-async function executeTool(
-  toolName: string,
-  toolInput: Record<string, string>,
-  supabase: SupabaseClient,
-  filialId: string
-): Promise<string> {
+type ContextoFerramenta = { supabase: SupabaseClient; filialId: string; conversaId: string; envio: WaConfig }
+
+async function executeTool(toolName: string, toolInput: Record<string, string>, ctx: ContextoFerramenta): Promise<string> {
+  const { supabase, filialId } = ctx
+
   if (toolName === 'buscar_os_por_telefone') {
     const cliente = await buscarCliente(supabase, filialId, toolInput.telefone ?? '')
     if (!cliente) return 'Nenhum cliente encontrado com esse número.'
@@ -109,31 +134,35 @@ async function executeTool(
           (valor != null ? ` — valor: ${reais(Number(valor))}` : '')
       })
       .join('\n')
+
     return `Ordens de serviço de ${cliente.nome}:\n${lista}`
   }
 
-  if (toolName === 'buscar_cliente_por_telefone') {
-    const cliente = await buscarCliente(supabase, filialId, toolInput.telefone ?? '')
-    if (!cliente) return 'Nenhum cliente encontrado com esse número.'
-    return `Nome: ${cliente.nome}\nE-mail: ${cliente.email ?? 'não informado'}\nTelefone: ${cliente.telefone}`
+  if (toolName === 'consultar_respostas_anteriores') {
+    return buscarConhecimento(supabase, filialId, toolInput.assunto ?? '')
   }
 
-  if (toolName === 'get_info_loja') {
-    const { data } = await supabase
-      .from('sistema_config')
-      .select('chave, valor')
-      .in('chave', ['loja_nome', 'loja_telefone', 'loja_endereco', 'loja_email', 'loja_horario'])
+  if (toolName === 'buscar_pecas_fornecedores') {
+    const tipo = toolInput.tipo as TipoPeca
+    if (!toolInput.modelo?.trim() || !TIPOS_DE_PECA.includes(tipo)) return 'Informe o modelo do aparelho e o tipo de peça (tela, bateria ou conector).'
+    const { pecas, falhas, doCache } = await buscarPecasParaModelo(toolInput.modelo, tipo)
+    const avisos = [
+      falhas.length ? `Fornecedor sem resposta agora: ${falhas.join(', ')}.` : '',
+      doCache.length ? `Valores de ${doCache.join(', ')} são da última consulta guardada.` : '',
+    ].filter(Boolean).join(' ')
+    if (pecas.length === 0) {
+      return `Nenhuma peça de ${tipo} encontrada para "${toolInput.modelo}". ${avisos} Confirme o modelo exato com o cliente ou pergunte ao responsável.`.trim()
+    }
+    return `CUSTO de fornecedor (interno, não informar ao cliente) — ${tipo} para ${toolInput.modelo}:\n` +
+      pecas.slice(0, 12).map(p => `- ${p.fornecedor}: ${reais(p.preco)} — ${p.nome}`).join('\n') +
+      (avisos ? `\n${avisos}` : '')
+  }
 
-    const cfg: Record<string, string> = {}
-    for (const c of data ?? []) if (c.valor) cfg[c.chave] = c.valor
-    if (Object.keys(cfg).length === 0) return 'Informações da loja não disponíveis.'
-    return [
-      cfg.loja_nome,
-      `Endereço: ${cfg.loja_endereco ?? 'não informado'}`,
-      `Telefone: ${cfg.loja_telefone ?? 'não informado'}`,
-      cfg.loja_email ? `E-mail: ${cfg.loja_email}` : null,
-      cfg.loja_horario ? `Horário: ${cfg.loja_horario}` : null,
-    ].filter(Boolean).join('\n')
+  if (toolName === 'perguntar_ao_responsavel') {
+    return abrirConsulta({
+      supabase, filialId, conversaId: ctx.conversaId, envio: ctx.envio,
+      assunto: toolInput.assunto ?? '', pergunta: toolInput.pergunta ?? '',
+    })
   }
 
   return 'Ferramenta desconhecida.'
@@ -142,39 +171,31 @@ async function executeTool(
 const PROMPT_PADRAO =
   'Você é o assistente de atendimento de uma assistência técnica de celulares. Seja simpático e objetivo.'
 
-export async function processBot(
-  mensagem: string,
-  telefone: string,
-  conversaId: string,
-  supabase: SupabaseClient,
-  filialId: string,
-  systemPrompt?: string | null
-): Promise<{ resposta: string; escalou: boolean }> {
-  const { data: waConfig } = await supabase
-    .from('wa_config')
-    .select('bot_prompt')
-    .eq('filial_id', filialId)
-    .maybeSingle()
+async function dadosDaLoja(supabase: SupabaseClient): Promise<string> {
+  const { data } = await supabase
+    .from('sistema_config')
+    .select('chave, valor')
+    .in('chave', ['loja_nome', 'loja_telefone', 'loja_endereco', 'loja_horario', 'garantia_dias'])
+  const cfg: Record<string, string> = {}
+  for (const c of data ?? []) if (c.valor) cfg[c.chave] = c.valor
+  return [
+    cfg.loja_nome ? `Loja: ${cfg.loja_nome}` : null,
+    cfg.loja_endereco ? `Endereço: ${cfg.loja_endereco}` : null,
+    cfg.loja_horario ? `Horário de atendimento: ${cfg.loja_horario}` : null,
+    cfg.loja_telefone ? `Telefone: ${cfg.loja_telefone}` : null,
+    `Garantia dos serviços: ${cfg.garantia_dias || '90'} dias`,
+  ].filter(Boolean).join('\n')
+}
 
-  // O prompt da loja define o tom; as regras abaixo valem sempre, porque o
-  // webhook depende do marcador [HUMANO] e as ferramentas dependem do telefone.
-  const sysPrompt = `${systemPrompt ?? waConfig?.bot_prompt ?? PROMPT_PADRAO}
-
-Contexto desta conversa:
-- Você responde pelo WhatsApp: mensagens curtas, em português, sem markdown.
-- O telefone do cliente é ${telefone}. Use esse número nas ferramentas de busca; não peça o telefone ao cliente.
-- Consulte dados reais pelas ferramentas. Não invente status, prazos nem valores.
-- Se não conseguir ajudar, ou se o cliente pedir para falar com uma pessoa, responda APENAS com: [HUMANO]`
-
-  // As 20 mensagens mais recentes, em ordem cronológica
-  const { data: historico } = await supabase
+async function historicoDaConversa(supabase: SupabaseClient, conversaId: string): Promise<Anthropic.MessageParam[]> {
+  const { data } = await supabase
     .from('wa_mensagens')
     .select('direcao, conteudo')
     .eq('conversa_id', conversaId)
     .order('criado_em', { ascending: false })
-    .limit(20)
+    .limit(MENSAGENS_DE_HISTORICO)
 
-  const messages: Anthropic.MessageParam[] = (historico ?? [])
+  const messages: Anthropic.MessageParam[] = (data ?? [])
     .reverse()
     .filter(m => m.conteudo?.trim())
     .map(m => ({
@@ -184,57 +205,136 @@ Contexto desta conversa:
 
   // A API exige que a primeira mensagem seja do usuário
   while (messages.length > 0 && messages[0].role !== 'user') messages.shift()
+  return messages
+}
+
+const textoDa = (response: Anthropic.Message) =>
+  response.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map(b => b.text).join('\n').trim()
+
+export async function processBot(
+  mensagem: string,
+  telefone: string,
+  conversaId: string,
+  supabase: SupabaseClient,
+  filialId: string,
+  envio: WaConfig
+): Promise<{ resposta: string; escalou: boolean }> {
+  const [{ data: waConfig }, loja] = await Promise.all([
+    supabase.from('wa_config').select('bot_prompt').eq('filial_id', filialId).maybeSingle(),
+    dadosDaLoja(supabase),
+  ])
+
+  // O prompt da loja define o tom; as regras abaixo valem sempre, porque o
+  // webhook depende do marcador [HUMANO] e as ferramentas dependem do telefone.
+  const sysPrompt = `${waConfig?.bot_prompt?.trim() || PROMPT_PADRAO}
+
+${loja}
+
+Como você atende:
+- Você responde pelo WhatsApp: mensagens curtas, em português do Brasil, tom cordial e direto, sem markdown e sem listas longas. No máximo um emoji por mensagem.
+- O telefone do cliente é ${telefone}. Use esse número nas ferramentas; não peça o telefone ao cliente.
+- Consulte dados reais pelas ferramentas. Nunca invente status de ordem de serviço, prazo, disponibilidade ou valor.
+
+Orçamentos de reparo:
+1. Descubra o modelo exato do aparelho (marca, modelo, variante como Pro, Plus ou FE, e 4G ou 5G quando existirem as duas versões) e o defeito. Pergunte o que faltar, uma pergunta por mensagem.
+2. Chame consultar_respostas_anteriores com o serviço e o modelo. Se o responsável já respondeu sobre o mesmo serviço no mesmo modelo, use essa resposta.
+3. Se não houver resposta anterior e o reparo for de tela, bateria ou conector de carga, chame buscar_pecas_fornecedores e depois perguntar_ao_responsavel, colocando na pergunta o modelo, o defeito e as opções de peça com o custo de cada uma. Para outros reparos, chame perguntar_ao_responsavel direto.
+4. Depois de perguntar ao responsável, diga ao cliente que está confirmando o valor com o técnico e que retorna em instantes. Não dê palpite de preço.
+- Os valores de buscar_pecas_fornecedores são custo de fornecedor, informação interna da loja. Nunca informe esses valores nem cite fornecedores ao cliente.
+- Todo preço que você passar é uma estimativa, sujeita à avaliação do aparelho na loja. Diga isso junto com o valor.
+
+Use perguntar_ao_responsavel também para qualquer outra dúvida que você não saiba responder com segurança, como prazo, desconto ou garantia de um caso específico.
+
+Se o cliente pedir para falar com uma pessoa, ou estiver irritado com o atendimento, responda APENAS com: [HUMANO]`
+
+  const messages = await historicoDaConversa(supabase, conversaId)
   // O webhook grava a mensagem antes de chamar o bot; só acrescenta se ela não veio no histórico
   if (messages.length === 0 || messages[messages.length - 1].role !== 'user') {
     messages.push({ role: 'user', content: mensagem })
   }
 
   const anthropic = getClient()
-  let response = await anthropic.messages.create({
+  const pedir = () => anthropic.messages.create({
     model: MODELO,
-    max_tokens: 1024,
+    max_tokens: MAX_TOKENS,
     system: sysPrompt,
     tools: TOOLS,
     messages,
   })
 
+  let response = await pedir()
   let rodadas = 0
   while (response.stop_reason === 'tool_use' && rodadas < MAX_RODADAS_FERRAMENTA) {
     rodadas++
-    const toolUseBlocks = response.content.filter(
-      (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use'
-    )
-
     const toolResults: Anthropic.ToolResultBlockParam[] = []
-    for (const block of toolUseBlocks) {
-      const result = await executeTool(
-        block.name,
-        block.input as Record<string, string>,
-        supabase,
-        filialId
-      )
-      toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result })
+    for (const block of response.content) {
+      if (block.type !== 'tool_use') continue
+      let resultado: string
+      try {
+        resultado = await executeTool(block.name, block.input as Record<string, string>, { supabase, filialId, conversaId, envio })
+      } catch (e) {
+        console.error('[WA bot] ferramenta', block.name, e)
+        resultado = 'A consulta falhou agora. Se não puder responder sem ela, pergunte ao responsável.'
+      }
+      toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: resultado })
     }
 
+    // O conteúdo volta inteiro, com os blocos de raciocínio, como a API exige entre chamadas de ferramenta
     messages.push({ role: 'assistant', content: response.content })
     messages.push({ role: 'user', content: toolResults })
-
-    response = await anthropic.messages.create({
-      model: MODELO,
-      max_tokens: 1024,
-      system: sysPrompt,
-      tools: TOOLS,
-      messages,
-    })
+    response = await pedir()
   }
 
-  const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')
-  const resposta = textBlock?.text?.trim() ?? ''
+  const resposta = textoDa(response)
 
-  // Sem texto utilizável (ou ainda pedindo ferramenta após o limite): passa para uma pessoa
-  if (!resposta || response.stop_reason === 'tool_use' || resposta.includes('[HUMANO]')) {
+  // Sem texto utilizável, recusa do modelo ou ferramentas além do limite: passa para uma pessoa
+  if (!resposta || response.stop_reason === 'tool_use' || response.stop_reason === 'refusal' || resposta.includes('[HUMANO]')) {
     return { resposta: resposta.replace('[HUMANO]', '').trim(), escalou: true }
   }
 
   return { resposta, escalou: false }
+}
+
+/**
+ * Transforma a resposta curta do responsável na mensagem que vai para o cliente.
+ * Se a IA falhar, a resposta do responsável segue como veio: o cliente não fica sem retorno.
+ */
+export async function redigirRespostaAoCliente(args: {
+  supabase: SupabaseClient
+  filialId: string
+  conversaId: string
+  assunto: string
+  respostaDoResponsavel: string
+}): Promise<string> {
+  const { supabase, conversaId, assunto, respostaDoResponsavel } = args
+  try {
+    const [loja, historico] = await Promise.all([dadosDaLoja(supabase), historicoDaConversa(supabase, conversaId)])
+    const messages: Anthropic.MessageParam[] = [
+      ...historico,
+      {
+        role: 'user',
+        content: `[Instrução interna da loja, não é mensagem do cliente]\nO responsável respondeu à consulta "${assunto}":\n"${respostaDoResponsavel}"\n\nEscreva agora a mensagem para o cliente com essa informação.`,
+      },
+    ]
+    const response = await getClient().messages.create({
+      model: MODELO,
+      max_tokens: MAX_TOKENS,
+      system: `Você é o assistente de atendimento de uma assistência técnica de celulares e conversa com o cliente pelo WhatsApp.
+
+${loja}
+
+O responsável da loja acabou de responder a uma consulta sua. Escreva a mensagem que o cliente vai receber:
+- Uma mensagem curta, em português do Brasil, cordial e direta, sem markdown, com no máximo um emoji.
+- Passe exatamente a informação do responsável: não mude valores, prazos nem condições, e não acrescente promessas.
+- Se houver preço, diga que é uma estimativa sujeita à avaliação do aparelho na loja.
+- Não mencione consulta interna, sistema, fornecedores nem custo de peça.
+- Responda só com o texto da mensagem.`,
+      messages,
+    })
+    const texto = textoDa(response)
+    if (texto && response.stop_reason !== 'refusal') return texto
+  } catch (e) {
+    console.error('[WA bot] redigir resposta do responsável', e)
+  }
+  return respostaDoResponsavel
 }

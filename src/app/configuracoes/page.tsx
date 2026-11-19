@@ -281,6 +281,8 @@ export default function ConfiguracoesPage() {
   // null enquanto a migração das regras do agente não foi rodada
   const [waBot, setWaBot] = useState<ConfigBot | null>(null)
   const [waNumerosTeste, setWaNumerosTeste] = useState('')
+  // null enquanto a tabela de respostas memorizadas não existe
+  const [waMemoria, setWaMemoria] = useState<{ id: string; assunto: string; resposta: string; criado_em: string; valido_ate: string | null }[] | null>(null)
   const [waWabaId, setWaWabaId] = useState('')
   const [waDiag, setWaDiag] = useState<{ ok: boolean; linhas: string[] } | null>(null)
   const [waDiagLoading, setWaDiagLoading] = useState(false)
@@ -397,6 +399,8 @@ export default function ConfiguracoesPage() {
       setWaBot(cfgBot)
       setWaNumerosTeste(cfgBot.numeros_teste.join(', '))
     }
+    const memoria = await supabase.from('wa_conhecimento').select('id, assunto, resposta, criado_em, valido_ate').order('criado_em', { ascending: false }).limit(100)
+    if (!memoria.error) setWaMemoria(memoria.data ?? [])
     const { data: pixCfg } = await supabase
       .from('pix_config')
       .select('mp_access_token, mp_webhook_secret, ativo')
@@ -507,6 +511,11 @@ export default function ConfiguracoesPage() {
     setUModal(true)
   }
 
+  async function esquecerResposta(id: string) {
+    const { error } = await supabase.from('wa_conhecimento').delete().eq('id', id)
+    if (!error) setWaMemoria(lista => lista ? lista.filter(m => m.id !== id) : lista)
+  }
+
   async function salvarWaConfig() {
     if (!waConfig) return
     setWaSaving(true); setWaMsg('')
@@ -550,7 +559,8 @@ export default function ConfiguracoesPage() {
     }
     let erroBot = false
     if (!error && waBot) {
-      const bot_config: ConfigBot = { ...waBot, numeros_teste: lerNumerosDeTeste(waNumerosTeste) }
+      // lerConfigBot deixa o telefone do responsável só com dígitos
+      const bot_config: ConfigBot = lerConfigBot({ ...waBot, numeros_teste: lerNumerosDeTeste(waNumerosTeste) })
       const res = await supabase.from('wa_config').update({ bot_config }).eq('filial_id', perfil.filial_id)
       erroBot = !!res.error
       if (!res.error) { setWaBot(bot_config); setWaNumerosTeste(bot_config.numeros_teste.join(', ')) }
@@ -1462,7 +1472,7 @@ export default function ConfiguracoesPage() {
               </div>
               <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Prompt do sistema</label>
               <textarea rows={5} style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }} value={waConfig?.bot_prompt ?? ''} onChange={e => setWaConfig(c => c ? { ...c, bot_prompt: e.target.value } : c)} />
-              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Modelo: Claude Haiku 4.5 · Use [HUMANO] para instruir quando transferir para atendente.</div>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Modelo: Claude Haiku 5.5 · Use [HUMANO] para instruir quando transferir para atendente.</div>
               {waBot ? (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 14 }}>
                   <div>
@@ -1477,10 +1487,48 @@ export default function ConfiguracoesPage() {
                       {waNumerosTeste.trim() ? 'Modo de teste: o agente só responde a estes números.' : 'Vazio: o agente responde a todos os clientes.'}
                     </div>
                   </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>WhatsApp do responsável (consultas do agente)</label>
+                    <input name="wa-bot-dono" autoComplete="off" style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} value={waBot.dono_telefone} onChange={e => setWaBot(c => c ? { ...c, dono_telefone: e.target.value.replace(/[^\d ()+-]/g, '') } : c)} placeholder="41 98765-4321" />
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Quando o agente não sabe responder (preço de um reparo, prazo), ele pergunta neste número e repassa a resposta ao cliente. Vazio: ele transfere para atendimento.</div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Prazo da consulta (min)</label>
+                      <input name="wa-bot-consulta-prazo" type="number" min={1} style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} value={waBot.consulta_timeout_min} onChange={e => setWaBot(c => c ? { ...c, consulta_timeout_min: Math.max(1, parseInt(e.target.value, 10) || 1) } : c)} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Validade da resposta (dias)</label>
+                      <input name="wa-bot-validade" type="number" min={1} style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} value={waBot.conhecimento_validade_dias} onChange={e => setWaBot(c => c ? { ...c, conhecimento_validade_dias: Math.max(1, parseInt(e.target.value, 10) || 1) } : c)} />
+                    </div>
+                    <div style={{ gridColumn: '1 / -1', fontSize: 11, color: '#94a3b8' }}>Sem resposta no prazo, o cliente é avisado e a conversa fica pendente. Cada resposta sua vale para perguntas iguais durante a validade.</div>
+                  </div>
                 </div>
               ) : (
                 <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#92400e', marginTop: 12 }}>
-                  Para usar a pausa por atendente e o modo de teste, rode antes o arquivo <code>supabase-whatsapp-bot-migration.sql</code> no banco.
+                  Para usar a pausa por atendente, o modo de teste e as consultas ao responsável, rode antes o arquivo <code>supabase-whatsapp-agente-migration.sql</code> no banco.
+                </div>
+              )}
+              {waMemoria && (
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Respostas que o agente memorizou ({waMemoria.length})</div>
+                  {waMemoria.length === 0 && <div style={{ fontSize: 12, color: '#94a3b8' }}>Nenhuma ainda. Cada resposta sua a uma consulta aparece aqui.</div>}
+                  {waMemoria.map(m => {
+                    const vencida = !!m.valido_ate && new Date(m.valido_ate).getTime() < Date.now()
+                    return (
+                      <div key={m.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: '#f8fafc', borderRadius: 6, padding: '8px 10px', marginBottom: 6, opacity: vencida ? 0.55 : 1 }}>
+                        <div style={{ flex: 1, minWidth: 0, fontSize: 12, color: '#334155', lineHeight: 1.45 }}>
+                          <strong>{m.assunto}</strong>
+                          <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.resposta}</div>
+                          <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                            {new Date(m.criado_em).toLocaleDateString('pt-BR')}
+                            {m.valido_ate ? ` · ${vencida ? 'venceu' : 'vale até'} ${new Date(m.valido_ate).toLocaleDateString('pt-BR')}` : ''}
+                          </div>
+                        </div>
+                        <button onClick={() => esquecerResposta(m.id)} title="O agente deixa de usar esta resposta e volta a perguntar" style={{ flexShrink: 0, padding: '3px 8px', background: 'none', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 4, fontSize: 11, cursor: 'pointer' }}>Esquecer</button>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
