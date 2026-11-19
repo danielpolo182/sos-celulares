@@ -16,6 +16,14 @@ type Pedido =
 
 const SEM_TABELA = 'A tabela de peças ainda não existe. Rode o arquivo supabase-whatsapp-agente-migration.sql no banco.'
 
+// 409 faz a tela parar a captura: repetir não resolve um problema de banco
+function falhaAoGravar(gravacao: { erro: string; tabelaAusente: boolean }) {
+  return NextResponse.json(
+    { error: gravacao.tabelaAusente ? SEM_TABELA : `Não consegui gravar as peças no banco: ${gravacao.erro}` },
+    { status: 409 }
+  )
+}
+
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -28,7 +36,8 @@ export async function POST(req: NextRequest) {
       const pagina = Math.max(1, Math.floor(Number(pedido.pagina) || 1))
       // Busca vazia: a loja devolve todos os produtos, paginados
       const { pecas, ultimaPagina } = await buscarFixcellPagina('', pagina)
-      if (!(await guardarPecas(pecas, 'catálogo completo'))) return NextResponse.json({ error: SEM_TABELA }, { status: 409 })
+      const gravacao = await guardarPecas(pecas, 'catálogo completo')
+      if (!gravacao.ok) return falhaAoGravar(gravacao)
       return NextResponse.json({ encontradas: pecas.length, ultimaPagina })
     }
 
@@ -38,7 +47,8 @@ export async function POST(req: NextRequest) {
       }
       const consulta = consultaParaModelo('iplay', pedido.modelo, pedido.tipo)
       const pecas = await buscarIPlay(consulta)
-      if (!(await guardarPecas(pecas, consulta))) return NextResponse.json({ error: SEM_TABELA }, { status: 409 })
+      const gravacao = await guardarPecas(pecas, consulta)
+      if (!gravacao.ok) return falhaAoGravar(gravacao)
       return NextResponse.json({ encontradas: pecas.length, consulta })
     }
 

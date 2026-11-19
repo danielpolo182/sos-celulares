@@ -51,6 +51,9 @@ export default function CatalogoPecasPage() {
   const parar = useRef(false)
 
   const carregarResumo = useCallback(async () => {
+    // Consulta comum primeiro: a contagem sem corpo não devolve erro quando a tabela não existe
+    const teste = await supabase.from('fornecedor_pecas').select('id').limit(1)
+    if (teste.error) { setTabelaAusente(true); return }
     const linhas: Resumo[] = []
     for (const fornecedor of ['iplay', 'fixcell']) {
       const { count, error } = await supabase.from('fornecedor_pecas').select('id', { count: 'exact', head: true }).eq('fornecedor', fornecedor)
@@ -100,7 +103,7 @@ export default function CatalogoPecasPage() {
     for (let pagina = 1; pagina <= p.total && !parar.current; pagina++) {
       const r = await passo({ fornecedor: 'fixcell', pagina })
       if (!r.ok) {
-        if (r.semTabela) { setTabelaAusente(true); p.mensagem = r.erro; encerradaPorErro = true; break }
+        if (r.semTabela) { p.mensagem = r.erro; encerradaPorErro = true; break }
         p.falhas++
         if (++falhasSeguidas >= FALHAS_SEGUIDAS_PARA_PARAR) { p.mensagem = `Parei depois de ${falhasSeguidas} falhas seguidas: ${r.erro}`; encerradaPorErro = true; break }
       } else {
@@ -159,7 +162,7 @@ export default function CatalogoPecasPage() {
       if (parar.current) break
       const r = await passo({ fornecedor: 'iplay', modelo: item.modelo, tipo: item.tipo })
       if (!r.ok) {
-        if (r.semTabela) { setTabelaAusente(true); p.mensagem = r.erro; encerradaPorErro = true; break }
+        if (r.semTabela) { p.mensagem = r.erro; encerradaPorErro = true; break }
         p.falhas++
         if (++falhasSeguidas >= FALHAS_SEGUIDAS_PARA_PARAR) { p.mensagem = `Parei depois de ${falhasSeguidas} falhas seguidas: ${r.erro}`; encerradaPorErro = true; break }
       } else {
@@ -247,11 +250,11 @@ export default function CatalogoPecasPage() {
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12, fontSize: 13, color: '#334155' }}>
             <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
-              <input type="radio" name="origem-modelos" checked={origemModelos === 'os'} onChange={() => setOrigemModelos('os')} disabled={!!capturando} />
+              <input type="radio" style={{ width: 'auto', flexShrink: 0 }} name="origem-modelos" checked={origemModelos === 'os'} onChange={() => setOrigemModelos('os')} disabled={!!capturando} />
               Modelos que já passaram pela loja (das ordens de serviço)
             </label>
             <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
-              <input type="radio" name="origem-modelos" checked={origemModelos === 'todos'} onChange={() => setOrigemModelos('todos')} disabled={!!capturando} />
+              <input type="radio" style={{ width: 'auto', flexShrink: 0 }} name="origem-modelos" checked={origemModelos === 'todos'} onChange={() => setOrigemModelos('todos')} disabled={!!capturando} />
               Todos os {gerarModelos().length} modelos do sistema (cerca de {minutosIplay(gerarModelos().length * 3)} minutos)
             </label>
           </div>

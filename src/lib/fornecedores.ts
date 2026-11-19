@@ -122,15 +122,17 @@ function clienteDeServico() {
   return url && chave ? createClient(url, chave) : null
 }
 
+export type ResultadoGravacao = { ok: true } | { ok: false; erro: string; tabelaAusente: boolean }
+
 /**
  * Guarda o custo mais recente de cada peça vista. Falha aqui nunca derruba a
- * busca; o retorno diz se a gravação aconteceu (false com a tabela ausente).
+ * busca; quem precisa saber se gravou (a captura do catálogo) lê o retorno.
  */
-export async function guardarPecas(pecas: PecaFornecedor[], consulta: string): Promise<boolean> {
-  if (pecas.length === 0) return true
+export async function guardarPecas(pecas: PecaFornecedor[], consulta: string): Promise<ResultadoGravacao> {
+  if (pecas.length === 0) return { ok: true }
   try {
     const supabase = clienteDeServico()
-    if (!supabase) return false
+    if (!supabase) return { ok: false, erro: 'chave de serviço do banco não configurada no servidor', tabelaAusente: false }
     const agora = new Date().toISOString()
     // A mesma peça pode aparecer duas vezes numa busca; o upsert não aceita chave repetida no mesmo lote
     const unicas = new Map(pecas.map(p => [`${p.fornecedor}|${p.nome}`, p]))
@@ -142,11 +144,13 @@ export async function guardarPecas(pecas: PecaFornecedor[], consulta: string): P
       { onConflict: 'fornecedor,nome' }
     )
     // Tabela ausente (migração não rodada) cai aqui e é ignorada
-    if (error) console.warn('[fornecedores] cache não gravado:', error.message)
-    return !error
+    if (!error) return { ok: true }
+    console.warn('[fornecedores] cache não gravado:', error.code, error.message)
+    // 42P01 (Postgres) e PGRST205 (API): a tabela não existe
+    return { ok: false, erro: `${error.code ?? ''} ${error.message}`.trim(), tabelaAusente: error.code === '42P01' || error.code === 'PGRST205' }
   } catch (e) {
     console.warn('[fornecedores] cache não gravado:', e)
-    return false
+    return { ok: false, erro: e instanceof Error ? e.message : String(e), tabelaAusente: false }
   }
 }
 
