@@ -77,17 +77,33 @@ type CorpoMensagem =
   | { type: 'image'; image: { link: string; caption?: string } }
   | { type: 'document'; document: { link: string; caption?: string; filename?: string } }
 
+/**
+ * A YCloud registra o número da loja de um jeito só (em geral sem o nono
+ * dígito) e recusa o outro. Se o número cadastrado for recusado como
+ * remetente, tenta uma vez com a outra forma em vez de falhar todo envio.
+ */
+async function enviarPelaYCloud(config: WaConfigYCloud, destino: string, corpo: CorpoMensagem): Promise<Response> {
+  const tentar = (remetente: string) => fetch(`${YCLOUD_API}/whatsapp/messages/sendDirectly`, {
+    method: 'POST',
+    headers: { 'X-API-Key': config.ycloud_api_key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: remetente, to: `+${destino}`, ...corpo }),
+  })
+
+  const res = await tentar(config.ycloud_numero)
+  if (res.status !== 403) return res
+  const outraForma = variantesDeTelefone(config.ycloud_numero)[1]
+  if (!outraForma || !(await res.clone().text()).includes('WHATSAPP_PHONE_NUMBER_UNAVAILABLE')) return res
+  console.warn('[WA ycloud] número da loja recusado como remetente; tentando a outra forma do número')
+  return tentar(`+${outraForma}`)
+}
+
 // Os dois provedores respondem 200 assim que aceitam a mensagem; a entrega (ou a
 // falha) chega depois, pelo webhook, identificada pelo id devolvido aqui.
 async function enviar(config: WaConfig, to: string, corpo: CorpoMensagem, rotulo: string): Promise<string[]> {
   const destino = normalizarDestino(to)
 
   const res = config.provedor === 'ycloud'
-    ? await fetch(`${YCLOUD_API}/whatsapp/messages/sendDirectly`, {
-        method: 'POST',
-        headers: { 'X-API-Key': config.ycloud_api_key, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: config.ycloud_numero, to: `+${destino}`, ...corpo }),
-      })
+    ? await enviarPelaYCloud(config, destino, corpo)
     : await fetch(`${META_API}/${config.phone_number_id}/messages`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${config.access_token}`, 'Content-Type': 'application/json' },
