@@ -297,7 +297,7 @@ export default function ConfiguracoesPage() {
   const [waLembreteDias, setWaLembreteDias] = useState('')
   const [waModeloCopiado, setWaModeloCopiado] = useState('')
   const [waTestando, setWaTestando] = useState(false)
-  const [waTeste, setWaTeste] = useState<{ ok: boolean; modelo: string; detalhe: string; falhas: { telefone: string | null; mensagem: string; criado_em: string }[] } | null>(null)
+  const [waTeste, setWaTeste] = useState<{ ok: boolean; modelo: string; detalhe: string; falhas: { telefone: string | null; mensagem: string; criado_em: string; status?: string | null }[] } | null>(null)
   // Valores novos colados nos campos de credencial da YCloud; vazios quando não há troca
   const [waChaveNova, setWaChaveNova] = useState('')
   const [waSegredoNovo, setWaSegredoNovo] = useState('')
@@ -1583,14 +1583,15 @@ export default function ConfiguracoesPage() {
                     {waTeste.ok
                       ? `✓ A IA respondeu (${waTeste.modelo}): "${waTeste.detalhe}"`
                       : `⚠ A IA não respondeu: ${waTeste.detalhe}`}
-                    {waTeste.falhas.length > 0 && (
-                      <div style={{ marginTop: 8, color: '#7f1d1d' }}>
-                        <strong>Últimas falhas do agente em conversas:</strong>
-                        {waTeste.falhas.map((f, i) => (
-                          <div key={i}>{new Date(f.criado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · {f.mensagem}</div>
-                        ))}
-                      </div>
-                    )}
+                    <div style={{ marginTop: 8, color: '#334155' }}>
+                      <strong>O que o agente fez nas últimas mensagens recebidas:</strong>
+                      {waTeste.falhas.length === 0 && <div>Nenhum registro ainda. Mande uma mensagem para o número da loja, espere 30 segundos e teste de novo.</div>}
+                      {waTeste.falhas.map((f, i) => (
+                        <div key={i} style={{ color: f.status === 'erro' ? '#991b1b' : '#334155' }}>
+                          {new Date(f.criado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })} · final {String(f.telefone ?? '').slice(-4)} · {f.mensagem}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>

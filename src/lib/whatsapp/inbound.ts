@@ -4,7 +4,7 @@
 // para os tipos daqui e chama estas funções.
 import { SupabaseClient } from '@supabase/supabase-js'
 import { explicarErroDoAgente, processBot } from './bot'
-import { botPodeResponder, pausarBot, pausarBotPorMensagemDoApp } from './botRegras'
+import { motivoDoSilencio, pausarBot, pausarBotPorMensagemDoApp } from './botRegras'
 import { tratarRespostaDoResponsavel } from './consultas'
 import { escalateToHuman } from './escalate'
 import { sendMessage, variantesDeTelefone, WaConfig } from './send'
@@ -193,16 +193,27 @@ export async function processarMensagem(
 
   // A partir daqui a mensagem já está salva: falhas são registradas, mas não
   // devolvem erro ao provedor (uma reentrega não refaria estas etapas).
+  // Cada passo do agente fica em wa_logs e aparece em Configurações → Chatbot → Testar agente
+  const rastro = async (mensagem: string, falha = false) => {
+    console.log('[WA bot]', mensagem)
+    try {
+      await supabase.from('wa_logs').insert({
+        filial_id: ctx.filialId, tipo: falha ? 'erro_agente' : 'agente', telefone, mensagem: mensagem.slice(0, 500), status: falha ? 'erro' : 'info',
+      })
+    } catch { /* registro não é crítico */ }
+  }
+
   const depoisDeGravar = async () => {
     try {
       await gravarMidia(gravada.id, norm, `${ctx.filialId}/${conversaId}`, ctx)
 
-      if (!ctx.botAtivo || !ctx.envio) return
+      if (!ctx.botAtivo) return
+      if (!ctx.envio) { await rastro('não respondeu: o envio de mensagens não está configurado (chave ou número da YCloud)', true); return }
 
       // Resposta do responsável a uma consulta do agente: é repassada ao cliente e não segue como atendimento
       if (norm.tipo === 'texto' && await tratarRespostaDoResponsavel({
         supabase, filialId: ctx.filialId, envio: ctx.envio, remetente: telefone, texto: norm.conteudo, citada: msg.context?.id ?? null,
-      })) return
+      })) { await rastro('mensagem do responsável tratada como resposta a uma consulta do agente'); return }
 
       // Quem escreve em várias mensagens seguidas recebe uma resposta só, dada à última delas
       const ehAMaisRecente = async () => {
@@ -217,47 +228,45 @@ export async function processarMensagem(
         return !data || data.id === gravada.id
       }
       await new Promise(r => setTimeout(r, ESPERA_POR_MAIS_MENSAGENS_MS))
-      if (!(await ehAMaisRecente())) return
+      if (!(await ehAMaisRecente())) { await rastro('não respondeu a esta mensagem: o cliente mandou outra em seguida'); return }
 
-      if (!(await botPodeResponder(supabase, ctx.filialId, conversaId, telefone, status))) {
-        console.log('[WA bot] calado nesta conversa (pausado ou fora dos números de teste)')
-        return
-      }
+      const motivo = await motivoDoSilencio(supabase, ctx.filialId, conversaId, telefone, status)
+      if (motivo) { await rastro('não respondeu: ' + motivo); return }
       const envio = { ...ctx.envio, filial_id: ctx.filialId }
 
       // O bot só entende texto: áudio, foto e arquivo vão direto para uma pessoa
       if (norm.tipo !== 'texto') {
         await escalateToHuman(conversaId, envio, supabase)
         await pausarBot(supabase, ctx.filialId, conversaId)
+        await rastro('transferiu para atendimento: a mensagem não é texto')
         return
       }
 
-      const { resposta, escalou } = await processBot(norm.conteudo, telefone, conversaId, supabase, ctx.filialId, ctx.envio)
+      await rastro('lendo a mensagem e preparando a resposta')
+      const { resposta, escalou, ferramentas } = await processBot(norm.conteudo, telefone, conversaId, supabase, ctx.filialId, ctx.envio)
+      const usou = ferramentas.length ? ' (usou: ' + ferramentas.join(', ') + ')' : ''
 
       // A resposta leva alguns segundos: nesse tempo o cliente pode ter escrito de novo ou alguém da loja pode ter assumido
-      if (!(await ehAMaisRecente())) return
-      if (!(await botPodeResponder(supabase, ctx.filialId, conversaId, telefone, status))) return
+      if (!(await ehAMaisRecente())) { await rastro('resposta descartada: o cliente mandou outra mensagem enquanto o agente respondia' + usou); return }
+      const motivoFinal = await motivoDoSilencio(supabase, ctx.filialId, conversaId, telefone, status)
+      if (motivoFinal) { await rastro('resposta descartada: ' + motivoFinal + usou); return }
 
       if (escalou) {
         await escalateToHuman(conversaId, envio, supabase)
         // Sem a pausa, a próxima mensagem do cliente geraria outro "vou te conectar"
         await pausarBot(supabase, ctx.filialId, conversaId)
+        await rastro('transferiu para atendimento' + usou)
       } else {
         const waMessageId = await sendMessage(ctx.envio, telefone, resposta)
         await supabase.from('wa_mensagens').insert({ conversa_id: conversaId, direcao: 'saida', conteudo: resposta, wa_message_id: waMessageId })
         if (status !== 'bot') await supabase.from('wa_conversas').update({ status: 'bot' }).eq('id', conversaId)
-        console.log('[WA bot] resposta enviada')
+        await rastro('resposta enviada' + usou)
       }
     } catch (err) {
       console.error('[WA webhook] pós-gravação', msg.id, err)
       // Se o bot falhou, a conversa não pode ficar presa sem resposta
       await supabase.from('wa_conversas').update({ status: 'humano' }).eq('id', conversaId)
-      // Fica visível em Configurações → Chatbot: sem isso o agente falha em silêncio
-      try {
-        await supabase.from('wa_logs').insert({
-          filial_id: ctx.filialId, tipo: 'erro_agente', telefone, mensagem: explicarErroDoAgente(err), status: 'erro',
-        })
-      } catch { /* registro não é crítico */ }
+      await rastro('falhou: ' + explicarErroDoAgente(err), true)
     }
   }
 

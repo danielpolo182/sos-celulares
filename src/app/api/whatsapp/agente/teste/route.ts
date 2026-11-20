@@ -17,10 +17,10 @@ export async function GET() {
 
   const { data: falhas } = await supabase
     .from('wa_logs')
-    .select('telefone, mensagem, criado_em')
-    .eq('tipo', 'erro_agente')
+    .select('telefone, mensagem, criado_em, status')
+    .in('tipo', ['erro_agente', 'agente'])
     .order('criado_em', { ascending: false })
-    .limit(5)
+    .limit(12)
 
   return NextResponse.json({ ...teste, falhas: falhas ?? [] })
 }

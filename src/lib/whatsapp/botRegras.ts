@@ -170,12 +170,29 @@ export async function botPodeResponder(
   telefone: string,
   statusDaConversa: string
 ): Promise<boolean> {
+  return (await motivoDoSilencio(supabase, filialId, conversaId, telefone, statusDaConversa)) === null
+}
+
+/** Por que o agente não deve responder a esta mensagem; null quando ele deve responder. */
+export async function motivoDoSilencio(
+  supabase: SupabaseClient,
+  filialId: string,
+  conversaId: string,
+  telefone: string,
+  statusDaConversa: string
+): Promise<string | null> {
+  const antigo = statusDaConversa === 'bot' ? null : 'regras do agente não instaladas no banco e a conversa não está marcada como "bot"'
   const config = await carregarConfigBot(supabase, filialId)
-  if (!config) return statusDaConversa === 'bot'
-  if (!numeroLiberadoParaBot(telefone, config)) return false
+  if (!config) return antigo
+  if (!numeroLiberadoParaBot(telefone, config)) return 'o número não está em "Números de teste"'
 
   const { data, error } = await supabase.from('wa_conversas').select('bot_pausado_ate').eq('id', conversaId).maybeSingle()
-  if (error) return statusDaConversa === 'bot'
+  if (error) return antigo
   const ate = data?.bot_pausado_ate as string | null | undefined
-  return !ate || new Date(ate).getTime() <= Date.now()
+  if (ate && new Date(ate).getTime() > Date.now()) {
+    if (pausaEhManual(ate)) return 'agente pausado nesta conversa pelo botão'
+    const hora = new Date(ate).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })
+    return 'agente pausado nesta conversa até ' + hora + ' (alguém da loja respondeu)'
+  }
+  return null
 }

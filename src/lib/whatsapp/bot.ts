@@ -236,7 +236,8 @@ export async function processBot(
   supabase: SupabaseClient,
   filialId: string,
   envio: WaConfig
-): Promise<{ resposta: string; escalou: boolean }> {
+): Promise<{ resposta: string; escalou: boolean; ferramentas: string[] }> {
+  const ferramentas: string[] = []
   const [{ data: waConfig }, loja, materiais] = await Promise.all([
     supabase.from('wa_config').select('bot_prompt').eq('filial_id', filialId).maybeSingle(),
     dadosDaLoja(supabase),
@@ -294,6 +295,7 @@ Se o cliente pedir para falar com uma pessoa, ou estiver irritado com o atendime
     const toolResults: Anthropic.ToolResultBlockParam[] = []
     for (const block of response.content) {
       if (block.type !== 'tool_use') continue
+      ferramentas.push(block.name)
       let resultado: string
       try {
         resultado = await executeTool(block.name, block.input as Record<string, string>, { supabase, filialId, conversaId, envio })
@@ -314,10 +316,10 @@ Se o cliente pedir para falar com uma pessoa, ou estiver irritado com o atendime
 
   // Sem texto utilizável, recusa do modelo ou ferramentas além do limite: passa para uma pessoa
   if (!resposta || response.stop_reason === 'tool_use' || response.stop_reason === 'refusal' || resposta.includes('[HUMANO]')) {
-    return { resposta: resposta.replace('[HUMANO]', '').trim(), escalou: true }
+    return { resposta: resposta.replace('[HUMANO]', '').trim(), escalou: true, ferramentas }
   }
 
-  return { resposta, escalou: false }
+  return { resposta, escalou: false, ferramentas }
 }
 
 /**
