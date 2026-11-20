@@ -2,7 +2,7 @@
 // Webhook da YCloud (número em coexistência com o aplicativo WhatsApp Business).
 // O [token] é o verify_token da filial: identifica de quem é o evento antes de
 // conferir a assinatura, já que nem todo evento traz o número da loja.
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { baixarESalvarMidiaYCloud } from '@/lib/whatsapp/media'
 import { configDeEnvio } from '@/lib/whatsapp/send'
@@ -78,6 +78,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return baixarESalvarMidiaYCloud(apiKey, { link: midia.link, id: midia.id, mime: midia.mime }, pasta, supabase)
     },
     supabase,
+    // A YCloud espera pouco pela resposta; o agente leva vários segundos
+    depois: tarefa => after(tarefa),
   }
 
   try {

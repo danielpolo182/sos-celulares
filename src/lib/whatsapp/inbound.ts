@@ -92,7 +92,12 @@ export type ContextoEntrada = {
   /** Como baixar a mídia depende do provedor */
   baixarMidia: (midia: MidiaNormalizada, pasta: string) => Promise<MidiaSalva | null>
   supabase: SupabaseClient
+  /** Agenda trabalho para depois da resposta ao provedor (download de mídia e agente). */
+  depois?: (tarefa: () => Promise<void>) => void
 }
+
+// Tempo que o agente espera antes de responder, para o cliente terminar de escrever
+const ESPERA_POR_MAIS_MENSAGENS_MS = 4000
 
 // As conversas são identificadas pelo telefone só com dígitos, igual nos dois provedores
 const soDigitos = (telefone: string) => telefone.replace(/\D/g, '')
@@ -188,42 +193,72 @@ export async function processarMensagem(
 
   // A partir daqui a mensagem já está salva: falhas são registradas, mas não
   // devolvem erro ao provedor (uma reentrega não refaria estas etapas).
-  try {
-    await gravarMidia(gravada.id, norm, `${ctx.filialId}/${conversaId}`, ctx)
+  const depoisDeGravar = async () => {
+    try {
+      await gravarMidia(gravada.id, norm, `${ctx.filialId}/${conversaId}`, ctx)
 
-    if (!ctx.botAtivo || !ctx.envio) return
+      if (!ctx.botAtivo || !ctx.envio) return
 
-    // Resposta do responsável a uma consulta do agente: é repassada ao cliente e não segue como atendimento
-    if (norm.tipo === 'texto' && await tratarRespostaDoResponsavel({
-      supabase, filialId: ctx.filialId, envio: ctx.envio, remetente: telefone, texto: norm.conteudo, citada: msg.context?.id ?? null,
-    })) return
+      // Resposta do responsável a uma consulta do agente: é repassada ao cliente e não segue como atendimento
+      if (norm.tipo === 'texto' && await tratarRespostaDoResponsavel({
+        supabase, filialId: ctx.filialId, envio: ctx.envio, remetente: telefone, texto: norm.conteudo, citada: msg.context?.id ?? null,
+      })) return
 
-    if (!(await botPodeResponder(supabase, ctx.filialId, conversaId, telefone, status))) return
-    const envio = { ...ctx.envio, filial_id: ctx.filialId }
+      // Quem escreve em várias mensagens seguidas recebe uma resposta só, dada à última delas
+      const ehAMaisRecente = async () => {
+        const { data } = await supabase
+          .from('wa_mensagens')
+          .select('id')
+          .eq('conversa_id', conversaId)
+          .eq('direcao', 'entrada')
+          .order('criado_em', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        return !data || data.id === gravada.id
+      }
+      await new Promise(r => setTimeout(r, ESPERA_POR_MAIS_MENSAGENS_MS))
+      if (!(await ehAMaisRecente())) return
 
-    // O bot só entende texto: áudio, foto e arquivo vão direto para uma pessoa
-    if (norm.tipo !== 'texto') {
-      await escalateToHuman(conversaId, envio, supabase)
-      await pausarBot(supabase, ctx.filialId, conversaId)
-      return
+      if (!(await botPodeResponder(supabase, ctx.filialId, conversaId, telefone, status))) {
+        console.log('[WA bot] calado nesta conversa (pausado ou fora dos números de teste)')
+        return
+      }
+      const envio = { ...ctx.envio, filial_id: ctx.filialId }
+
+      // O bot só entende texto: áudio, foto e arquivo vão direto para uma pessoa
+      if (norm.tipo !== 'texto') {
+        await escalateToHuman(conversaId, envio, supabase)
+        await pausarBot(supabase, ctx.filialId, conversaId)
+        return
+      }
+
+      const { resposta, escalou } = await processBot(norm.conteudo, telefone, conversaId, supabase, ctx.filialId, ctx.envio)
+
+      // A resposta leva alguns segundos: nesse tempo o cliente pode ter escrito de novo ou alguém da loja pode ter assumido
+      if (!(await ehAMaisRecente())) return
+      if (!(await botPodeResponder(supabase, ctx.filialId, conversaId, telefone, status))) return
+
+      if (escalou) {
+        await escalateToHuman(conversaId, envio, supabase)
+        // Sem a pausa, a próxima mensagem do cliente geraria outro "vou te conectar"
+        await pausarBot(supabase, ctx.filialId, conversaId)
+      } else {
+        const waMessageId = await sendMessage(ctx.envio, telefone, resposta)
+        await supabase.from('wa_mensagens').insert({ conversa_id: conversaId, direcao: 'saida', conteudo: resposta, wa_message_id: waMessageId })
+        if (status !== 'bot') await supabase.from('wa_conversas').update({ status: 'bot' }).eq('id', conversaId)
+        console.log('[WA bot] resposta enviada')
+      }
+    } catch (err) {
+      console.error('[WA webhook] pós-gravação', msg.id, err)
+      // Se o bot falhou, a conversa não pode ficar presa sem resposta
+      await supabase.from('wa_conversas').update({ status: 'humano' }).eq('id', conversaId)
     }
-
-    const { resposta, escalou } = await processBot(norm.conteudo, telefone, conversaId, supabase, ctx.filialId, ctx.envio)
-
-    if (escalou) {
-      await escalateToHuman(conversaId, envio, supabase)
-      // Sem a pausa, a próxima mensagem do cliente geraria outro "vou te conectar"
-      await pausarBot(supabase, ctx.filialId, conversaId)
-    } else {
-      const waMessageId = await sendMessage(ctx.envio, telefone, resposta)
-      await supabase.from('wa_mensagens').insert({ conversa_id: conversaId, direcao: 'saida', conteudo: resposta, wa_message_id: waMessageId })
-      if (status !== 'bot') await supabase.from('wa_conversas').update({ status: 'bot' }).eq('id', conversaId)
-    }
-  } catch (err) {
-    console.error('[WA webhook] pós-gravação', msg.id, err)
-    // Se o bot falhou, a conversa não pode ficar presa sem resposta
-    await supabase.from('wa_conversas').update({ status: 'humano' }).eq('id', conversaId)
   }
+
+  // Com `depois`, o provedor recebe o "ok" assim que a mensagem está gravada e o
+  // agente trabalha em seguida; sem ele (webhook da Meta), tudo roda antes da resposta.
+  if (ctx.depois) ctx.depois(depoisDeGravar)
+  else await depoisDeGravar()
 }
 
 /**

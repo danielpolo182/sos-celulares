@@ -117,6 +117,10 @@ export async function pausarBot(supabase: SupabaseClient, filialId: string, conv
   if (error) console.error('[WA bot] pausar', error.message)
 }
 
+// Resposta da loja que chega até este tempo depois da mensagem do cliente é automática
+const RESPOSTA_INSTANTANEA_MS = 6000
+const ESPERA_PELO_EVENTO_DO_CLIENTE_MS = 1500
+
 /**
  * Mensagem enviada pelo aplicativo do celular. Pausa o agente, a não ser que
  * seja uma das mensagens automáticas do aplicativo cadastradas pela loja.
@@ -124,6 +128,22 @@ export async function pausarBot(supabase: SupabaseClient, filialId: string, conv
 export async function pausarBotPorMensagemDoApp(supabase: SupabaseClient, filialId: string, conversaId: string, texto: string): Promise<void> {
   const config = await carregarConfigBot(supabase, filialId)
   if (!config || ehMensagemAutomatica(texto, config)) return
+
+  // Saudação e mensagem de ausência saem do aplicativo no mesmo instante em que
+  // o cliente escreve; ninguém digita uma resposta nesse tempo. A espera cobre o
+  // caso de os dois eventos chegarem juntos e o do cliente ainda não estar gravado.
+  await new Promise(r => setTimeout(r, ESPERA_PELO_EVENTO_DO_CLIENTE_MS))
+  const { data } = await supabase
+    .from('wa_mensagens')
+    .select('criado_em')
+    .eq('conversa_id', conversaId)
+    .eq('direcao', 'entrada')
+    .order('criado_em', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const desdeOCliente = data ? Date.now() - new Date(data.criado_em as string).getTime() : Infinity
+  if (desdeOCliente < RESPOSTA_INSTANTANEA_MS + ESPERA_PELO_EVENTO_DO_CLIENTE_MS) return
+
   await pausarBot(supabase, filialId, conversaId)
 }
 
