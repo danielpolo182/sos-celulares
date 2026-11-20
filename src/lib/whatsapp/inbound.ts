@@ -3,7 +3,7 @@
 // (Cloud API da Meta e YCloud). Cada webhook valida a origem, traduz o evento
 // para os tipos daqui e chama estas funções.
 import { SupabaseClient } from '@supabase/supabase-js'
-import { processBot } from './bot'
+import { explicarErroDoAgente, processBot } from './bot'
 import { botPodeResponder, pausarBot, pausarBotPorMensagemDoApp } from './botRegras'
 import { tratarRespostaDoResponsavel } from './consultas'
 import { escalateToHuman } from './escalate'
@@ -252,6 +252,12 @@ export async function processarMensagem(
       console.error('[WA webhook] pós-gravação', msg.id, err)
       // Se o bot falhou, a conversa não pode ficar presa sem resposta
       await supabase.from('wa_conversas').update({ status: 'humano' }).eq('id', conversaId)
+      // Fica visível em Configurações → Chatbot: sem isso o agente falha em silêncio
+      try {
+        await supabase.from('wa_logs').insert({
+          filial_id: ctx.filialId, tipo: 'erro_agente', telefone, mensagem: explicarErroDoAgente(err), status: 'erro',
+        })
+      } catch { /* registro não é crítico */ }
     }
   }
 

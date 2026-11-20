@@ -363,3 +363,30 @@ O responsável da loja acabou de responder a uma consulta sua. Escreva a mensage
   }
   return respostaDoResponsavel
 }
+
+/** Traduz as falhas mais comuns da API da Anthropic para algo que o dono da loja consegue resolver. */
+export function explicarErroDoAgente(erro: unknown): string {
+  const texto = erro instanceof Error ? erro.message : String(erro)
+  if (!process.env.ANTHROPIC_API_KEY) return 'A variável ANTHROPIC_API_KEY não está disponível no servidor. Cadastre na Vercel (ambiente Production) e faça um novo deploy.'
+  if (/credit balance|billing/i.test(texto)) return 'A conta da Anthropic está sem crédito. Adicione crédito em console.anthropic.com → Billing.'
+  if (/authentication_error|invalid x-api-key|401/i.test(texto)) return 'A chave da Anthropic foi recusada. Confira o valor de ANTHROPIC_API_KEY na Vercel.'
+  if (/not_found_error|model:/i.test(texto)) return `O modelo ${MODELO} não está disponível para esta chave.`
+  if (/rate_limit|429/i.test(texto)) return 'A Anthropic limitou as chamadas por excesso de uso. Tente de novo em instantes.'
+  if (/overloaded|529/i.test(texto)) return 'A Anthropic está sobrecarregada no momento. Tente de novo em instantes.'
+  return texto.slice(0, 400)
+}
+
+/** Chamada mínima à IA, para conferir chave, crédito e modelo sem depender de uma conversa. */
+export async function testarAgente(): Promise<{ ok: boolean; modelo: string; detalhe: string }> {
+  try {
+    const response = await getClient().messages.create({
+      model: MODELO,
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: 'Responda apenas com a palavra: funcionando' }],
+    })
+    return { ok: true, modelo: MODELO, detalhe: textoDa(response) || '(sem texto)' }
+  } catch (e) {
+    console.error('[WA bot] teste', e)
+    return { ok: false, modelo: MODELO, detalhe: explicarErroDoAgente(e) }
+  }
+}

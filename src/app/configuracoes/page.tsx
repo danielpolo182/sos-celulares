@@ -296,6 +296,8 @@ export default function ConfiguracoesPage() {
   const [waAvisos, setWaAvisos] = useState<ConfigAvisos | null>(null)
   const [waLembreteDias, setWaLembreteDias] = useState('')
   const [waModeloCopiado, setWaModeloCopiado] = useState('')
+  const [waTestando, setWaTestando] = useState(false)
+  const [waTeste, setWaTeste] = useState<{ ok: boolean; modelo: string; detalhe: string; falhas: { telefone: string | null; mensagem: string; criado_em: string }[] } | null>(null)
   // Valores novos colados nos campos de credencial da YCloud; vazios quando não há troca
   const [waChaveNova, setWaChaveNova] = useState('')
   const [waSegredoNovo, setWaSegredoNovo] = useState('')
@@ -583,6 +585,18 @@ export default function ConfiguracoesPage() {
   async function removerMaterial(id: string) {
     const res = await fetch(`/api/whatsapp/materiais?id=${id}`, { method: 'DELETE' })
     if (res.ok) setWaMateriais(lista => lista ? lista.filter(m => m.id !== id) : lista)
+  }
+
+  async function testarAgente() {
+    setWaTestando(true); setWaTeste(null)
+    try {
+      const res = await fetch('/api/whatsapp/agente/teste')
+      const json = await res.json()
+      setWaTeste(res.ok ? json : { ok: false, modelo: '', detalhe: json.error ?? `erro ${res.status}`, falhas: [] })
+    } catch (e) {
+      setWaTeste({ ok: false, modelo: '', detalhe: String(e), falhas: [] })
+    }
+    setWaTestando(false)
   }
 
   async function esquecerResposta(id: string) {
@@ -1560,6 +1574,26 @@ export default function ConfiguracoesPage() {
               <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Prompt do sistema</label>
               <textarea rows={5} style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }} value={waConfig?.bot_prompt ?? ''} onChange={e => setWaConfig(c => c ? { ...c, bot_prompt: e.target.value } : c)} />
               <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Modelo: Claude Haiku 5.5 · Use [HUMANO] para instruir quando transferir para atendente.</div>
+              <div style={{ marginTop: 12 }}>
+                <button onClick={testarAgente} disabled={waTestando} style={{ padding: '7px 14px', background: '#fff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: waTestando ? 'wait' : 'pointer' }}>
+                  {waTestando ? 'Testando…' : 'Testar agente'}
+                </button>
+                {waTeste && (
+                  <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.5, borderRadius: 8, padding: '10px 12px', background: waTeste.ok ? '#f0fdf4' : '#fef2f2', border: `1px solid ${waTeste.ok ? '#bbf7d0' : '#fecaca'}`, color: waTeste.ok ? '#166534' : '#991b1b' }}>
+                    {waTeste.ok
+                      ? `✓ A IA respondeu (${waTeste.modelo}): "${waTeste.detalhe}"`
+                      : `⚠ A IA não respondeu: ${waTeste.detalhe}`}
+                    {waTeste.falhas.length > 0 && (
+                      <div style={{ marginTop: 8, color: '#7f1d1d' }}>
+                        <strong>Últimas falhas do agente em conversas:</strong>
+                        {waTeste.falhas.map((f, i) => (
+                          <div key={i}>{new Date(f.criado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · {f.mensagem}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
               {waBot ? (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 14 }}>
                   <div>
