@@ -1603,6 +1603,11 @@ export default function ConfiguracoesPage() {
               </div>
               {waBot ? (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 14 }}>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Nome do agente</label>
+                    <input name="wa-bot-nome" autoComplete="off" maxLength={30} placeholder="ex.: Sol" style={{ width: 240, padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} value={waBot.nome} onChange={e => setWaBot(c => c ? { ...c, nome: e.target.value } : c)} />
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>O agente se apresenta com este nome na primeira mensagem ("Oi! Aqui é a Sol, da SOS Celulares"), em vez de "assistente virtual". Se o cliente perguntar se é um robô, ele responde a verdade. Em branco, usa a apresentação genérica.</div>
+                  </div>
                   <div>
                     <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Pausa quando alguém da loja responde (minutos)</label>
                     <input name="wa-bot-pausa" type="number" min={1} style={{ width: 120, padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} value={waBot.pausa_min} onChange={e => setWaBot(c => c ? { ...c, pausa_min: Math.max(1, parseInt(e.target.value, 10) || 1) } : c)} />

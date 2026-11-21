@@ -6,6 +6,8 @@ import { variantesDeTelefone } from './send'
 
 /** Guardado em wa_config.bot_config. */
 export type ConfigBot = {
+  /** Nome com que o agente se apresenta ao cliente; vazio = apresentação genérica. */
+  nome: string
   /** Minutos em que o agente fica calado depois de uma resposta da loja. */
   pausa_min: number
   /** Se houver números aqui, o agente só responde a eles (modo de teste). */
@@ -24,6 +26,7 @@ export type ConfigBot = {
 }
 
 export const BOT_PADRAO: ConfigBot = {
+  nome: '',
   pausa_min: 120,
   numeros_teste: [],
   dono_telefone: '',
@@ -45,6 +48,7 @@ export function lerConfigBot(bruto: unknown): ConfigBot {
     : []
   const dono = String(b.dono_telefone ?? '').replace(/\D/g, '')
   return {
+    nome: String(b.nome ?? '').replace(/\s+/g, ' ').trim().slice(0, 30),
     pausa_min: inteiro(b.pausa_min, BOT_PADRAO.pausa_min),
     numeros_teste: [...new Set(numeros)],
     dono_telefone: dono.length >= 10 ? dono : '',

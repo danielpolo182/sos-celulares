@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { buscarPecasParaModelo, TipoPeca } from '@/lib/fornecedores'
 import { WaConfig } from './send'
+import { carregarConfigBot } from './botRegras'
 import { abrirConsulta, buscarConhecimento } from './consultas'
 import { enviarMaterial, listarMateriais } from './materiais'
 import { consultarTabelaDePrecos } from './precos'
@@ -291,11 +292,21 @@ export async function processBot(
   envio: WaConfig
 ): Promise<{ resposta: string; escalou: boolean; ferramentas: string[] }> {
   const ferramentas: string[] = []
-  const [{ data: waConfig }, loja, materiais] = await Promise.all([
+  const [{ data: waConfig }, loja, materiais, configBot] = await Promise.all([
     supabase.from('wa_config').select('bot_prompt').eq('filial_id', filialId).maybeSingle(),
     dadosDaLoja(supabase),
     listarMateriais(supabase, filialId),
+    carregarConfigBot(supabase, filialId),
   ])
+  const nome = configBot?.nome ?? ''
+  // Vem depois do prompt da loja e vale sobre ele: o prompt antigo pode mandar dizer "assistente virtual"
+  const secaoNome = !nome ? '' : `Quem você é:
+- Seu nome é ${nome} e você faz o atendimento da loja pelo WhatsApp. Isto vale mesmo que as instruções acima descrevam outra forma de se apresentar.
+- Na sua primeira mensagem da conversa, apresente-se pelo nome e pela loja, de forma natural (por exemplo: "Oi! Aqui é ${nome}, da loja tal", com o artigo que combinar com o nome). Não abra a conversa dizendo "sou o assistente virtual".
+- Apresente-se uma vez só. Se você já se apresentou em mensagem anterior desta conversa, não repita.
+- Se o cliente perguntar se está falando com uma pessoa ou com um robô, responda a verdade: você é ${nome}, atendimento virtual da loja, e pode chamar alguém da equipe se ele preferir. Nunca diga que é uma pessoa.
+
+`
   const tools = materiais.length > 0 ? [...TOOLS, FERRAMENTA_MATERIAL] : TOOLS
   const secaoMateriais = materiais.length === 0 ? '' : [
     'Materiais que você pode enviar com enviar_material (cada um no máximo uma vez por conversa):',
@@ -311,7 +322,7 @@ ${loja}
 
 ${contextoDeDataParaOAgente()}
 
-Horário e feriados:
+${secaoNome}Horário e feriados:
 - Use o horário de atendimento informado acima. Em feriados a loja normalmente fecha.
 - Se hoje for feriado, ou se o cliente falar em ir à loja num dia que é feriado ou véspera de feriado, avise que o horário pode ser diferente e que vale confirmar antes de sair de casa. Não garanta que a loja estará aberta nem fechada num feriado; se o cliente precisar de certeza, consulte o responsável.
 - Se a loja estiver fechada agora, diga qual é o próximo horário de atendimento.
