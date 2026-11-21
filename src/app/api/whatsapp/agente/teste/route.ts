@@ -3,7 +3,8 @@
 // linguagem de dono de loja, junto com as últimas falhas registradas.
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { testarAgente } from '@/lib/whatsapp/bot'
+import { dadosDaLoja, testarAgente } from '@/lib/whatsapp/bot'
+import { contextoDeDataParaOAgente } from '@/lib/feriados'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -22,5 +23,8 @@ export async function GET() {
     .order('criado_em', { ascending: false })
     .limit(12)
 
-  return NextResponse.json({ ...teste, falhas: falhas ?? [] })
+  // O mesmo texto que entra nas instruções do agente
+  const loja = `${await dadosDaLoja(supabase)}\n${contextoDeDataParaOAgente()}`
+
+  return NextResponse.json({ ...teste, falhas: falhas ?? [], loja })
 }

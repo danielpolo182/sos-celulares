@@ -191,7 +191,8 @@ async function executeTool(toolName: string, toolInput: Record<string, string>, 
 const PROMPT_PADRAO =
   'Você é o assistente de atendimento de uma assistência técnica de celulares. Seja simpático e objetivo.'
 
-async function dadosDaLoja(supabase: SupabaseClient): Promise<string> {
+/** O que o agente sabe sobre a loja, lido do cadastro (Configurações → Loja → Dados da loja). */
+export async function dadosDaLoja(supabase: SupabaseClient): Promise<string> {
   const { data } = await supabase
     .from('sistema_config')
     .select('chave, valor')
@@ -201,7 +202,10 @@ async function dadosDaLoja(supabase: SupabaseClient): Promise<string> {
   return [
     cfg.loja_nome ? `Loja: ${cfg.loja_nome}` : null,
     cfg.loja_endereco ? `Endereço: ${cfg.loja_endereco}` : null,
-    cfg.loja_horario ? `Horário de atendimento: ${cfg.loja_horario}` : null,
+    // Sem horário cadastrado o agente não pode chutar um: a linha diz isso com todas as letras
+    cfg.loja_horario
+      ? `Horário de atendimento (informe exatamente assim, sem arredondar nem resumir): ${cfg.loja_horario}`
+      : 'Horário de atendimento: não cadastrado. Não informe horário; consulte o responsável.',
     cfg.loja_telefone ? `Telefone: ${cfg.loja_telefone}` : null,
     `Garantia dos serviços: ${cfg.garantia_dias || '90'} dias`,
   ].filter(Boolean).join('\n')
