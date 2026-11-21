@@ -225,7 +225,11 @@ export function filtrarPecasDoModelo(pecas: PecaFornecedor[], modelo: string): P
   return pecas.filter(p => {
     const nome = normalizar(p.nome)
     if (palavras.length === 0 || !palavras.every(w => temPalavra(nome, w))) return false
-    if (varianteDe(nome) !== variante) return false
+    // "IPHONE 12 / 12 PRO": a peça serve em mais de um aparelho e cada trecho entre
+    // barras é um deles. A variante é conferida no trecho que cita o número do modelo.
+    const numeros = palavras.filter(w => /\d/.test(w))
+    const trechos = nome.split('/').filter(t => numeros.every(w => temPalavra(t, w)))
+    if (!(trechos.length ? trechos : [nome]).some(t => varianteDe(t) === variante)) return false
     if (familiasDe(nome) !== familias) return false
     const marcasDaPeca = marcasDe(nome)
     if (marcas.length > 0 && marcasDaPeca.length > 0 && !marcasDaPeca.some(m => marcas.includes(m))) return false
