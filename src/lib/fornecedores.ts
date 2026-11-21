@@ -102,7 +102,7 @@ export async function buscarFixcellPagina(consulta: string, pagina: number): Pro
     signal: AbortSignal.timeout(TEMPO_LIMITE_MS),
   })
   if (!res.ok) throw new Error(`Fix Cell respondeu ${res.status}`)
-  const html = await res.text()
+  const html = new TextDecoder('iso-8859-1').decode(await res.arrayBuffer())
 
   const produtos: PecaFornecedor[] = []
   const regex = /<a class="product-info" href="([^"]+)"[\s\S]*?<div class="product-name">\s*([^<]+?)\s*<\/div>[\s\S]*?<span class="current-price">\s*R\$\s*([\d.,]+)\s*<\/span>/g
@@ -155,7 +155,7 @@ export async function guardarPecas(pecas: PecaFornecedor[], consulta: string): P
 }
 
 /** Peças guardadas cujo nome traz todas as palavras do modelo, vistas nos últimos 30 dias. */
-async function pecasGuardadas(fornecedor: Fornecedor, palavrasDoModelo: string[]): Promise<PecaFornecedor[]> {
+export async function pecasGuardadas(fornecedor: Fornecedor, palavrasDoModelo: string[]): Promise<PecaFornecedor[]> {
   const supabase = clienteDeServico()
   if (!supabase || palavrasDoModelo.length === 0) return []
   let consulta = supabase
@@ -290,16 +290,21 @@ export async function buscarPecasParaModelo(modelo: string, tipo: TipoPeca): Pro
 
   await Promise.all(fornecedores.map(async ([fornecedor, buscar]) => {
     const consulta = consultaParaModelo(fornecedor, modelo, tipo)
+    // A busca dos fornecedores é parcial e varia de uma consulta para outra; o
+    // catálogo guardado completa o que ela não trouxe. O preço da busca ao vivo vale mais.
+    const doCatalogo = filtrarPecasDoTipo(filtrarPecasDoModelo(await pecasGuardadas(fornecedor, base.split(' ').filter(Boolean)), modelo), tipo)
+    let aoVivo: PecaFornecedor[] = []
     try {
       const encontradas = await buscar(consulta)
       await guardarPecas(encontradas, consulta)
-      resultado.pecas.push(...filtrarPecasDoTipo(filtrarPecasDoModelo(encontradas, modelo), tipo))
+      aoVivo = filtrarPecasDoTipo(filtrarPecasDoModelo(encontradas, modelo), tipo)
     } catch (e) {
       console.warn(`[fornecedores] ${fornecedor} falhou:`, e instanceof Error ? e.message : e)
       resultado.falhas.push(fornecedor)
-      const guardadas = filtrarPecasDoTipo(filtrarPecasDoModelo(await pecasGuardadas(fornecedor, base.split(' ').filter(Boolean)), modelo), tipo)
-      if (guardadas.length > 0) { resultado.pecas.push(...guardadas); resultado.doCache.push(fornecedor) }
+      if (doCatalogo.length > 0) resultado.doCache.push(fornecedor)
     }
+    const vistas = new Set(aoVivo.map(p => p.nome))
+    resultado.pecas.push(...aoVivo, ...doCatalogo.filter(p => !vistas.has(p.nome)))
   }))
 
   resultado.pecas.sort((a, b) => a.preco - b.preco)
