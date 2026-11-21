@@ -178,6 +178,8 @@ const semAcento = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, 
 const normalizar = (s: string) => semAcento(s).toLowerCase()
   .replace(/\+/g, ' plus ')
   .replace(/(\d)(fe|pro|plus|ultra|lite|max|mini)\b/g, '$1 $2')
+  // Os fornecedores chamam o iPhone 8 de "IPHONE 8G" (e "IPHONE - 8G")
+  .replace(/\b(iphone[ -]*\d{1,2})g\b/g, '$1')
 
 /** "Samsung Galaxy A54 5G (SM-A546)" → "a54": é como os fornecedores indexam. */
 export function nomeBaseDoModelo(modelo: string): string {
@@ -227,10 +229,18 @@ export function filtrarPecasDoModelo(pecas: PecaFornecedor[], modelo: string): P
     if (palavras.length === 0 || !palavras.every(w => temPalavra(nome, w))) return false
     // "IPHONE 12 / 12 PRO": a peça serve em mais de um aparelho e cada trecho entre
     // barras é um deles. A variante é conferida no trecho que cita o número do modelo.
+    // A linha (Note, Poco…) também vale por trecho: "REDMI 13C / POCO C65" serve no Redmi 13C.
     const numeros = palavras.filter(w => /\d/.test(w))
-    const trechos = nome.split('/').filter(t => numeros.every(w => temPalavra(t, w)))
-    if (!(trechos.length ? trechos : [nome]).some(t => varianteDe(t) === variante)) return false
-    if (familiasDe(nome) !== familias) return false
+    const trechos: { texto: string; familias: string }[] = []
+    let linhaAnterior = ''
+    for (const texto of nome.split('/')) {
+      // "NOTE 12 PRO 5G / 12 PRO PLUS": o trecho que começa pelo número continua na linha do anterior
+      const linha = familiasDe(texto) || (/^\s*\d+\b/.test(texto) ? linhaAnterior : '')
+      linhaAnterior = linha
+      if (numeros.every(w => temPalavra(texto, w))) trechos.push({ texto, familias: linha })
+    }
+    const candidatos = trechos.length ? trechos : [{ texto: nome, familias: familiasDe(nome) }]
+    if (!candidatos.some(t => varianteDe(t.texto) === variante && t.familias === familias)) return false
     const marcasDaPeca = marcasDe(nome)
     if (marcas.length > 0 && marcasDaPeca.length > 0 && !marcasDaPeca.some(m => marcas.includes(m))) return false
     if (geracao) {
@@ -256,6 +266,8 @@ export function filtrarPecasDoTipo(pecas: PecaFornecedor[], tipo: TipoPeca): Pec
     if (NAO_E_PECA_DE_REPARO.test(nome)) return false
     // "Frontal" numa busca de conector ou bateria é a tela, não a peça pedida
     if (tipo !== 'tela' && /\bfrontal\b/.test(nome)) return false
+    // "FLEX LCD MOTO G60" é o cabo flat da tela, não a tela
+    if (tipo === 'tela' && /^\s*flex\b/.test(nome)) return false
     return NOME_DO_TIPO[tipo].test(nome)
   })
 }
