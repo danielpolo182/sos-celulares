@@ -6,6 +6,7 @@ import { SupabaseClient } from '@supabase/supabase-js'
 import { explicarErroDoAgente, processBot } from './bot'
 import { motivoDoSilencio, pausarBot, pausarBotPorMensagemDoApp } from './botRegras'
 import { tratarRespostaDoResponsavel } from './consultas'
+import { transcreverMensagemDeAudio } from './transcricao'
 import { escalateToHuman } from './escalate'
 import { sendMessage, variantesDeTelefone, WaConfig } from './send'
 import { MidiaSalva } from './media'
@@ -207,12 +208,20 @@ export async function processarMensagem(
     try {
       await gravarMidia(gravada.id, norm, `${ctx.filialId}/${conversaId}`, ctx)
 
+      // Áudio vira texto: aparece no Inbox e é o que o agente lê
+      let texto = norm.conteudo
+      let audioTranscrito = false
+      if (norm.tipo === 'audio') {
+        const transcricao = await transcreverMensagemDeAudio(supabase, gravada.id)
+        if (transcricao) { texto = transcricao; audioTranscrito = true }
+      }
+
       if (!ctx.botAtivo) return
       if (!ctx.envio) { await rastro('não respondeu: o envio de mensagens não está configurado (chave ou número da YCloud)', true); return }
 
       // Resposta do responsável a uma consulta do agente: é repassada ao cliente e não segue como atendimento
-      if (norm.tipo === 'texto' && await tratarRespostaDoResponsavel({
-        supabase, filialId: ctx.filialId, envio: ctx.envio, remetente: telefone, texto: norm.conteudo, citada: msg.context?.id ?? null,
+      if ((norm.tipo === 'texto' || audioTranscrito) && await tratarRespostaDoResponsavel({
+        supabase, filialId: ctx.filialId, envio: ctx.envio, remetente: telefone, texto, citada: msg.context?.id ?? null,
       })) { await rastro('mensagem do responsável tratada como resposta a uma consulta do agente'); return }
 
       // Quem escreve em várias mensagens seguidas recebe uma resposta só, dada à última delas
@@ -234,16 +243,22 @@ export async function processarMensagem(
       if (motivo) { await rastro('não respondeu: ' + motivo); return }
       const envio = { ...ctx.envio, filial_id: ctx.filialId }
 
-      // O bot só entende texto: áudio, foto e arquivo vão direto para uma pessoa
-      if (norm.tipo !== 'texto') {
+      // Figurinha não pede resposta
+      if (norm.tipo === 'figurinha') { await rastro('não respondeu: figurinha'); return }
+
+      // O agente lê texto, vê foto e lê a transcrição do áudio; vídeo, documento e áudio sem transcrição vão para uma pessoa
+      const audioSemTexto = norm.tipo === 'audio' && !audioTranscrito
+      if (audioSemTexto || !['texto', 'audio', 'imagem'].includes(norm.tipo)) {
         await escalateToHuman(conversaId, envio, supabase)
         await pausarBot(supabase, ctx.filialId, conversaId)
-        await rastro('transferiu para atendimento: a mensagem não é texto')
+        await rastro(audioSemTexto
+          ? 'transferiu para atendimento: áudio sem transcrição (serviço de transcrição não configurado ou falhou)'
+          : 'transferiu para atendimento: tipo de mensagem que o agente não lê (' + norm.tipo + ')')
         return
       }
 
       await rastro('lendo a mensagem e preparando a resposta')
-      const { resposta, escalou, ferramentas } = await processBot(norm.conteudo, telefone, conversaId, supabase, ctx.filialId, ctx.envio)
+      const { resposta, escalou, ferramentas } = await processBot(texto, telefone, conversaId, supabase, ctx.filialId, ctx.envio)
       const usou = ferramentas.length ? ' (usou: ' + ferramentas.join(', ') + ')' : ''
 
       // A resposta leva alguns segundos: nesse tempo o cliente pode ter escrito de novo ou alguém da loja pode ter assumido

@@ -6,6 +6,8 @@ import { buscarPecasParaModelo, TipoPeca } from '@/lib/fornecedores'
 import { WaConfig } from './send'
 import { abrirConsulta, buscarConhecimento } from './consultas'
 import { enviarMaterial, listarMateriais } from './materiais'
+import { WA_MEDIA_BUCKET } from './media'
+import { contextoDeDataParaOAgente } from '@/lib/feriados'
 
 // Modelo rápido e de baixo custo, adequado ao volume de um atendimento por
 // mensagem. WA_BOT_MODEL troca por um mais capaz sem mexer no código.
@@ -205,21 +207,51 @@ async function dadosDaLoja(supabase: SupabaseClient): Promise<string> {
   ].filter(Boolean).join('\n')
 }
 
+type MimeDeImagem = Anthropic.Base64ImageSource['media_type']
+const MIMES_DE_IMAGEM: string[] = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+const MAX_IMAGENS = 3
+const MAX_BYTES_IMAGEM = 4 * 1024 * 1024
+// Texto que o webhook grava quando a foto chega sem legenda
+const FOTO_SEM_LEGENDA = '📷 Foto'
+
 async function historicoDaConversa(supabase: SupabaseClient, conversaId: string): Promise<Anthropic.MessageParam[]> {
   const { data } = await supabase
     .from('wa_mensagens')
-    .select('direcao, conteudo')
+    .select('direcao, conteudo, tipo, media_path, media_mime')
     .eq('conversa_id', conversaId)
     .order('criado_em', { ascending: false })
     .limit(MENSAGENS_DE_HISTORICO)
 
-  const messages: Anthropic.MessageParam[] = (data ?? [])
-    .reverse()
-    .filter(m => m.conteudo?.trim())
-    .map(m => ({
-      role: m.direcao === 'entrada' ? ('user' as const) : ('assistant' as const),
-      content: m.conteudo as string,
-    }))
+  const linhas = (data ?? []).reverse().filter(m => m.conteudo?.trim())
+  // O agente vê as fotos que o cliente mandou depois da última resposta da loja;
+  // as mais antigas já foram comentadas e ficam só como texto.
+  let ultimaSaida = -1
+  linhas.forEach((m, i) => { if (m.direcao === 'saida') ultimaSaida = i })
+
+  const messages: Anthropic.MessageParam[] = []
+  let imagens = 0
+  for (let i = 0; i < linhas.length; i++) {
+    const m = linhas[i]
+    const role = m.direcao === 'entrada' ? ('user' as const) : ('assistant' as const)
+    const mime = String(m.media_mime ?? '').split(';')[0].trim()
+    if (role === 'user' && i > ultimaSaida && m.tipo === 'imagem' && m.media_path && MIMES_DE_IMAGEM.includes(mime) && imagens < MAX_IMAGENS) {
+      const { data: arquivo } = await supabase.storage.from(WA_MEDIA_BUCKET).download(m.media_path as string)
+      const bytes = arquivo ? Buffer.from(await arquivo.arrayBuffer()) : null
+      if (bytes && bytes.length > 0 && bytes.length <= MAX_BYTES_IMAGEM) {
+        imagens++
+        const legenda = m.conteudo === FOTO_SEM_LEGENDA ? 'O cliente enviou esta foto.' : `O cliente enviou esta foto com a legenda: ${m.conteudo}`
+        messages.push({
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mime as MimeDeImagem, data: bytes.toString('base64') } },
+            { type: 'text', text: legenda },
+          ],
+        })
+        continue
+      }
+    }
+    messages.push({ role, content: m.conteudo as string })
+  }
 
   // A API exige que a primeira mensagem seja do usuário
   while (messages.length > 0 && messages[0].role !== 'user') messages.shift()
@@ -255,6 +287,18 @@ export async function processBot(
   const sysPrompt = `${waConfig?.bot_prompt?.trim() || PROMPT_PADRAO}
 
 ${loja}
+
+${contextoDeDataParaOAgente()}
+
+Horário e feriados:
+- Use o horário de atendimento informado acima. Em feriados a loja normalmente fecha.
+- Se hoje for feriado, ou se o cliente falar em ir à loja num dia que é feriado ou véspera de feriado, avise que o horário pode ser diferente e que vale confirmar antes de sair de casa. Não garanta que a loja estará aberta nem fechada num feriado; se o cliente precisar de certeza, consulte o responsável.
+- Se a loja estiver fechada agora, diga qual é o próximo horário de atendimento.
+
+Fotos e áudios:
+- Você recebe as fotos que o cliente manda e a transcrição dos áudios dele (marcada com 🎤). Use o que vê e o que ouve para entender o defeito e o modelo do aparelho.
+- A foto ajuda a descrever o dano, mas não substitui a avaliação na bancada: não feche diagnóstico nem preço só pela foto.
+- Se a transcrição de um áudio estiver confusa ou cortada, peça para o cliente repetir por texto.
 
 Como você atende:
 - Você responde pelo WhatsApp: mensagens curtas, em português do Brasil, tom cordial e direto, sem markdown e sem listas longas. No máximo um emoji por mensagem.
