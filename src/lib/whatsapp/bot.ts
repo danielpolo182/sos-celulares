@@ -6,6 +6,7 @@ import { buscarPecasParaModelo, TipoPeca } from '@/lib/fornecedores'
 import { WaConfig } from './send'
 import { abrirConsulta, buscarConhecimento } from './consultas'
 import { enviarMaterial, listarMateriais } from './materiais'
+import { consultarTabelaDePrecos } from './precos'
 import { WA_MEDIA_BUCKET } from './media'
 import { contextoDeDataParaOAgente } from '@/lib/feriados'
 
@@ -51,6 +52,18 @@ const TOOLS: Anthropic.Tool[] = [
         telefone: { type: 'string', description: 'Telefone do cliente (somente dígitos)' },
       },
       required: ['telefone'],
+    },
+  },
+  {
+    name: 'consultar_tabela_de_precos',
+    description: 'Consulta a tabela de preços da loja para um serviço em um modelo de aparelho. É a primeira coisa a fazer em qualquer pedido de preço: o que estiver nela pode ser informado ao cliente sem consultar o responsável.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        modelo: { type: 'string', description: 'Marca e modelo completos, com variante e 4G/5G quando houver. Ex.: "Samsung Galaxy A54 5G", "iPhone 11"' },
+        servico: { type: 'string', description: 'Serviço pedido. Ex.: "troca de tela", "troca de bateria", "troca de conector de carga"' },
+      },
+      required: ['modelo', 'servico'],
     },
   },
   {
@@ -152,6 +165,10 @@ async function executeTool(toolName: string, toolInput: Record<string, string>, 
       .join('\n')
 
     return `Ordens de serviço de ${cliente.nome}:\n${lista}`
+  }
+
+  if (toolName === 'consultar_tabela_de_precos') {
+    return consultarTabelaDePrecos(supabase, filialId, toolInput.modelo ?? '', toolInput.servico ?? '')
   }
 
   if (toolName === 'consultar_respostas_anteriores') {
@@ -311,9 +328,10 @@ Como você atende:
 
 Orçamentos de reparo:
 1. Descubra o modelo exato do aparelho (marca, modelo, variante como Pro, Plus ou FE, e 4G ou 5G quando existirem as duas versões) e o defeito. Pergunte o que faltar, uma pergunta por mensagem.
-2. Chame consultar_respostas_anteriores com o serviço e o modelo. Se o responsável já respondeu sobre o mesmo serviço no mesmo modelo, use essa resposta.
-3. Se não houver resposta anterior e o reparo for de tela, bateria ou conector de carga, chame buscar_pecas_fornecedores e depois perguntar_ao_responsavel, colocando na pergunta o modelo, o defeito e as opções de peça com o custo de cada uma. Para outros reparos, chame perguntar_ao_responsavel direto.
-4. Depois de perguntar ao responsável, diga ao cliente que está confirmando o valor com o técnico e que retorna em instantes. Não dê palpite de preço.
+2. Chame consultar_tabela_de_precos com o modelo e o serviço. Se a tabela tiver preço, informe as opções ao cliente e não consulte o responsável.
+3. Se a tabela não tiver, chame consultar_respostas_anteriores. Se o responsável já respondeu sobre o mesmo serviço no mesmo modelo, use essa resposta.
+4. Se também não houver resposta anterior e o reparo for de tela, bateria ou conector de carga, chame buscar_pecas_fornecedores e depois perguntar_ao_responsavel, colocando na pergunta o modelo, o defeito e as opções de peça com o custo de cada uma. Para outros reparos, chame perguntar_ao_responsavel direto.
+5. Depois de perguntar ao responsável, diga ao cliente que está confirmando o valor com o técnico e que retorna em instantes. Não dê palpite de preço.
 - Os valores de buscar_pecas_fornecedores são custo de fornecedor, informação interna da loja. Nunca informe esses valores nem cite fornecedores ao cliente.
 - Todo preço que você passar é uma estimativa, sujeita à avaliação do aparelho na loja. Diga isso junto com o valor.
 

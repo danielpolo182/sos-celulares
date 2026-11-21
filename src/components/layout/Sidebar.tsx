@@ -66,6 +66,7 @@ const NAV: NavItem[] = [
       { href: '/compras',      icon: 'ti-shopping-cart',    label: 'Lista de compras' },
       { href: '/fornecedores', icon: 'ti-building-store',   label: 'Fornecedores' },
       { href: '/catalogo-pecas', icon: 'ti-list-search',    label: 'Catálogo de peças' },
+      { href: '/tabela-precos', icon: 'ti-tag',             label: 'Tabela de preços' },
       { href: '/contratos',    icon: 'ti-file-description', label: 'Contratos' },
     ],
   },
