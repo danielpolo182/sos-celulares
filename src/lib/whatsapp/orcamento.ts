@@ -134,13 +134,45 @@ export async function montarOrcamento(modelo: string, servico: TipoPeca, config:
 
 const reais = (v: number) => `R$ ${Number.isInteger(v) ? v : v.toFixed(2).replace('.', ',')}`
 
+/**
+ * Uma linha por opção oferecida, dizendo no que ela difere das outras do mesmo
+ * orçamento. Só fala do que está na lista: não faz sentido explicar Soft OLED
+ * para um aparelho que só tem LCD. Com uma opção só não há o que comparar.
+ */
+export function explicacoesDasOpcoes(opcoes: OpcaoDeOrcamento[]): string[] {
+  if (opcoes.length < 2) return []
+  const tem = (c: ChaveDeRegra) => opcoes.some(o => o.chave === c)
+  const temOled = tem('oled') || tem('oled_sem_aro') || tem('soft_oled') || tem('soft_oled_genuina') || tem('nacional')
+  const lcdMaisEmConta = 'a opção mais em conta; a imagem é boa, com cores e pretos menos intensos que os da OLED'
+  const texto = (chave: ChaveDeRegra): string => {
+    switch (chave) {
+      case 'lcd_sem_aro': return 'troca só o display e aproveita a moldura (aro) do seu aparelho; é a opção mais em conta'
+      case 'lcd_com_aro': return tem('lcd_sem_aro')
+        ? 'a tela já vem montada de fábrica em uma moldura (aro) nova, com encaixe e acabamento melhores'
+        : temOled ? lcdMaisEmConta : ''
+      case 'lcd_iphone': return temOled ? lcdMaisEmConta : ''
+      case 'oled': return 'cores mais vivas e pretos mais profundos, com imagem próxima à da tela de fábrica' + (tem('soft_oled') || tem('soft_oled_genuina') ? '; é a OLED rígida' : '')
+      case 'oled_sem_aro': return 'a mesma tela OLED, trocando só o display e aproveitando a moldura (aro) do seu aparelho'
+      case 'soft_oled': return 'OLED flexível, do mesmo tipo da tela de fábrica, mais resistente a impactos que a OLED rígida'
+      case 'soft_oled_genuina': return 'igual à Soft OLED, e o iPhone não mostra o aviso de peça desconhecida nos Ajustes'
+      case 'nacional': return 'a mesma qualidade da tela que veio de fábrica'
+      case 'bateria': return tem('bateria_genuina') ? 'funciona normalmente; o iPhone pode mostrar um aviso de bateria não original nos Ajustes' : ''
+      case 'bateria_genuina': return 'sem aviso nos Ajustes, e a saúde da bateria aparece normalmente'
+      default: return ''
+    }
+  }
+  return opcoes.map(o => ({ o, t: texto(o.chave) })).filter(x => x.t).map(x => `${x.o.rotulo}: ${x.t}`)
+}
+
 /** Texto devolvido ao agente pela ferramenta montar_orcamento. */
 export function orcamentoParaOAgente(o: Orcamento): string {
   if (o.opcoes.length === 0) {
     const semResposta = o.falhas.length ? ` Fornecedor sem resposta agora: ${o.falhas.join(', ')}.` : ''
     return `Sem preço automático para ${NOME_DO_SERVICO[o.servico].toLowerCase()} de ${o.modelo}.${semResposta} Confirme o modelo exato com o cliente; se estiver certo, siga para as respostas anteriores do responsável e, se não houver, pergunte a ele.`
   }
+  const explicacoes = explicacoesDasOpcoes(o.opcoes)
   return `${NOME_DO_SERVICO[o.servico]} de ${o.modelo}. Preços ao cliente, já calculados pela regra da loja:\n` +
     o.opcoes.map(x => `- ${x.rotulo}: ${reais(x.preco)}`).join('\n') +
+    (explicacoes.length === 0 ? '' : '\nDiferença entre as opções, para você passar ao cliente logo depois dos valores, uma linha curta para cada (pode ajustar a redação, não o sentido):\n' + explicacoes.map(e => `- ${e}`).join('\n')) +
     '\nInforme todas estas opções com exatamente estes valores, da mais barata para a mais cara. Não cite marca, fornecedor nem custo. Diga que são estimativas sujeitas à avaliação do aparelho na loja. Não consulte o responsável sobre estes valores.'
 }
