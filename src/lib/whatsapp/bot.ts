@@ -84,6 +84,18 @@ const TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'localizar_os',
+    description: 'Localiza a ordem de serviço de um aparelho deixado na loja quando o telefone do cliente não está no cadastro. Busque pelo número da OS ou pelo nome de quem deixou o aparelho (o modelo ajuda a escolher entre várias). Use depois de buscar_os_por_telefone não achar nada.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        numero_os: { type: 'string', description: 'Número da OS que está no comprovante, se o cliente tiver. Só dígitos.' },
+        nome: { type: 'string', description: 'Nome de quem deixou o aparelho, como o cliente informou.' },
+        modelo: { type: 'string', description: 'Modelo do aparelho, se o cliente informou. Ex.: "Galaxy A15", "iPhone 12".' },
+      },
+    },
+  },
+  {
     name: 'buscar_pecas_fornecedores',
     description: 'Consulta nos fornecedores da loja as peças disponíveis para um aparelho e o CUSTO de cada uma. Informação interna, para montar a pergunta ao responsável: nunca repasse esses valores nem o nome dos fornecedores ao cliente.',
     input_schema: {
@@ -153,7 +165,75 @@ async function buscarCliente(supabase: SupabaseClient, filialId: string, telefon
 
 const reais = (v: number) => `R$ ${v.toFixed(2).replace('.', ',')}`
 
-type ContextoFerramenta = { supabase: SupabaseClient; filialId: string; conversaId: string; envio: WaConfig; precos?: ConfigPrecos }
+type OrdemLocalizada = {
+  numero: number; status: string; marca: string | null; modelo: string | null; defeito_relatado: string | null
+  valor_orcamento: number | null; valor_final: number | null; created_at: string; cliente_id: string | null
+}
+const COLUNAS_DA_OS = 'numero, status, marca, modelo, defeito_relatado, valor_orcamento, valor_final, created_at, cliente_id'
+const semAcentos = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+// O texto vem do cliente e vai para um filtro: ficam só letras, números e espaços
+const paraFiltro = (s: string) => s.replace(/[^\p{L}\p{N} ]/gu, ' ').replace(/\s+/g, ' ').trim()
+
+/** Busca a OS pelo número ou pelo nome de quem deixou o aparelho, dentro da loja. */
+export async function localizarOS(supabase: SupabaseClient, filialId: string, entrada: Record<string, string>): Promise<string> {
+  const numero = String(entrada.numero_os ?? '').replace(/\D/g, '')
+  const nome = paraFiltro(String(entrada.nome ?? ''))
+  const modelo = semAcentos(paraFiltro(String(entrada.modelo ?? '')))
+  const base = () => supabase.from('ordens_servico').select(COLUNAS_DA_OS).eq('filial_id', filialId).is('deleted_at', null)
+
+  let ordens: OrdemLocalizada[] = []
+  if (numero) {
+    const { data, error } = await base().eq('numero', Number(numero)).limit(1)
+    if (error) return 'Não foi possível consultar as ordens de serviço agora.'
+    ordens = (data ?? []) as OrdemLocalizada[]
+    if (ordens.length === 0) return `Nenhuma OS com o número ${numero}. Confirme o número com o cliente ou peça o nome de quem deixou o aparelho.`
+  } else if (nome.length >= 3) {
+    const { data: clientes, error: erroClientes } = await supabase
+      .from('clientes').select('id').ilike('nome', `%${nome.split(' ').join('%')}%`)
+      .is('deleted_at', null).or(`filial_id.eq.${filialId},filial_id.is.null`).limit(20)
+    if (erroClientes) return 'Não foi possível consultar o cadastro de clientes agora.'
+    if (!clientes?.length) return `Nenhum cliente com o nome "${nome}". Confirme como o nome foi cadastrado (nome completo de quem deixou o aparelho) ou peça o número da OS.`
+    const { data, error } = await base().in('cliente_id', clientes.map(c => c.id)).order('created_at', { ascending: false }).limit(30)
+    if (error) return 'Não foi possível consultar as ordens de serviço agora.'
+    ordens = (data ?? []) as OrdemLocalizada[]
+    // Quem pergunta "está pronto?" fala de um aparelho que ainda está na loja
+    const abertas = ordens.filter(o => o.status !== 'entregue' && o.status !== 'cancelada')
+    if (abertas.length > 0) ordens = abertas
+    if (modelo) {
+      const palavras = modelo.split(' ').filter(p => /\d/.test(p) || p.length >= 4)
+      const doModelo = ordens.filter(o => palavras.every(p => semAcentos(`${o.marca ?? ''} ${o.modelo ?? ''}`).includes(p)))
+      if (doModelo.length > 0) ordens = doModelo
+    }
+    ordens = ordens.slice(0, 4)
+    if (ordens.length === 0) return `Há cliente com o nome "${nome}", mas sem ordem de serviço. Peça o número da OS ou pergunte ao responsável.`
+  } else {
+    return 'Para localizar a OS, peça ao cliente o nome completo de quem deixou o aparelho ou o número da OS que está no comprovante.'
+  }
+
+  const ids = [...new Set(ordens.map(o => o.cliente_id).filter(Boolean))] as string[]
+  const { data: donos } = ids.length ? await supabase.from('clientes').select('id, nome').in('id', ids) : { data: [] as { id: string; nome: string }[] }
+  const nomeDe = (id: string | null) => donos?.find(d => d.id === id)?.nome ?? 'sem cliente cadastrado'
+  const lista = ordens.map(o => {
+    const aparelho = [o.marca, o.modelo].filter(Boolean).join(' ') || 'aparelho sem modelo cadastrado'
+    const valor = o.valor_final ?? o.valor_orcamento
+    return `OS #${o.numero} (${new Date(o.created_at).toLocaleDateString('pt-BR')}) — cliente: ${nomeDe(o.cliente_id)} — ${aparelho} — status: ${STATUS_OS[o.status] ?? o.status}` +
+      (o.defeito_relatado ? ` — defeito relatado: ${o.defeito_relatado}` : '') + (valor != null ? ` — valor: ${reais(Number(valor))}` : '')
+  }).join('\n')
+  return `Ordens de serviço encontradas (uso interno):\n${lista}\n` +
+    'Só fale de uma destas OS se o nome e o aparelho que o cliente informou baterem com ela. Se houver mais de uma possível, pergunte o modelo ou o número da OS. Não revele ao cliente nome, aparelho nem valor de OS que não seja a dele.'
+}
+
+/**
+ * Conversa de teste: o agente roda com as mesmas instruções e ferramentas, mas
+ * nada sai pelo WhatsApp. As consultas ao responsável ficam anotadas em `perguntas`.
+ */
+export type Simulacao = {
+  mensagens: { de: 'cliente' | 'agente'; texto: string }[]
+  perguntas: string[]
+  passos: string[]
+}
+
+type ContextoFerramenta = { supabase: SupabaseClient; filialId: string; conversaId: string; envio: WaConfig; precos?: ConfigPrecos; simulacao?: Simulacao }
 
 async function executeTool(toolName: string, toolInput: Record<string, string>, ctx: ContextoFerramenta): Promise<string> {
   const { supabase, filialId } = ctx
@@ -187,6 +267,8 @@ async function executeTool(toolName: string, toolInput: Record<string, string>, 
     return `Ordens de serviço de ${cliente.nome}:\n${lista}`
   }
 
+  if (toolName === 'localizar_os') return localizarOS(supabase, filialId, toolInput)
+
   if (toolName === 'consultar_tabela_de_precos') {
     return consultarTabelaDePrecos(supabase, filialId, toolInput.modelo ?? '', toolInput.servico ?? '')
   }
@@ -218,8 +300,15 @@ async function executeTool(toolName: string, toolInput: Record<string, string>, 
     return orcamentoParaOAgente(await montarOrcamento(toolInput.modelo, servico, ctx.precos))
   }
 
+  if (toolName === 'enviar_material' && ctx.simulacao) return 'Material enviado ao cliente.'
+
   if (toolName === 'enviar_material') {
     return enviarMaterial({ supabase, filialId, conversaId: ctx.conversaId, envio: ctx.envio, materialId: toolInput.material_id ?? '' })
+  }
+
+  if (toolName === 'perguntar_ao_responsavel' && ctx.simulacao) {
+    ctx.simulacao.perguntas.push(`${toolInput.assunto ?? ''}: ${toolInput.pergunta ?? ''}`)
+    return 'Consulta enviada ao responsável. Diga ao cliente, em uma frase, que você está confirmando com o técnico e retorna em instantes. Não informe valores nem prazos antes da resposta.'
   }
 
   if (toolName === 'perguntar_ao_responsavel') {
@@ -320,7 +409,8 @@ export async function processBot(
   conversaId: string,
   supabase: SupabaseClient,
   filialId: string,
-  envio: WaConfig
+  envio: WaConfig,
+  simulacao?: Simulacao
 ): Promise<{ resposta: string; escalou: boolean; ferramentas: string[] }> {
   const ferramentas: string[] = []
   const [{ data: waConfig }, loja, materiais, configBot] = await Promise.all([
@@ -382,6 +472,13 @@ Como você atende:
 - O aplicativo da loja às vezes envia sozinho uma mensagem de ausência ou de saudação, que aparece na conversa como se fosse sua. Não comente essa mensagem e não use o horário que ela cita.
 - Enquanto espera uma resposta do responsável, continue ajudando no que o cliente perguntar. Não repita "ainda estou aguardando" a cada mensagem; diga isso só se ele cobrar o que está pendente.
 
+Aparelho que já está na loja ("meu celular está pronto?", "como está o conserto?"):
+1. Chame buscar_os_por_telefone com o telefone do cliente.
+2. Se não achar, peça o nome completo de quem deixou o aparelho e depois, se precisar, o modelo do aparelho ou o número da OS que está no comprovante, e chame localizar_os. Uma pergunta por mensagem. Muita gente deixa o aparelho no nome de outra pessoa ou com outro telefone.
+3. Só fale de uma OS se o nome e o aparelho informados baterem com ela. Nunca passe dados da OS de outra pessoa.
+4. Status "pronta para retirada" ou "entregue" você pode informar. Qualquer outro status NÃO quer dizer que o aparelho não está pronto: a loja nem sempre atualiza o sistema na hora. Nesse caso diga que localizou a ordem de serviço e que está confirmando com o técnico, e chame perguntar_ao_responsavel informando o número da OS, o nome do cliente e o aparelho.
+5. Se não localizar a OS de nenhum jeito, chame perguntar_ao_responsavel com tudo o que o cliente informou.
+
 Orçamentos de reparo:
 1. Descubra o modelo exato do aparelho (marca, modelo, variante como Pro, Plus ou FE, e 4G ou 5G quando existirem as duas versões) e o serviço que o cliente quer. Pergunte o que faltar, uma pergunta por mensagem. Se ele já disse o serviço (troca de tela, bateria, conector, tampa traseira), não pergunte o que aconteceu com o aparelho: o modelo basta para dar o preço.
 2. Chame consultar_tabela_de_precos com o modelo e o serviço. Se a tabela tiver preço, informe as opções ao cliente e não consulte o responsável.${passoDoOrcamento}
@@ -395,7 +492,9 @@ ${secaoMateriais}Use perguntar_ao_responsavel também para qualquer outra dúvid
 
 Se o cliente pedir para falar com uma pessoa, ou estiver irritado com o atendimento, responda APENAS com: [HUMANO]`
 
-  const messages = await historicoDaConversa(supabase, conversaId)
+  const messages: Anthropic.MessageParam[] = simulacao
+    ? simulacao.mensagens.map(m => ({ role: m.de === 'cliente' ? ('user' as const) : ('assistant' as const), content: m.texto }))
+    : await historicoDaConversa(supabase, conversaId)
   // O webhook grava a mensagem antes de chamar o bot; só acrescenta se ela não veio no histórico
   if (messages.length === 0 || messages[messages.length - 1].role !== 'user') {
     messages.push({ role: 'user', content: mensagem })
@@ -420,11 +519,12 @@ Se o cliente pedir para falar com uma pessoa, ou estiver irritado com o atendime
       ferramentas.push(block.name)
       let resultado: string
       try {
-        resultado = await executeTool(block.name, block.input as Record<string, string>, { supabase, filialId, conversaId, envio, precos })
+        resultado = await executeTool(block.name, block.input as Record<string, string>, { supabase, filialId, conversaId, envio, precos, simulacao })
       } catch (e) {
         console.error('[WA bot] ferramenta', block.name, e)
         resultado = 'A consulta falhou agora. Se não puder responder sem ela, pergunte ao responsável.'
       }
+      simulacao?.passos.push(`${block.name}(${JSON.stringify(block.input)}) → ${resultado.replace(/\s+/g, ' ').slice(0, 700)}`)
       toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: resultado })
     }
 
