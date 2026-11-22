@@ -163,7 +163,34 @@ export async function pausarBotPorMensagemDoApp(supabase: SupabaseClient, filial
   const desdeOCliente = data ? Date.now() - new Date(data.criado_em as string).getTime() : Infinity
   if (desdeOCliente < RESPOSTA_INSTANTANEA_MS + ESPERA_PELO_EVENTO_DO_CLIENTE_MS) return
 
+  if (await pareceMensagemAutomatica(supabase, conversaId, texto)) return
+
   await pausarBot(supabase, filialId, conversaId)
+}
+
+const TAMANHO_MINIMO_DE_TEXTO_AUTOMATICO = 40
+const DIAS_PARA_RECONHECER_TEXTO_AUTOMATICO = 14
+
+/**
+ * A mensagem de ausência do aplicativo nem sempre sai no mesmo instante da
+ * mensagem do cliente, e então escapava da regra acima e calava o agente por
+ * horas. Um texto longo que já saiu idêntico em outras duas conversas não foi
+ * digitado por ninguém. Textos curtos ("ok", "está pronto") ficam de fora:
+ * esses um atendente repete de verdade.
+ */
+async function pareceMensagemAutomatica(supabase: SupabaseClient, conversaId: string, texto: string): Promise<boolean> {
+  const limpo = texto.trim()
+  if (limpo.length < TAMANHO_MINIMO_DE_TEXTO_AUTOMATICO) return false
+  const { data, error } = await supabase
+    .from('wa_mensagens')
+    .select('conversa_id')
+    .eq('direcao', 'saida')
+    .eq('conteudo', limpo)
+    .neq('conversa_id', conversaId)
+    .gte('criado_em', new Date(Date.now() - DIAS_PARA_RECONHECER_TEXTO_AUTOMATICO * 86_400_000).toISOString())
+    .limit(50)
+  if (error) return false
+  return new Set((data ?? []).map(m => m.conversa_id)).size >= 2
 }
 
 /** Conversa encerrada ou agente retomado: a próxima mensagem do cliente volta a ser dele. */

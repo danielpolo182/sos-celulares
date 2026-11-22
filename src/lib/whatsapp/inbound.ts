@@ -198,9 +198,11 @@ export async function processarMensagem(
   const rastro = async (mensagem: string, falha = false) => {
     console.log('[WA bot]', mensagem)
     try {
-      await supabase.from('wa_logs').insert({
+      const { error } = await supabase.from('wa_logs').insert({
         filial_id: ctx.filialId, tipo: falha ? 'erro_agente' : 'agente', telefone, mensagem: mensagem.slice(0, 500), status: falha ? 'erro' : 'info',
       })
+      // O insert não lança exceção: sem olhar o erro, o rastro sumia sem aviso
+      if (error) console.error('[WA bot] rastro não gravado:', error.code, error.message)
     } catch { /* registro não é crítico */ }
   }
 
