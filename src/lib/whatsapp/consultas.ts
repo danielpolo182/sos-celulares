@@ -72,6 +72,40 @@ async function avisarResponsavel(
 }
 
 /**
+ * Ferramenta do agente: avisa o responsável de que um aparelho vai voltar à
+ * loja para garantia. É só um aviso: não abre consulta nem espera resposta.
+ */
+export async function avisarGarantia(args: {
+  supabase: SupabaseClient
+  filialId: string
+  conversaId: string
+  envio: WaConfig
+  resumo: string
+}): Promise<string> {
+  const { supabase, filialId, conversaId, envio } = args
+  const resumo = args.resumo.trim().slice(0, 900)
+  if (!resumo) return 'Informe o resumo do caso: aparelho, OS (se houver) e o problema relatado.'
+
+  const config = await carregarConfigBot(supabase, filialId)
+  if (!config?.dono_telefone) return 'Não há responsável configurado para receber o aviso. Continue orientando o cliente a levar o aparelho à loja.'
+  const dono = config.dono_telefone.startsWith('55') && config.dono_telefone.length >= 12 ? config.dono_telefone : `55${config.dono_telefone}`
+
+  const cliente = await clienteDaConversa(supabase, conversaId)
+  const texto = `🛡️ Garantia a caminho\nCliente: ${cliente.rotulo}\n\n${resumo}\n\nJá orientei o cliente a trazer o aparelho o quanto antes. Não precisa responder.`
+  try {
+    // Fora da janela de 24h só sai modelo aprovado: o aviso vai no corpo do modelo de consulta
+    const ids = (await janelaAberta(supabase, filialId, dono))
+      ? await sendMessageIds(envio, dono, texto)
+      : await sendTemplateIds(envio, dono, MODELO_CONSULTA, [umaLinha(cliente.rotulo, 80), umaLinha(`AVISO DE GARANTIA, não precisa responder. ${resumo}`, 800)])
+    try { await registrarNaConversa(supabase, filialId, dono, null, texto, ids[0] ?? null) } catch { /* histórico não é crítico */ }
+  } catch (e) {
+    console.error('[WA garantia] aviso ao responsável', e instanceof Error ? e.message : e)
+    return 'Não foi possível avisar o técnico agora. Continue orientando o cliente a levar o aparelho à loja o quanto antes.'
+  }
+  return 'Técnico avisado. Não avise de novo sobre este mesmo caso. Continue a conversa com o cliente.'
+}
+
+/**
  * Ferramenta do agente: manda a pergunta ao responsável. Devolve o texto que
  * orienta o agente sobre o que dizer ao cliente em seguida.
  */

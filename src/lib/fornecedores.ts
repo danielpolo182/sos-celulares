@@ -154,7 +154,48 @@ export async function guardarPecas(pecas: PecaFornecedor[], consulta: string): P
   }
 }
 
-/** Peças guardadas cujo nome traz todas as palavras do modelo, vistas nos últimos 30 dias. */
+const HORA_MS = 3_600_000
+// Peça guardada vale por uma semana. A Fix tem o catálogo inteiro recapturado
+// (rotina diária ou tela de Catálogo); logo depois de uma captura completa só
+// valem as peças vistas nela: o que não apareceu saiu de linha ou acabou.
+const VALIDADE_DO_GUARDADO_MS = 7 * 24 * HORA_MS
+const VALIDADE_APOS_CAPTURA_COMPLETA_MS = 36 * HORA_MS
+const PECAS_DE_UMA_CAPTURA_COMPLETA_DA_FIX = 500
+
+async function validadeDoGuardadoMs(supabase: NonNullable<ReturnType<typeof clienteDeServico>>, fornecedor: Fornecedor): Promise<number> {
+  if (fornecedor !== 'fixcell') return VALIDADE_DO_GUARDADO_MS
+  const { count } = await supabase
+    .from('fornecedor_pecas')
+    .select('nome', { count: 'exact', head: true })
+    .eq('fornecedor', 'fixcell')
+    .gte('atualizado_em', new Date(Date.now() - VALIDADE_APOS_CAPTURA_COMPLETA_MS).toISOString())
+  return (count ?? 0) >= PECAS_DE_UMA_CAPTURA_COMPLETA_DA_FIX ? VALIDADE_APOS_CAPTURA_COMPLETA_MS : VALIDADE_DO_GUARDADO_MS
+}
+
+/**
+ * Recaptura o catálogo inteiro da Fix (a busca vazia lista a loja toda), para
+ * que peça fora de linha deixe de entrar nos orçamentos. Para quando acabar o tempo.
+ */
+export async function atualizarCatalogoFix(limiteMs: number): Promise<{ paginas: number; pecas: number; completo: boolean }> {
+  const inicio = Date.now()
+  const EM_PARALELO = 6
+  let ultima = 1, paginas = 0, pecas = 0
+  for (let primeira = 1; primeira <= ultima; primeira += EM_PARALELO) {
+    if (Date.now() - inicio > limiteMs) return { paginas, pecas, completo: false }
+    const lote = Array.from({ length: Math.min(EM_PARALELO, ultima - primeira + 1) }, (_, i) => primeira + i)
+    const respostas = await Promise.all(lote.map(p => buscarFixcellPagina('', p)))
+    const encontradas = respostas.flatMap(r => r.pecas)
+    if (encontradas.length === 0) break
+    const gravacao = await guardarPecas(encontradas, 'catálogo completo')
+    if (!gravacao.ok) throw new Error(gravacao.erro)
+    ultima = Math.max(ultima, ...respostas.map(r => r.ultimaPagina))
+    paginas += lote.length
+    pecas += encontradas.length
+  }
+  return { paginas, pecas, completo: true }
+}
+
+/** Peças guardadas cujo nome traz todas as palavras do modelo e que ainda estão dentro da validade. */
 export async function pecasGuardadas(fornecedor: Fornecedor, palavrasDoModelo: string[]): Promise<PecaFornecedor[]> {
   const supabase = clienteDeServico()
   if (!supabase || palavrasDoModelo.length === 0) return []
@@ -162,7 +203,7 @@ export async function pecasGuardadas(fornecedor: Fornecedor, palavrasDoModelo: s
     .from('fornecedor_pecas')
     .select('fornecedor, nome, codigo, preco, url')
     .eq('fornecedor', fornecedor)
-    .gte('atualizado_em', new Date(Date.now() - 30 * 86_400_000).toISOString())
+    .gte('atualizado_em', new Date(Date.now() - await validadeDoGuardadoMs(supabase, fornecedor)).toISOString())
   for (const palavra of palavrasDoModelo) consulta = consulta.ilike('nome', `%${palavra}%`)
   const { data } = await consulta.limit(200)
   return (data ?? []).map(p => ({

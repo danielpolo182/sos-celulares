@@ -1,6 +1,7 @@
 // src/app/api/whatsapp/lembretes/route.ts
 // Rotina diária (Vercel Cron): lembretes e último aviso das OS prontas e não retiradas.
 import { NextRequest, NextResponse } from 'next/server'
+import { atualizarCatalogoFix } from '@/lib/fornecedores'
 import { buscarConfigEnvio } from '@/lib/whatsapp/config'
 import { avisoDeRetiradaDevido, lerConfigAvisos } from '@/lib/whatsapp/avisos'
 import {
@@ -22,6 +23,11 @@ export async function GET(request: NextRequest) {
 
   const inicio = Date.now()
   const supabase = clienteDeServico()
+
+  // Mesma rotina diária: recaptura o catálogo da Fix, que o orçamento automático usa
+  let catalogo: unknown = null
+  try { catalogo = await atualizarCatalogoFix(20_000) } catch (e) { catalogo = { erro: e instanceof Error ? e.message : String(e) } }
+  console.log('[rotina diária] catálogo da Fix', JSON.stringify(catalogo))
 
   const { data: filiais, error } = await supabase.from('wa_config').select('filial_id, avisos')
   if (error) return NextResponse.json({ ok: true, aviso: 'migração dos avisos ainda não foi rodada' })

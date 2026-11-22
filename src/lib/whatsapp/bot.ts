@@ -8,7 +8,7 @@ import { ConfigBot, carregarConfigBot } from './botRegras'
 import { lerConfigDaLoja } from './lojaConfig'
 import { montarOrcamento, orcamentoParaOAgente } from './orcamento'
 import { ConfigPrecos } from './precoRegras'
-import { abrirConsulta, buscarConhecimento } from './consultas'
+import { abrirConsulta, avisarGarantia, buscarConhecimento } from './consultas'
 import { enviarMaterial, listarMateriais } from './materiais'
 import { consultarTabelaDePrecos } from './precos'
 import { WA_MEDIA_BUCKET } from './media'
@@ -105,6 +105,17 @@ const TOOLS: Anthropic.Tool[] = [
         tipo: { type: 'string', enum: TIPOS_DE_PECA, description: 'tela (display/frontal), bateria ou conector (de carga)' },
       },
       required: ['modelo', 'tipo'],
+    },
+  },
+  {
+    name: 'avisar_garantia',
+    description: 'Avisa o técnico, pelo WhatsApp dele, de que um aparelho vai voltar à loja para garantia. É só um aviso, não espera resposta. Use uma única vez por reclamação, depois de orientar o cliente e de identificar de qual aparelho se trata.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        resumo: { type: 'string', description: 'Resumo curto para o técnico, em poucas linhas: aparelho, número da OS e data do serviço (se localizou), o problema que o cliente relatou e quando ele disse que vai à loja.' },
+      },
+      required: ['resumo'],
     },
   },
   {
@@ -306,6 +317,14 @@ async function executeTool(toolName: string, toolInput: Record<string, string>, 
     return enviarMaterial({ supabase, filialId, conversaId: ctx.conversaId, envio: ctx.envio, materialId: toolInput.material_id ?? '' })
   }
 
+  if (toolName === 'avisar_garantia') {
+    if (ctx.simulacao) {
+      ctx.simulacao.perguntas.push(`AVISO DE GARANTIA: ${toolInput.resumo ?? ''}`)
+      return 'Técnico avisado. Não avise de novo sobre este mesmo caso. Continue a conversa com o cliente.'
+    }
+    return avisarGarantia({ supabase, filialId, conversaId: ctx.conversaId, envio: ctx.envio, resumo: toolInput.resumo ?? '' })
+  }
+
   if (toolName === 'perguntar_ao_responsavel' && ctx.simulacao) {
     ctx.simulacao.perguntas.push(`${toolInput.assunto ?? ''}: ${toolInput.pergunta ?? ''}`)
     return 'Consulta enviada ao responsável. Diga ao cliente, em uma frase, que você está confirmando com o técnico e retorna em instantes. Não informe valores nem prazos antes da resposta.'
@@ -437,7 +456,8 @@ ${configBot.informacoes}
   const orcaSozinho = precos?.ativo === true
   const tools = [...TOOLS, ...(orcaSozinho ? [FERRAMENTA_ORCAMENTO] : []), ...(materiais.length > 0 ? [FERRAMENTA_MATERIAL] : [])]
   const passoDoOrcamento = !orcaSozinho ? '' : `
-2a. Se a tabela não tiver e o serviço for troca de tela, bateria ou conector de carga, chame montar_orcamento. Se ele devolver opções, informe todas ao cliente, com os valores exatos, e não consulte o responsável sobre o preço. Depois de passar os valores, convide o cliente a trazer o aparelho ou a agendar. Só siga para os passos abaixo se montar_orcamento não devolver preço.`
+2a. Se a tabela não tiver e o serviço for troca de tela, bateria ou conector de carga, chame montar_orcamento. Se ele devolver opções, informe todas ao cliente, com os valores exatos, e não consulte o responsável sobre o preço. Depois de passar os valores, convide o cliente a trazer o aparelho ou a agendar. Só siga para os passos abaixo se montar_orcamento não devolver preço.
+2b. Os valores de montar_orcamento são preços aprovados pelo responsável: valem mesmo que as instruções acima digam para só informar preço vindo dele. Se a lista trouxer "Tela original", ofereça também: ela está liberada, mesmo que as instruções acima digam para não oferecer peça original. Use os nomes das opções como vieram.`
   const secaoMateriais = materiais.length === 0 ? '' : [
     'Materiais que você pode enviar com enviar_material (cada um no máximo uma vez por conversa):',
     ...materiais.map(m => `- ${m.id} | ${m.tipo} "${m.titulo}": ${m.quando_enviar}`),
@@ -471,6 +491,15 @@ Como você atende:
 - Não escreva correções sobre o que você disse antes ("preciso corrigir", "desculpe a confusão"), a não ser que o cliente aponte um erro. Nunca corrija, questione nem peça desculpas por uma informação que veio do responsável: o que ele respondeu está certo.
 - O aplicativo da loja às vezes envia sozinho uma mensagem de ausência ou de saudação, que aparece na conversa como se fosse sua. Não comente essa mensagem e não use o horário que ela cita.
 - Enquanto espera uma resposta do responsável, continue ajudando no que o cliente perguntar. Não repita "ainda estou aguardando" a cada mensagem; diga isso só se ele cobrar o que está pendente.
+
+Reclamação de um reparo já feito (garantia):
+- Quando o cliente disser que um serviço feito na loja voltou a dar problema (tela descolando ou com falha no toque, bateria que não segura, aparelho que não carrega, peça solta), trate como pedido de garantia.
+- Seja cordial e empático: lamente o transtorno e mostre que a loja quer resolver. Não discuta de quem é a culpa, não diga que a garantia cobre nem que não cobre: quem avalia é o técnico, com o aparelho na bancada.
+- Oriente o cliente a levar o aparelho à loja o quanto antes e explique o motivo com o caso dele: um defeito pequeno costuma piorar com o uso, e um dano novo pode fazer a garantia deixar de valer. Exemplo: tela descolando deve ser vista antes que o vidro quebre ou o flex rasgue. Passe urgência de forma gentil, sem assustar e sem tom de ameaça.
+- Diga para não tentar colar, abrir nem forçar a peça, e para usar o aparelho o mínimo possível até lá. Informe o horário de atendimento e peça para levar o comprovante do serviço, se tiver.
+- Identifique o aparelho e a ordem de serviço: chame buscar_os_por_telefone; se não achar, peça o nome de quem deixou o aparelho e o modelo e chame localizar_os. Se houver mais de um serviço, pergunte de qual ele está falando.
+- Assim que souber de qual aparelho se trata, mesmo sem ter localizado a OS, chame avisar_garantia uma única vez, com um resumo curto: aparelho, número e data da OS (se achou), o problema relatado e quando o cliente disse que vai.
+- Não responda com [HUMANO] só por ser uma reclamação. Use [HUMANO] se o cliente estiver exaltado ou pedir para falar com uma pessoa.
 
 Aparelho que já está na loja ("meu celular está pronto?", "como está o conserto?"):
 1. Chame buscar_os_por_telefone com o telefone do cliente.
