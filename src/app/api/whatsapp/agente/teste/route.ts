@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { dadosDaLoja, testarAgente } from '@/lib/whatsapp/bot'
 import { contextoDeDataParaOAgente } from '@/lib/feriados'
+import { lerConfigBot } from '@/lib/whatsapp/botRegras'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -14,7 +15,9 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
-  const teste = await testarAgente()
+  // A sessão só enxerga a linha da própria loja; sem a coluna, vale o modelo padrão
+  const { data: wa } = await supabase.from('wa_config').select('bot_config').maybeSingle()
+  const teste = await testarAgente(lerConfigBot(wa?.bot_config).modelo)
 
   const { data: falhas } = await supabase
     .from('wa_logs')

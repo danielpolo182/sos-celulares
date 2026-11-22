@@ -5,9 +5,20 @@ import { SupabaseClient } from '@supabase/supabase-js'
 import { variantesDeTelefone } from './send'
 
 /** Guardado em wa_config.bot_config. */
+/** Modelos que a loja pode escolher para o agente, do mais rápido ao mais capaz. */
+export const MODELOS_DO_AGENTE = [
+  { id: 'claude-haiku-5-5', rotulo: 'Haiku 5.5 · mais rápido e de menor custo' },
+  { id: 'claude-sonnet-5-5', rotulo: 'Sonnet 5.5 · mais capaz em conversa difícil' },
+  { id: 'claude-opus-5-5', rotulo: 'Opus 5.5 · o mais capaz, maior custo' },
+] as const
+
 export type ConfigBot = {
   /** Nome com que o agente se apresenta ao cliente; vazio = apresentação genérica. */
   nome: string
+  /** Modelo de IA do agente; vazio = o padrão do sistema. */
+  modelo: string
+  /** Texto livre com o que o agente pode informar sem consultar: pagamento, prazos, agendamento. */
+  informacoes: string
   /** Minutos em que o agente fica calado depois de uma resposta da loja. */
   pausa_min: number
   /** Se houver números aqui, o agente só responde a eles (modo de teste). */
@@ -27,6 +38,8 @@ export type ConfigBot = {
 
 export const BOT_PADRAO: ConfigBot = {
   nome: '',
+  modelo: '',
+  informacoes: '',
   pausa_min: 120,
   numeros_teste: [],
   dono_telefone: '',
@@ -49,6 +62,8 @@ export function lerConfigBot(bruto: unknown): ConfigBot {
   const dono = String(b.dono_telefone ?? '').replace(/\D/g, '')
   return {
     nome: String(b.nome ?? '').replace(/\s+/g, ' ').trim().slice(0, 30),
+    modelo: MODELOS_DO_AGENTE.some(m => m.id === b.modelo) ? String(b.modelo) : '',
+    informacoes: String(b.informacoes ?? '').trim().slice(0, 4000),
     pausa_min: inteiro(b.pausa_min, BOT_PADRAO.pausa_min),
     numeros_teste: [...new Set(numeros)],
     dono_telefone: dono.length >= 10 ? dono : '',

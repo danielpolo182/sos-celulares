@@ -3,6 +3,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { sendTemplate, variantesDeTelefone, WaConfig } from './send'
 import { buscarConfigEnvio } from './config'
+import { lerConfigDaLoja } from './lojaConfig'
 import {
   AvisoOS, ConfigAvisos, DadosAviso, MODELOS_AVISO,
   lerConfigAvisos, parametrosDoAviso, textoDoAviso,
@@ -49,13 +50,8 @@ export async function carregarConfigAvisos(supabase: SupabaseClient, filialId: s
   return lerConfigAvisos(data.avisos)
 }
 
-export async function carregarInfoLoja(supabase: SupabaseClient): Promise<InfoLoja> {
-  const { data } = await supabase
-    .from('sistema_config')
-    .select('chave, valor')
-    .in('chave', ['loja_horario', 'retirada_taxa_mensal', 'garantia_dias', 'retirada_prazo_dias'])
-  const cfg: Record<string, string> = {}
-  for (const c of data ?? []) if (c.valor) cfg[c.chave] = c.valor
+export async function carregarInfoLoja(supabase: SupabaseClient, filialId?: string | null): Promise<InfoLoja> {
+  const cfg = await lerConfigDaLoja(supabase, ['loja_horario', 'retirada_taxa_mensal', 'garantia_dias', 'retirada_prazo_dias'], filialId)
   // Mesmos padrões do recibo impresso da OS
   const taxa = Number(String(cfg.retirada_taxa_mensal ?? '10').replace(',', '.'))
   return {
@@ -212,7 +208,7 @@ export async function notificarEventoOS(osId: string, evento: 'entrada' | 'pront
   const envio = await buscarConfigEnvio(supabase, os.filial_id)
   if (!envio) return
 
-  await enviarAvisoOS({ supabase, envio, loja: await carregarInfoLoja(supabase) }, os, evento, evento)
+  await enviarAvisoOS({ supabase, envio, loja: await carregarInfoLoja(supabase, os.filial_id) }, os, evento, evento)
 }
 
 export async function notifyStatusChange(osId: string, newStatus: string): Promise<void> {

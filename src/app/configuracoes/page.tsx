@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatarCNPJ, formatarCPF, formatarTelefone, validarCNPJ, validarCPF, validarTelefone } from '@/lib/validators'
 import { AVISOS, ConfigAvisos, MODELOS_AVISO, lerConfigAvisos, lerListaDeDias } from '@/lib/whatsapp/avisos'
-import { ConfigBot, lerConfigBot, lerNumerosDeTeste } from '@/lib/whatsapp/botRegras'
+import { ConfigBot, MODELOS_DO_AGENTE, lerConfigBot, lerNumerosDeTeste } from '@/lib/whatsapp/botRegras'
 import { LIMITE_MB, TIPO_POR_MIME } from '@/lib/whatsapp/materiais'
 
 // ─── Tipos ────────────────────────────────────────────────
@@ -396,7 +396,8 @@ export default function ConfiguracoesPage() {
       setAcesso(true)
     }
     const [{ data: c }, { data: q }, { data: n }] = await Promise.all([
-      supabase.from('sistema_config').select('*').order('categoria').order('chave'),
+      // created_at desempata chaves repetidas: a tela e o agente leem a mesma linha
+      supabase.from('sistema_config').select('*').order('categoria').order('chave').order('created_at'),
       supabase.from('produto_qualidades').select('*').order('ordem'),
       supabase.from('numeracao_config').select('*').order('modulo'),
     ])
@@ -1640,6 +1641,19 @@ export default function ConfiguracoesPage() {
                     <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Mensagens automáticas do aplicativo (uma por linha)</label>
                     <textarea name="wa-bot-mensagens-automaticas" rows={2} style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }} value={waBot.mensagens_automaticas.join(QUEBRA)} onChange={e => setWaBot(c => c ? { ...c, mensagens_automaticas: e.target.value.split(QUEBRA) } : c)} placeholder="Cole aqui o texto da saudação e da mensagem de ausência do WhatsApp Business" />
                     <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Toda mensagem enviada pelo celular pausa o agente. As que estiverem aqui, com o texto idêntico, não pausam.</div>
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Informações da loja para o agente</label>
+                    <textarea name="wa-bot-informacoes" rows={8} maxLength={4000} placeholder={'Formas de pagamento, prazos, agendamento, o que a loja não faz…'} style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', lineHeight: 1.5 }} value={waBot.informacoes} onChange={e => setWaBot(c => c ? { ...c, informacoes: e.target.value } : c)} />
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>O que estiver aqui o agente informa ao cliente sem consultar você: formas de pagamento, prazo dos reparos, agendamento. Escreva em frases simples, uma por linha.</div>
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Modelo de IA do agente</label>
+                    <select name="wa-bot-modelo" style={{ width: 360, maxWidth: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff' }} value={waBot.modelo} onChange={e => setWaBot(c => c ? { ...c, modelo: e.target.value } : c)}>
+                      <option value="">Padrão do sistema (Haiku 5.5)</option>
+                      {MODELOS_DO_AGENTE.map(m => <option key={m.id} value={m.id}>{m.rotulo}</option>)}
+                    </select>
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Os modelos mais capazes entendem melhor conversas confusas e erram menos, e custam mais por mensagem. A troca vale a partir da próxima mensagem; use "Testar agente" para confirmar que o modelo responde.</div>
                   </div>
                 </div>
               ) : (

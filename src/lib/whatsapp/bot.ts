@@ -4,7 +4,8 @@ import Anthropic from '@anthropic-ai/sdk'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { buscarPecasParaModelo, TipoPeca } from '@/lib/fornecedores'
 import { WaConfig } from './send'
-import { carregarConfigBot } from './botRegras'
+import { ConfigBot, carregarConfigBot } from './botRegras'
+import { lerConfigDaLoja } from './lojaConfig'
 import { abrirConsulta, buscarConhecimento } from './consultas'
 import { enviarMaterial, listarMateriais } from './materiais'
 import { consultarTabelaDePrecos } from './precos'
@@ -14,6 +15,8 @@ import { contextoDeDataParaOAgente } from '@/lib/feriados'
 // Modelo rápido e de baixo custo, adequado ao volume de um atendimento por
 // mensagem. WA_BOT_MODEL troca por um mais capaz sem mexer no código.
 const MODELO = process.env.WA_BOT_MODEL || 'claude-haiku-5-5'
+/** O modelo escolhido em Configurações vale sobre o padrão do sistema. */
+const modeloDe = (config: Pick<ConfigBot, 'modelo'> | null | undefined) => config?.modelo || MODELO
 const MAX_RODADAS_FERRAMENTA = 6
 // O raciocínio do modelo conta neste limite; a resposta em si é curta
 const MAX_TOKENS = 4096
@@ -210,19 +213,14 @@ const PROMPT_PADRAO =
   'Você é o assistente de atendimento de uma assistência técnica de celulares. Seja simpático e objetivo.'
 
 /** O que o agente sabe sobre a loja, lido do cadastro (Configurações → Loja → Dados da loja). */
-export async function dadosDaLoja(supabase: SupabaseClient): Promise<string> {
-  const { data } = await supabase
-    .from('sistema_config')
-    .select('chave, valor')
-    .in('chave', ['loja_nome', 'loja_telefone', 'loja_endereco', 'loja_horario', 'garantia_dias'])
-  const cfg: Record<string, string> = {}
-  for (const c of data ?? []) if (c.valor) cfg[c.chave] = c.valor
+export async function dadosDaLoja(supabase: SupabaseClient, filialId?: string | null): Promise<string> {
+  const cfg = await lerConfigDaLoja(supabase, ['loja_nome', 'loja_telefone', 'loja_endereco', 'loja_horario', 'garantia_dias'], filialId)
   return [
     cfg.loja_nome ? `Loja: ${cfg.loja_nome}` : null,
     cfg.loja_endereco ? `Endereço: ${cfg.loja_endereco}` : null,
     // Sem horário cadastrado o agente não pode chutar um: a linha diz isso com todas as letras
     cfg.loja_horario
-      ? `Horário de atendimento (informe exatamente assim, sem arredondar nem resumir): ${cfg.loja_horario}`
+      ? `Horário de atendimento (informe estes horários sem arredondar: 17h40 não é 18h; pode escrever os dias por extenso): ${cfg.loja_horario}`
       : 'Horário de atendimento: não cadastrado. Não informe horário; consulte o responsável.',
     cfg.loja_telefone ? `Telefone: ${cfg.loja_telefone}` : null,
     `Garantia dos serviços: ${cfg.garantia_dias || '90'} dias`,
@@ -239,7 +237,7 @@ const FOTO_SEM_LEGENDA = '📷 Foto'
 async function historicoDaConversa(supabase: SupabaseClient, conversaId: string): Promise<Anthropic.MessageParam[]> {
   const { data } = await supabase
     .from('wa_mensagens')
-    .select('direcao, conteudo, tipo, media_path, media_mime')
+    .select('direcao, conteudo, tipo, media_path, media_mime, criado_em')
     .eq('conversa_id', conversaId)
     .order('criado_em', { ascending: false })
     .limit(MENSAGENS_DE_HISTORICO)
@@ -250,11 +248,21 @@ async function historicoDaConversa(supabase: SupabaseClient, conversaId: string)
   let ultimaSaida = -1
   linhas.forEach((m, i) => { if (m.direcao === 'saida') ultimaSaida = i })
 
+  // Conversa que atravessa dias: sem a data, um "hoje é feriado" de ontem parece valer para hoje
+  const diaDe = (quando: string | Date) =>
+    new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' }).format(new Date(quando))
+  const hoje = diaDe(new Date())
+  const marcaDeData = (criadoEm: unknown) => {
+    const dia = criadoEm ? diaDe(String(criadoEm)) : hoje
+    return dia === hoje ? '' : `[mensagem enviada em ${dia}] `
+  }
+
   const messages: Anthropic.MessageParam[] = []
   let imagens = 0
   for (let i = 0; i < linhas.length; i++) {
     const m = linhas[i]
     const role = m.direcao === 'entrada' ? ('user' as const) : ('assistant' as const)
+    const data = role === 'user' ? marcaDeData(m.criado_em) : ''
     const mime = String(m.media_mime ?? '').split(';')[0].trim()
     if (role === 'user' && i > ultimaSaida && m.tipo === 'imagem' && m.media_path && MIMES_DE_IMAGEM.includes(mime) && imagens < MAX_IMAGENS) {
       const { data: arquivo } = await supabase.storage.from(WA_MEDIA_BUCKET).download(m.media_path as string)
@@ -266,13 +274,13 @@ async function historicoDaConversa(supabase: SupabaseClient, conversaId: string)
           role: 'user',
           content: [
             { type: 'image', source: { type: 'base64', media_type: mime as MimeDeImagem, data: bytes.toString('base64') } },
-            { type: 'text', text: legenda },
+            { type: 'text', text: data + legenda },
           ],
         })
         continue
       }
     }
-    messages.push({ role, content: m.conteudo as string })
+    messages.push({ role, content: data + (m.conteudo as string) })
   }
 
   // A API exige que a primeira mensagem seja do usuário
@@ -294,11 +302,16 @@ export async function processBot(
   const ferramentas: string[] = []
   const [{ data: waConfig }, loja, materiais, configBot] = await Promise.all([
     supabase.from('wa_config').select('bot_prompt').eq('filial_id', filialId).maybeSingle(),
-    dadosDaLoja(supabase),
+    dadosDaLoja(supabase, filialId),
     listarMateriais(supabase, filialId),
     carregarConfigBot(supabase, filialId),
   ])
   const nome = configBot?.nome ?? ''
+  // Também vem depois do prompt da loja: o que o responsável cadastrou aqui dispensa consulta
+  const secaoInformacoes = !configBot?.informacoes ? '' : `Informações que o responsável cadastrou (você pode passar ao cliente sem consultar ninguém; sobre estes assuntos, elas valem mais que qualquer instrução acima que mande consultar o responsável):
+${configBot.informacoes}
+
+`
   // Vem depois do prompt da loja e vale sobre ele: o prompt antigo pode mandar dizer "assistente virtual"
   const secaoNome = !nome ? '' : `Quem você é:
 - Seu nome é ${nome} e você faz o atendimento da loja pelo WhatsApp. Isto vale mesmo que as instruções acima descrevam outra forma de se apresentar.
@@ -322,8 +335,10 @@ ${loja}
 
 ${contextoDeDataParaOAgente()}
 
-${secaoNome}Horário e feriados:
+${secaoNome}${secaoInformacoes}Horário e feriados:
 - Use o horário de atendimento informado acima. Em feriados a loja normalmente fecha.
+- A conversa pode ter mensagens de dias anteriores (as do cliente vêm marcadas com a data). O que foi dito nelas sobre "hoje", feriado ou loja aberta ou fechada valia para aquele dia. Para hoje vale a data informada acima.
+- Se alguma mensagem anterior da conversa citar outro horário de atendimento, ela está desatualizada: o horário certo é o informado acima. Não "corrija" o cliente com base em mensagem antiga.
 - Se hoje for feriado, ou se o cliente falar em ir à loja num dia que é feriado ou véspera de feriado, avise que o horário pode ser diferente e que vale confirmar antes de sair de casa. Não garanta que a loja estará aberta nem fechada num feriado; se o cliente precisar de certeza, consulte o responsável.
 - Se a loja estiver fechada agora, diga qual é o próximo horário de atendimento.
 
@@ -358,7 +373,7 @@ Se o cliente pedir para falar com uma pessoa, ou estiver irritado com o atendime
 
   const anthropic = getClient()
   const pedir = () => anthropic.messages.create({
-    model: MODELO,
+    model: modeloDe(configBot),
     max_tokens: MAX_TOKENS,
     system: sysPrompt,
     tools,
@@ -410,9 +425,11 @@ export async function redigirRespostaAoCliente(args: {
   assunto: string
   respostaDoResponsavel: string
 }): Promise<string> {
-  const { supabase, conversaId, assunto, respostaDoResponsavel } = args
+  const { supabase, filialId, conversaId, assunto, respostaDoResponsavel } = args
   try {
-    const [loja, historico] = await Promise.all([dadosDaLoja(supabase), historicoDaConversa(supabase, conversaId)])
+    const [loja, historico, configBot] = await Promise.all([
+      dadosDaLoja(supabase, filialId), historicoDaConversa(supabase, conversaId), carregarConfigBot(supabase, filialId),
+    ])
     const messages: Anthropic.MessageParam[] = [
       ...historico,
       {
@@ -421,7 +438,7 @@ export async function redigirRespostaAoCliente(args: {
       },
     ]
     const response = await getClient().messages.create({
-      model: MODELO,
+      model: modeloDe(configBot),
       max_tokens: MAX_TOKENS,
       system: `Você é o assistente de atendimento de uma assistência técnica de celulares e conversa com o cliente pelo WhatsApp.
 
@@ -449,23 +466,24 @@ export function explicarErroDoAgente(erro: unknown): string {
   if (!process.env.ANTHROPIC_API_KEY) return 'A variável ANTHROPIC_API_KEY não está disponível no servidor. Cadastre na Vercel (ambiente Production) e faça um novo deploy.'
   if (/credit balance|billing/i.test(texto)) return 'A conta da Anthropic está sem crédito. Adicione crédito em console.anthropic.com → Billing.'
   if (/authentication_error|invalid x-api-key|401/i.test(texto)) return 'A chave da Anthropic foi recusada. Confira o valor de ANTHROPIC_API_KEY na Vercel.'
-  if (/not_found_error|model:/i.test(texto)) return `O modelo ${MODELO} não está disponível para esta chave.`
+  if (/not_found_error|model:/i.test(texto)) return 'O modelo escolhido para o agente não está disponível para esta chave. Escolha outro em Configurações.'
   if (/rate_limit|429/i.test(texto)) return 'A Anthropic limitou as chamadas por excesso de uso. Tente de novo em instantes.'
   if (/overloaded|529/i.test(texto)) return 'A Anthropic está sobrecarregada no momento. Tente de novo em instantes.'
   return texto.slice(0, 400)
 }
 
 /** Chamada mínima à IA, para conferir chave, crédito e modelo sem depender de uma conversa. */
-export async function testarAgente(): Promise<{ ok: boolean; modelo: string; detalhe: string }> {
+export async function testarAgente(modeloEscolhido?: string): Promise<{ ok: boolean; modelo: string; detalhe: string }> {
+  const modelo = modeloDe({ modelo: modeloEscolhido ?? '' })
   try {
     const response = await getClient().messages.create({
-      model: MODELO,
+      model: modelo,
       max_tokens: 1024,
       messages: [{ role: 'user', content: 'Responda apenas com a palavra: funcionando' }],
     })
-    return { ok: true, modelo: MODELO, detalhe: textoDa(response) || '(sem texto)' }
+    return { ok: true, modelo, detalhe: textoDa(response) || '(sem texto)' }
   } catch (e) {
     console.error('[WA bot] teste', e)
-    return { ok: false, modelo: MODELO, detalhe: explicarErroDoAgente(e) }
+    return { ok: false, modelo, detalhe: explicarErroDoAgente(e) }
   }
 }

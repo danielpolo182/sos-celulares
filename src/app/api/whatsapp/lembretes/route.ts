@@ -26,7 +26,6 @@ export async function GET(request: NextRequest) {
   const { data: filiais, error } = await supabase.from('wa_config').select('filial_id, avisos')
   if (error) return NextResponse.json({ ok: true, aviso: 'migração dos avisos ainda não foi rodada' })
 
-  const loja = await carregarInfoLoja(supabase)
   const resumo = { enviados: 0, falhas: 0, semTelefone: 0 }
 
   for (const filial of filiais ?? []) {
@@ -35,6 +34,8 @@ export async function GET(request: NextRequest) {
 
     const envio = await buscarConfigEnvio(supabase, filial.filial_id)
     if (!envio) continue
+    // Cada loja tem o seu horário, prazo e taxa de retirada
+    const loja = await carregarInfoLoja(supabase, filial.filial_id)
 
     const menorPrazo = Math.min(...config.lembrete_dias, config.ultimo_aviso_dias)
     // Só entram OS com pronta_em preenchido, ou seja, que ficaram prontas depois de os avisos existirem
