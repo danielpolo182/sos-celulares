@@ -6,6 +6,8 @@ import { buscarPecasParaModelo, TipoPeca } from '@/lib/fornecedores'
 import { WaConfig } from './send'
 import { ConfigBot, carregarConfigBot } from './botRegras'
 import { lerConfigDaLoja } from './lojaConfig'
+import { montarOrcamento, orcamentoParaOAgente } from './orcamento'
+import { ConfigPrecos } from './precoRegras'
 import { abrirConsulta, buscarConhecimento } from './consultas'
 import { enviarMaterial, listarMateriais } from './materiais'
 import { consultarTabelaDePrecos } from './precos'
@@ -108,6 +110,20 @@ const TOOLS: Anthropic.Tool[] = [
 ]
 
 // Só entra na lista de ferramentas quando a loja tem algum material cadastrado
+// Só entra na lista quando a loja ligou o orçamento automático
+const FERRAMENTA_ORCAMENTO: Anthropic.Tool = {
+  name: 'montar_orcamento',
+  description: 'Calcula o preço ao cliente para troca de tela, bateria ou conector de carga de um aparelho, consultando os fornecedores e aplicando a regra de preço da loja. Devolve as opções prontas (tipo e valor) para você informar. Use sempre que o cliente pedir o valor de um desses três serviços.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      modelo: { type: 'string', description: 'Marca e modelo completos, com variante e 4G/5G quando houver. Ex.: "Samsung Galaxy A54 5G", "iPhone 13 Pro Max"' },
+      servico: { type: 'string', enum: TIPOS_DE_PECA, description: 'tela (display/frontal), bateria ou conector (de carga)' },
+    },
+    required: ['modelo', 'servico'],
+  },
+}
+
 const FERRAMENTA_MATERIAL: Anthropic.Tool = {
   name: 'enviar_material',
   description: 'Envia ao cliente um vídeo, imagem ou documento da biblioteca da loja. Use quando a conversa se encaixar na situação descrita para o material.',
@@ -137,7 +153,7 @@ async function buscarCliente(supabase: SupabaseClient, filialId: string, telefon
 
 const reais = (v: number) => `R$ ${v.toFixed(2).replace('.', ',')}`
 
-type ContextoFerramenta = { supabase: SupabaseClient; filialId: string; conversaId: string; envio: WaConfig }
+type ContextoFerramenta = { supabase: SupabaseClient; filialId: string; conversaId: string; envio: WaConfig; precos?: ConfigPrecos }
 
 async function executeTool(toolName: string, toolInput: Record<string, string>, ctx: ContextoFerramenta): Promise<string> {
   const { supabase, filialId } = ctx
@@ -193,6 +209,13 @@ async function executeTool(toolName: string, toolInput: Record<string, string>, 
     return `CUSTO de fornecedor (interno, não informar ao cliente) — ${tipo} para ${toolInput.modelo}:\n` +
       pecas.slice(0, 12).map(p => `- ${p.fornecedor}: ${reais(p.preco)} — ${p.nome}`).join('\n') +
       (avisos ? `\n${avisos}` : '')
+  }
+
+  if (toolName === 'montar_orcamento') {
+    const servico = toolInput.servico as TipoPeca
+    if (!toolInput.modelo?.trim() || !TIPOS_DE_PECA.includes(servico)) return 'Informe o modelo do aparelho e o serviço (tela, bateria ou conector).'
+    if (!ctx.precos?.ativo) return 'O orçamento automático está desligado. Siga para as respostas anteriores do responsável.'
+    return orcamentoParaOAgente(await montarOrcamento(toolInput.modelo, servico, ctx.precos))
   }
 
   if (toolName === 'enviar_material') {
@@ -320,7 +343,11 @@ ${configBot.informacoes}
 - Se o cliente perguntar se está falando com uma pessoa ou com um robô, responda a verdade: você é ${nome}, atendimento virtual da loja, e pode chamar alguém da equipe se ele preferir. Nunca diga que é uma pessoa.
 
 `
-  const tools = materiais.length > 0 ? [...TOOLS, FERRAMENTA_MATERIAL] : TOOLS
+  const precos = configBot?.precos
+  const orcaSozinho = precos?.ativo === true
+  const tools = [...TOOLS, ...(orcaSozinho ? [FERRAMENTA_ORCAMENTO] : []), ...(materiais.length > 0 ? [FERRAMENTA_MATERIAL] : [])]
+  const passoDoOrcamento = !orcaSozinho ? '' : `
+2a. Se a tabela não tiver e o serviço for troca de tela, bateria ou conector de carga, chame montar_orcamento. Se ele devolver opções, informe todas ao cliente, com os valores exatos, e não consulte o responsável sobre o preço. Depois de passar os valores, convide o cliente a trazer o aparelho ou a agendar. Só siga para os passos abaixo se montar_orcamento não devolver preço.`
   const secaoMateriais = materiais.length === 0 ? '' : [
     'Materiais que você pode enviar com enviar_material (cada um no máximo uma vez por conversa):',
     ...materiais.map(m => `- ${m.id} | ${m.tipo} "${m.titulo}": ${m.quando_enviar}`),
@@ -357,7 +384,7 @@ Como você atende:
 
 Orçamentos de reparo:
 1. Descubra o modelo exato do aparelho (marca, modelo, variante como Pro, Plus ou FE, e 4G ou 5G quando existirem as duas versões) e o serviço que o cliente quer. Pergunte o que faltar, uma pergunta por mensagem. Se ele já disse o serviço (troca de tela, bateria, conector, tampa traseira), não pergunte o que aconteceu com o aparelho: o modelo basta para dar o preço.
-2. Chame consultar_tabela_de_precos com o modelo e o serviço. Se a tabela tiver preço, informe as opções ao cliente e não consulte o responsável.
+2. Chame consultar_tabela_de_precos com o modelo e o serviço. Se a tabela tiver preço, informe as opções ao cliente e não consulte o responsável.${passoDoOrcamento}
 3. Se a tabela não tiver, chame consultar_respostas_anteriores. Se o responsável já respondeu sobre o mesmo serviço no mesmo modelo, use essa resposta.
 4. Se também não houver resposta anterior e o reparo for de tela, bateria ou conector de carga, chame buscar_pecas_fornecedores e depois perguntar_ao_responsavel, colocando na pergunta o modelo, o defeito e as opções de peça com o custo de cada uma. Para outros reparos, chame perguntar_ao_responsavel direto.
 5. Depois de perguntar ao responsável, diga ao cliente que está confirmando o valor com o técnico e que retorna em instantes. Não dê palpite de preço.
@@ -393,7 +420,7 @@ Se o cliente pedir para falar com uma pessoa, ou estiver irritado com o atendime
       ferramentas.push(block.name)
       let resultado: string
       try {
-        resultado = await executeTool(block.name, block.input as Record<string, string>, { supabase, filialId, conversaId, envio })
+        resultado = await executeTool(block.name, block.input as Record<string, string>, { supabase, filialId, conversaId, envio, precos })
       } catch (e) {
         console.error('[WA bot] ferramenta', block.name, e)
         resultado = 'A consulta falhou agora. Se não puder responder sem ela, pergunte ao responsável.'

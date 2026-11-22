@@ -3,6 +3,7 @@
 // e se cala na conversa por um tempo sempre que alguém da loja escreve.
 import { SupabaseClient } from '@supabase/supabase-js'
 import { variantesDeTelefone } from './send'
+import { ConfigPrecos, PRECOS_PADRAO, lerConfigPrecos } from './precoRegras'
 
 /** Guardado em wa_config.bot_config. */
 /** Modelos que a loja pode escolher para o agente, do mais rápido ao mais capaz. */
@@ -19,6 +20,8 @@ export type ConfigBot = {
   modelo: string
   /** Texto livre com o que o agente pode informar sem consultar: pagamento, prazos, agendamento. */
   informacoes: string
+  /** Regras do orçamento automático (custo da peça → preço ao cliente). */
+  precos: ConfigPrecos
   /** Minutos em que o agente fica calado depois de uma resposta da loja. */
   pausa_min: number
   /** Se houver números aqui, o agente só responde a eles (modo de teste). */
@@ -40,6 +43,7 @@ export const BOT_PADRAO: ConfigBot = {
   nome: '',
   modelo: '',
   informacoes: '',
+  precos: PRECOS_PADRAO,
   pausa_min: 120,
   numeros_teste: [],
   dono_telefone: '',
@@ -64,6 +68,7 @@ export function lerConfigBot(bruto: unknown): ConfigBot {
     nome: String(b.nome ?? '').replace(/\s+/g, ' ').trim().slice(0, 30),
     modelo: MODELOS_DO_AGENTE.some(m => m.id === b.modelo) ? String(b.modelo) : '',
     informacoes: String(b.informacoes ?? '').trim().slice(0, 4000),
+    precos: lerConfigPrecos(b.precos),
     pausa_min: inteiro(b.pausa_min, BOT_PADRAO.pausa_min),
     numeros_teste: [...new Set(numeros)],
     dono_telefone: dono.length >= 10 ? dono : '',

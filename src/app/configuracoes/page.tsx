@@ -7,6 +7,7 @@ import { formatarCNPJ, formatarCPF, formatarTelefone, validarCNPJ, validarCPF, v
 import { AVISOS, ConfigAvisos, MODELOS_AVISO, lerConfigAvisos, lerListaDeDias } from '@/lib/whatsapp/avisos'
 import { ConfigBot, MODELOS_DO_AGENTE, lerConfigBot, lerNumerosDeTeste } from '@/lib/whatsapp/botRegras'
 import { LIMITE_MB, TIPO_POR_MIME } from '@/lib/whatsapp/materiais'
+import OrcamentoAutomatico from '@/components/whatsapp/OrcamentoAutomatico'
 
 // ─── Tipos ────────────────────────────────────────────────
 type WaConfig = {
@@ -1655,6 +1656,7 @@ export default function ConfiguracoesPage() {
                     </select>
                     <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Os modelos mais capazes entendem melhor conversas confusas e erram menos, e custam mais por mensagem. A troca vale a partir da próxima mensagem; use "Testar agente" para confirmar que o modelo responde.</div>
                   </div>
+                  <OrcamentoAutomatico precos={waBot.precos} onChange={precos => setWaBot(c => c ? { ...c, precos } : c)} />
                 </div>
               ) : (
                 <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#92400e', marginTop: 12 }}>
