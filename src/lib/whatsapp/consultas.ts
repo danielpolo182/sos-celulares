@@ -5,6 +5,7 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { sendMessage, sendMessageIds, sendTemplateIds, variantesDeTelefone, WaConfig } from './send'
 import { ConfigBot, carregarConfigBot, liberarBot, mesmoTelefone } from './botRegras'
+import { janelaAberta } from './janela'
 import { registrarNaConversa } from './notify'
 import { redigirRespostaAoCliente } from './bot'
 
@@ -14,8 +15,6 @@ export const TEXTO_MODELO_CONSULTA =
   'Consulta do atendimento. Cliente: {{1}}. Pergunta: {{2}}. Responda citando esta mensagem com a orientação para o cliente.'
 
 const HORA_MS = 3_600_000
-// Margem sobre as 24h da janela do WhatsApp
-const JANELA_MS = 23 * HORA_MS
 
 type Consulta = {
   id: string
@@ -42,26 +41,6 @@ async function clienteDaConversa(supabase: SupabaseClient, conversaId: string) {
   const telefone = (data?.telefone as string | undefined) ?? ''
   const nome = (data?.nome_contato as string | null | undefined) ?? null
   return { telefone, nome, rotulo: nome ? `${nome} ${formatarTelefone(telefone)}` : formatarTelefone(telefone) }
-}
-
-/** O responsável escreveu para a loja há menos de 24h? Fora disso só passa modelo aprovado. */
-async function janelaAberta(supabase: SupabaseClient, filialId: string, telefone: string): Promise<boolean> {
-  const { data: conversas } = await supabase
-    .from('wa_conversas')
-    .select('id')
-    .in('telefone', variantesDeTelefone(telefone))
-    .eq('filial_id', filialId)
-  const ids = (conversas ?? []).map(c => c.id as string)
-  if (ids.length === 0) return false
-  const { data } = await supabase
-    .from('wa_mensagens')
-    .select('criado_em')
-    .in('conversa_id', ids)
-    .eq('direcao', 'entrada')
-    .order('criado_em', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  return !!data && Date.now() - new Date(data.criado_em as string).getTime() < JANELA_MS
 }
 
 async function avisarResponsavel(

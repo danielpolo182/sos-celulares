@@ -1,7 +1,8 @@
 // src/lib/whatsapp/notify.ts
 // Envio dos avisos automáticos de OS (modelos aprovados do WhatsApp).
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
-import { sendTemplate, variantesDeTelefone, WaConfig } from './send'
+import { sendMessage, sendTemplate, variantesDeTelefone, WaConfig } from './send'
+import { janelaAberta } from './janela'
 import { buscarConfigEnvio } from './config'
 import { lerConfigDaLoja } from './lojaConfig'
 import {
@@ -37,7 +38,8 @@ export type OsParaAviso = {
 
 export type InfoLoja = { horario: string; taxa: string; garantiaDias: number; prazoRetiradaDias: number }
 
-export type ContextoAviso = { supabase: SupabaseClient; envio: WaConfig; loja: InfoLoja }
+/** `erro` é preenchido pelo envio quando o provedor recusa, para quem chamou poder mostrar o motivo. */
+export type ContextoAviso = { supabase: SupabaseClient; envio: WaConfig; loja: InfoLoja; erro?: string }
 
 export function clienteDeServico(): SupabaseClient {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -152,7 +154,17 @@ export async function enviarAvisoOS(
   } catch (e) {
     erro = e instanceof Error ? e.message : String(e)
     console.error('[WA aviso] envio recusado', { os: os.numero, modelo, erro })
+    // Modelo ainda não aprovado: se o cliente escreveu há menos de 24h, o mesmo texto pode ir como mensagem comum
+    try {
+      if (await janelaAberta(supabase, os.filial_id, destino)) {
+        waMessageId = await sendMessage(envio, destino, textoDoAviso(aviso, dados))
+        erro = null
+      }
+    } catch (e2) {
+      console.error('[WA aviso] texto livre também recusado', e2 instanceof Error ? e2.message : e2)
+    }
   }
+  ctx.erro = erro ?? undefined
 
   const carimbo = agora.toISOString()
   const anotacoes: Record<string, string> = { ...(os.wa_avisos ?? {}), [chave]: erro ? `erro:${carimbo}` : carimbo }
@@ -177,13 +189,23 @@ export async function enviarAvisoOS(
   return erro ? 'falhou' : 'enviado'
 }
 
-/** Disparo ligado a um acontecimento da OS: abertura ou mudança de status. */
-export async function notificarEventoOS(osId: string, evento: 'entrada' | 'pronta' | 'entregue'): Promise<void> {
+export type ResultadoDoAviso =
+  | { resultado: 'enviado' | 'sem_telefone' | 'desligado' | 'ja_avisado' | 'sem_whatsapp' | 'os_nao_encontrada' }
+  | { resultado: 'falhou'; erro: string }
+
+/**
+ * Disparo ligado a um acontecimento da OS: abertura ou mudança de status.
+ * `forcar` envia mesmo com o aviso automático desligado nas Configurações: é o
+ * caso de quem pediu o envio de propósito, como na tela da bancada.
+ */
+export async function notificarEventoOS(
+  osId: string, evento: 'entrada' | 'andamento' | 'pronta' | 'entregue', opcoes: { forcar?: boolean } = {}
+): Promise<ResultadoDoAviso> {
   const supabase = clienteDeServico()
 
   const { data, error } = await supabase.from('ordens_servico').select(COLUNAS_OS_AVISO).eq('id', osId).maybeSingle()
   // Erro aqui é o banco sem as colunas dos avisos: nada a fazer até a migração rodar
-  if (error || !data) return
+  if (error || !data) return { resultado: 'os_nao_encontrada' }
   let os = data as unknown as OsParaAviso
 
   if (evento === 'pronta') {
@@ -197,20 +219,23 @@ export async function notificarEventoOS(osId: string, evento: 'entrada' | 'pront
   }
 
   const config = await carregarConfigAvisos(supabase, os.filial_id)
-  if (!config?.[evento]) return
+  if (!opcoes.forcar && !config?.[evento]) return { resultado: 'desligado' }
 
   const anterior = os.wa_avisos?.[evento]
   if (anterior && !anterior.startsWith('erro:')) {
     const recente = Date.now() - new Date(anterior).getTime() < INTERVALO_REAVISO_PRONTA_MS
-    if (evento !== 'pronta' || recente) return
+    if (evento !== 'pronta' || recente) return { resultado: 'ja_avisado' }
   }
 
   const envio = await buscarConfigEnvio(supabase, os.filial_id)
-  if (!envio) return
+  if (!envio) return { resultado: 'sem_whatsapp' }
 
-  await enviarAvisoOS({ supabase, envio, loja: await carregarInfoLoja(supabase, os.filial_id) }, os, evento, evento)
+  const ctx: ContextoAviso = { supabase, envio, loja: await carregarInfoLoja(supabase, os.filial_id) }
+  const resultado = await enviarAvisoOS(ctx, os, evento, evento)
+  return resultado === 'falhou' ? { resultado, erro: ctx.erro ?? 'envio recusado' } : { resultado }
 }
 
 export async function notifyStatusChange(osId: string, newStatus: string): Promise<void> {
-  if (newStatus === 'pronta' || newStatus === 'entregue') await notificarEventoOS(osId, newStatus)
+  if (newStatus === 'em_andamento') await notificarEventoOS(osId, 'andamento')
+  else if (newStatus === 'pronta' || newStatus === 'entregue') await notificarEventoOS(osId, newStatus)
 }
