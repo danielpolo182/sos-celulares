@@ -143,14 +143,20 @@ export function explicacoesDasOpcoes(opcoes: OpcaoDeOrcamento[]): string[] {
   if (opcoes.length < 2) return []
   const tem = (c: ChaveDeRegra) => opcoes.some(o => o.chave === c)
   const temOled = tem('oled') || tem('oled_sem_aro') || tem('soft_oled') || tem('soft_oled_genuina') || tem('nacional')
-  const lcdMaisEmConta = 'a opção mais em conta; a imagem é boa, com cores e pretos menos intensos que os da OLED'
+  // LCD em aparelho que nasceu com tela OLED: é a opção econômica, e o cliente
+  // precisa saber antes o que perde com ela
+  const lcdEmAparelhoOled = (comDigitalNaTela: boolean) =>
+    'é a opção econômica, e por não ser OLED tem pontos negativos: imagem menos viva, toque menos preciso, consumo maior de bateria e tela mais grossa' +
+    (comDigitalNaTela ? '. Algumas funções podem deixar de funcionar, como o leitor de digital na tela, nos aparelhos que têm' : '') +
+    ' [passe todos estes pontos ao cliente, sem suavizar]'
   const texto = (chave: ChaveDeRegra): string => {
     switch (chave) {
       case 'lcd_sem_aro': return 'troca só o display e aproveita a moldura (aro) do seu aparelho; é a opção mais em conta'
       case 'lcd_com_aro': return tem('lcd_sem_aro')
         ? 'a tela já vem montada de fábrica em uma moldura (aro) nova, com encaixe e acabamento melhores'
-        : temOled ? lcdMaisEmConta : ''
-      case 'lcd_iphone': return temOled ? lcdMaisEmConta : ''
+        : temOled ? lcdEmAparelhoOled(true) : ''
+      // iPhone não tem leitor de digital na tela
+      case 'lcd_iphone': return temOled ? lcdEmAparelhoOled(false) : ''
       case 'oled': return 'cores mais vivas e pretos mais profundos, com imagem próxima à da tela de fábrica' + (tem('soft_oled') || tem('soft_oled_genuina') ? '; é a OLED rígida' : '')
       case 'oled_sem_aro': return 'a mesma tela OLED, trocando só o display e aproveitando a moldura (aro) do seu aparelho'
       case 'soft_oled': return 'OLED flexível, do mesmo tipo da tela de fábrica, mais resistente a impactos que a OLED rígida'
