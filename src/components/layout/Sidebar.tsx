@@ -18,6 +18,7 @@ type NavItem = {
 const HREF_MODULO: Record<string, string> = {
   '/dashboard':    'dashboard',
   '/os':           'os',
+  '/entregar':     'os',
   '/garantias':    'os',
   '/clientes':     'clientes',
   '/crm':          'crm',
@@ -47,6 +48,7 @@ const NAV: NavItem[] = [
     children: [
       { href: '/dashboard',    icon: 'ti-layout-dashboard', label: 'Dashboard' },
       { href: '/os',           icon: 'ti-tool',             label: 'Ordens de Serviço' },
+      { href: '/entregar',     icon: 'ti-package-export',   label: 'Entregar dispositivo' },
       { href: '/garantias',    icon: 'ti-shield-check',     label: 'Garantias' },
       { href: '/clientes',     icon: 'ti-users',            label: 'Clientes' },
       { href: '/crm',          icon: 'ti-speakerphone',     label: 'CRM & Acomp.' },
