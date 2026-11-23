@@ -1,18 +1,12 @@
 // src/app/api/bancada/route.ts
-// Tela da bancada: o técnico digita o número da OS e escolhe "Em andamento" ou
-// "Pronta". A rota confere a OS, muda o status e dispara o aviso ao cliente.
+// Tela da bancada: o técnico digita o número da OS do aparelho que ficou pronto.
+// A rota confere a OS, muda o status para "Pronta" e avisa o cliente.
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { notificarEventoOS } from '@/lib/whatsapp/notify'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
-
-const ACOES = {
-  em_andamento: { evento: 'andamento', rotulo: 'Em andamento' },
-  pronta: { evento: 'pronta', rotulo: 'Pronta' },
-} as const
-type Acao = keyof typeof ACOES
 
 const NOME_DO_STATUS: Record<string, string> = {
   aberta: 'Aberta', aguardando_diagnostico: 'Aguardando diagnóstico', em_orcamento: 'Em orçamento',
@@ -31,10 +25,9 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Faça login no OctaOS neste aparelho.' }, { status: 401 })
 
-  const corpo = await req.json().catch(() => null) as { numero?: unknown; status?: unknown; confirmar?: unknown } | null
+  const corpo = await req.json().catch(() => null) as { numero?: unknown; confirmar?: unknown } | null
   const numero = Number(String(corpo?.numero ?? '').replace(/\D/g, ''))
-  const acao = corpo?.status as Acao
-  if (!Number.isInteger(numero) || numero <= 0 || !(acao in ACOES)) {
+  if (!Number.isInteger(numero) || numero <= 0) {
     return NextResponse.json({ error: 'Digite o número da OS.' }, { status: 400 })
   }
 
@@ -68,17 +61,17 @@ export async function POST(req: NextRequest) {
 
   const { error: erroStatus } = await supabase
     .from('ordens_servico')
-    .update({ status: acao, updated_at: new Date().toISOString() })
+    .update({ status: 'pronta', updated_at: new Date().toISOString() })
     .eq('id', os.id)
   if (erroStatus) return NextResponse.json({ error: `Não consegui mudar o status: ${erroStatus.message}`, os: resumo }, { status: 500 })
 
   let aviso: Awaited<ReturnType<typeof notificarEventoOS>>
   try {
     // Quem digitou aqui quer o aviso: vale mesmo com o aviso automático desligado nas Configurações
-    aviso = await notificarEventoOS(os.id as string, ACOES[acao].evento, { forcar: true })
+    aviso = await notificarEventoOS(os.id as string, 'pronta', { forcar: true })
   } catch (e) {
     aviso = { resultado: 'falhou', erro: e instanceof Error ? e.message : String(e) }
   }
 
-  return NextResponse.json({ os: { ...resumo, statusAtual: ACOES[acao].rotulo }, feito: true, aviso })
+  return NextResponse.json({ os: { ...resumo, statusAtual: 'Pronta' }, feito: true, aviso })
 }

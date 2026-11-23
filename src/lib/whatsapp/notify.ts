@@ -199,7 +199,7 @@ export type ResultadoDoAviso =
  * caso de quem pediu o envio de propósito, como na tela da bancada.
  */
 export async function notificarEventoOS(
-  osId: string, evento: 'entrada' | 'andamento' | 'pronta' | 'entregue', opcoes: { forcar?: boolean } = {}
+  osId: string, evento: 'entrada' | 'pronta' | 'entregue', opcoes: { forcar?: boolean } = {}
 ): Promise<ResultadoDoAviso> {
   const supabase = clienteDeServico()
 
@@ -236,6 +236,5 @@ export async function notificarEventoOS(
 }
 
 export async function notifyStatusChange(osId: string, newStatus: string): Promise<void> {
-  if (newStatus === 'em_andamento') await notificarEventoOS(osId, 'andamento')
-  else if (newStatus === 'pronta' || newStatus === 'entregue') await notificarEventoOS(osId, newStatus)
+  if (newStatus === 'pronta' || newStatus === 'entregue') await notificarEventoOS(osId, newStatus)
 }

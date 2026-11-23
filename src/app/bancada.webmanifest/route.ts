@@ -5,7 +5,7 @@ export function GET() {
   return new Response(JSON.stringify({
     name: 'Bancada · OctaOS',
     short_name: 'Bancada',
-    description: 'Marca a ordem de serviço como em andamento ou pronta e avisa o cliente pelo WhatsApp.',
+    description: 'Marca a ordem de serviço como pronta e avisa o cliente pelo WhatsApp.',
     start_url: '/bancada',
     scope: '/bancada',
     display: 'standalone',

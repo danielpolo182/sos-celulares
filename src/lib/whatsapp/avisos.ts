@@ -3,9 +3,9 @@
 // Este arquivo não acessa o banco: é usado tanto no servidor quanto na tela de
 // configurações, que mostra os textos para cadastro no provedor.
 
-export type AvisoOS = 'entrada' | 'andamento' | 'pronta' | 'lembrete' | 'ultimo_aviso' | 'entregue'
+export type AvisoOS = 'entrada' | 'pronta' | 'lembrete' | 'ultimo_aviso' | 'entregue'
 
-export const AVISOS: AvisoOS[] = ['entrada', 'andamento', 'pronta', 'lembrete', 'ultimo_aviso', 'entregue']
+export const AVISOS: AvisoOS[] = ['entrada', 'pronta', 'lembrete', 'ultimo_aviso', 'entregue']
 
 /** Guardado em wa_config.avisos. Tudo desligado até a loja ligar cada aviso. */
 export type ConfigAvisos = Record<AvisoOS, boolean> & {
@@ -17,7 +17,6 @@ export type ConfigAvisos = Record<AvisoOS, boolean> & {
 
 export const AVISOS_PADRAO: ConfigAvisos = {
   entrada: false,
-  andamento: false,
   pronta: false,
   lembrete: false,
   ultimo_aviso: false,
@@ -35,7 +34,6 @@ export function lerConfigAvisos(bruto: unknown): ConfigAvisos {
   const ultimo = Number(b.ultimo_aviso_dias)
   return {
     entrada: b.entrada === true,
-    andamento: b.andamento === true,
     pronta: b.pronta === true,
     lembrete: b.lembrete === true,
     ultimo_aviso: b.ultimo_aviso === true,
@@ -82,13 +80,6 @@ export const MODELOS_AVISO: Record<AvisoOS, ModeloAviso> = {
     titulo: 'Entrada do aparelho',
     quando: 'Ao abrir a ordem de serviço',
     texto: 'Olá, {{1}}! Recebemos seu {{2}} para atendimento. Sua ordem de serviço é a nº {{3}}. Avisaremos por aqui quando ele estiver pronto para retirada.',
-    variaveis: ['nome', 'aparelho', 'numero'],
-  },
-  andamento: {
-    modelo: 'os_em_andamento',
-    titulo: 'Reparo iniciado',
-    quando: 'Quando a OS passa para "Em andamento"',
-    texto: 'Olá, {{1}}! Começamos o reparo do seu {{2}} (OS nº {{3}}). Avisaremos por aqui assim que ele estiver pronto para retirada.',
     variaveis: ['nome', 'aparelho', 'numero'],
   },
   pronta: {
