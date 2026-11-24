@@ -34,9 +34,11 @@ export async function middleware(request: NextRequest) {
   const isWaWebhook = path === '/api/whatsapp/webhook' || path.startsWith('/api/whatsapp/ycloud/')
   // Rotina diária chamada pelo agendador da Vercel, sem sessão; a rota exige o CRON_SECRET
   const isWaCron = path === '/api/whatsapp/lembretes'
+  // TEMPORÁRIO: votação da família (casa de praia), aberta para quem não tem login no sistema
+  const isCasaDaPraia = path.startsWith('/casa-da-praia/') || path.startsWith('/api/casa-da-praia/')
 
   // Não autenticado — redireciona para login
-  if (!user && !isLoginPage && !isRoot && !isCadastro && !isAuthCallback && !isWaWebhook && !isWaCron) {
+  if (!user && !isLoginPage && !isRoot && !isCadastro && !isAuthCallback && !isWaWebhook && !isWaCron && !isCasaDaPraia) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
