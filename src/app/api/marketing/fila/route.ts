@@ -2,6 +2,8 @@
 // Fila de aprovação de publicações: lista os itens da loja e aplica as ações da página /aprovacoes.
 // Só responde para usuário logado cuja loja tem a fila ligada (linha em marketing_config).
 // Toda mudança de situação passa por aqui e confere a situação atual antes de mudar.
+// A sessão só LÊ (a política de loja decide o que ela enxerga); quem grava é o cliente de serviço,
+// sempre em itens que a sessão acabou de ler. Nenhum usuário escreve direto nas tabelas da fila.
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { clienteDeServico } from '@/lib/whatsapp/notify'
@@ -12,7 +14,7 @@ import { depsReais, BALDE } from '@/lib/marketing/publicar-deps'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-const COLUNAS = 'id, titulo, situacao, dados, agendado_para, publicado_em, ig_link, erro, video_path, quadro_path, criado_em'
+const COLUNAS = 'id, filial_id, titulo, situacao, dados, agendado_para, publicado_em, ig_link, erro, video_path, quadro_path, ig_container_id, criado_em'
 const ASSINATURA_TELA_S = 3600
 const ATRASO_MS = 10 * 60_000
 const ACOES = ['aprovar', 'descartar', 'publicar_agora', 'cancelar', 'tentar_de_novo'] as const
@@ -20,7 +22,11 @@ type Acao = typeof ACOES[number]
 type Linha = {
   id: string; titulo: string; situacao: string; dados: unknown; agendado_para: string | null; publicado_em: string | null
   ig_link: string | null; erro: string | null; video_path: string | null; quadro_path: string | null; criado_em: string
+  filial_id: string; ig_container_id: string | null
 }
+
+/** Só arquivos dentro da pasta da própria loja do item são assinados ou apagados. */
+const arquivosDe = (l: Linha) => [l.video_path, l.quadro_path].filter((c): c is string => !!c && c.startsWith(l.filial_id + '/'))
 
 /** Sessão + loja com a fila ligada. Devolve a resposta de erro quando não passa. */
 async function portao() {
@@ -55,7 +61,7 @@ export async function GET(req: NextRequest) {
   const linhas = (data ?? []) as Linha[]
 
   // Endereços assinados só para os arquivos de itens que a sessão enxergou
-  const caminhos = linhas.flatMap(l => [l.video_path, l.quadro_path]).filter((c): c is string => !!c)
+  const caminhos = linhas.flatMap(arquivosDe)
   const assinados = new Map<string, string>()
   if (caminhos.length) {
     const { data: urls } = await clienteDeServico().storage.from(BALDE).createSignedUrls(caminhos, ASSINATURA_TELA_S)
@@ -115,6 +121,7 @@ export async function POST(req: NextRequest) {
     horas = distribuir(agora, horarios, ocupados, aptos.length)
   }
 
+  const servico = clienteDeServico()
   let feitos = 0
   let resultado: Resultado | undefined
   for (const [i, l] of aptos.entries()) {
@@ -122,12 +129,15 @@ export async function POST(req: NextRequest) {
       acao === 'aprovar' ? { situacao: 'aprovado', agendado_para: horas[i].toISOString(), aprovado_por: user.id, aprovado_em: agoraIso }
       : acao === 'descartar' ? { situacao: 'descartado', video_path: null, quadro_path: null, agendado_para: null }
       : acao === 'cancelar' ? { situacao: 'pendente', agendado_para: null }
-      : { situacao: 'aprovado', agendado_para: agoraIso, tentativas: 0, erro: null, ig_container_id: null,
+      // Item que já tem contêiner na Meta (falhou sem confirmação) NÃO volta para a fila nem perde o contêiner:
+      // fica "publicando" e a retomada consulta a Meta antes de qualquer coisa, para não publicar duas vezes.
+      : l.ig_container_id ? { situacao: 'publicando', tentativas: 0, erro: null }
+      : { situacao: 'aprovado', agendado_para: agoraIso, tentativas: 0, erro: null,
           ...(acao === 'publicar_agora' ? { aprovado_por: user.id, aprovado_em: agoraIso } : {}) }
 
     // A situação é conferida de novo na própria gravação: se o relógio pegou o item no meio, nada muda
-    const { data: mudou, error: erroGravar } = await supabase.from('marketing_fila')
-      .update({ ...campos, atualizado_em: agoraIso }).eq('id', l.id).in('situacao', EXIGE[acao]).select('id')
+    const { data: mudou, error: erroGravar } = await servico.from('marketing_fila')
+      .update({ ...campos, atualizado_em: agoraIso }).eq('id', l.id).eq('filial_id', l.filial_id).in('situacao', EXIGE[acao]).select('id')
     if (erroGravar || !mudou?.length) {
       recusados.push({ id: l.id, motivo: `"${l.titulo}" mudou de situação agora há pouco. Atualize a página.` })
       continue
@@ -135,12 +145,13 @@ export async function POST(req: NextRequest) {
     feitos++
 
     if (acao === 'descartar') {
-      const caminhos = [l.video_path, l.quadro_path].filter((c): c is string => !!c)
-      if (caminhos.length) await clienteDeServico().storage.from(BALDE).remove(caminhos)
+      const caminhos = arquivosDe(l)
+      if (caminhos.length) await servico.storage.from(BALDE).remove(caminhos)
     }
     if (acao === 'publicar_agora') {
       try {
-        resultado = await publicarItem(depsReais(clienteDeServico(), token!), l.id)
+        // A resposta precisa sair antes dos 60 s da rota: a espera pela Meta para aos 45 s
+        resultado = await publicarItem(depsReais(servico, token!), l.id, { retomar: !!l.ig_container_id, prazo: Date.now() + 45_000 })
       } catch (e) {
         console.error('[fila] publicar agora falhou:', e instanceof Error ? e.message : e)
         return NextResponse.json({ error: 'Não consegui publicar agora. O item continua aprovado e o relógio vai tentar.' }, { status: 500 })

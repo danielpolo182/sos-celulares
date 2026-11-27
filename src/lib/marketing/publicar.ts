@@ -2,17 +2,20 @@
 // Módulo puro: tudo o que toca banco, armazenamento e Meta entra por `Deps`. As dependências de verdade
 // ficam em publicar-deps.ts; o roteiro conferir-publicar.mjs usa dependências de mentira.
 //
-// O que este módulo garante:
-//   - um item só é publicado por quem conseguiu reservá-lo (aprovado -> publicando, atômico);
-//   - depois que a Meta publicou, o item nunca volta para a fila, nem que o banco falhe;
-//   - erro vira nova tentativa até TENTATIVAS_MAX e depois "falhou", com o motivo.
+// A API da Meta não apaga publicação, então a regra que manda aqui é: nunca publicar duas vezes.
+//   - Item novo só é publicado por quem conseguiu reservá-lo (aprovado -> publicando, atômico).
+//   - Item em andamento só é retomado por quem tomou posse da versão que leu.
+//   - Um contêiner que já existe só é abandonado quando a própria Meta diz que ele não serve
+//     (ERROR ou EXPIRED). Em qualquer dúvida (resposta perdida, consulta que falhou, banco fora),
+//     o item fica "publicando" com o contêiner guardado, e a próxima consulta à Meta decide.
 import type { EstadoConteiner } from './instagram'
 
 export const ESPERA_MAX_MS = 40_000      // quanto uma chamada espera a Meta processar o vídeo
 export const INTERVALO_MS = 5_000        // intervalo entre consultas do estado
+export const MARGEM_MS = 10_000          // o relógio não começa item com menos que isso de prazo
 export const TENTATIVAS_MAX = 3
-export const TRAVA_MIN = 30              // "publicando" há mais que isso vira "falhou"
-export const RETOMAR_APOS_S = 90         // o relógio não mexe em item reservado há menos que isso (pode estar em voo)
+export const TRAVA_MIN = 30              // "publicando" há mais que isso é decidido consultando a Meta
+export const RETOMAR_APOS_S = 90         // o relógio não mexe em item tocado há menos que isso (pode estar em voo)
 export const ASSINATURA_META_S = 7200    // validade do endereço que a Meta usa para baixar o vídeo
 export const NOVOS_POR_TOQUE = 3
 
@@ -27,6 +30,8 @@ export type Deps = {
   /** aprovado -> publicando, atômico. null quando outro processo já pegou o item. */
   reservar(id: string): Promise<ItemFila | null>
   carregar(id: string): Promise<ItemFila | null>
+  /** Posse de um item "publicando": só vale se ele ainda está como foi lido. null para quem perdeu. */
+  tomarPosse(id: string, atualizadoEmLido: string): Promise<ItemFila | null>
   salvar(id: string, campos: Record<string, unknown>): Promise<void>
   igUserId(filialId: string): Promise<string>
   /** Endereço assinado do arquivo. Lança ArquivoAusente se ele não existe mais. */
@@ -44,9 +49,9 @@ export type Deps = {
 }
 
 export type DepsDoRelogio = Deps & {
-  /** Itens em "publicando". */
+  /** Itens em "publicando", só de lojas com a fila ligada. */
   emAndamento(): Promise<ItemFila[]>
-  /** Ids de itens "aprovado" com horário vencido, em ordem de horário, no máximo `max`. */
+  /** Ids de itens "aprovado" com horário vencido, em ordem de horário, no máximo `max`, só de lojas com a fila ligada. */
   vencidos(max: number): Promise<string[]>
 }
 
@@ -57,16 +62,29 @@ export class ArquivoAusente extends Error {
 }
 class ConteinerRecusado extends Error {}
 
-export async function publicarItem(deps: Deps, id: string, opcoes?: { retomar?: boolean }): Promise<Resultado> {
-  const item = opcoes?.retomar ? await deps.carregar(id) : await deps.reservar(id)
+const registrar = (texto: string, id: string, e: unknown) => console.error(`[fila] ${texto} em ${id}:`, e instanceof Error ? e.message : e)
+
+/**
+ * Publica um item. `retomar` continua um item que ficou "publicando"; `prazo` (em ms desde 1970)
+ * é quando quem chamou precisa da resposta: a espera pela Meta para antes dele.
+ */
+export async function publicarItem(deps: Deps, id: string, opcoes?: { retomar?: boolean; prazo?: number }): Promise<Resultado> {
+  let item: ItemFila | null
+  if (opcoes?.retomar) {
+    const lido = await deps.carregar(id)
+    item = lido && lido.situacao === 'publicando' ? await deps.tomarPosse(id, lido.atualizado_em) : null
+  } else {
+    item = await deps.reservar(id)
+  }
   if (!item || item.situacao !== 'publicando') return 'nao_reservado'
 
+  let conteiner = item.ig_container_id
   let publicouNaMeta = false
   try {
     const igId = await deps.igUserId(item.filial_id)
-    let conteiner = item.ig_container_id
     if (!conteiner) {
-      if (!item.video_path) throw new ArquivoAusente()
+      // O arquivo tem de ser da própria loja do item
+      if (!item.video_path || !item.video_path.startsWith(item.filial_id + '/')) throw new ArquivoAusente()
       const url = await deps.assinar(item.video_path, ASSINATURA_META_S)
       conteiner = await deps.meta.criarConteinerStory(igId, url)
       // Guardado antes de qualquer espera: se esta chamada morrer, a próxima retoma daqui sem criar outro
@@ -83,33 +101,46 @@ export async function publicarItem(deps: Deps, id: string, opcoes?: { retomar?: 
         break
       }
       if (estado === 'ERROR' || estado === 'EXPIRED') throw new ConteinerRecusado('O Instagram não aceitou o vídeo.')
-      if (esperado >= ESPERA_MAX_MS) return 'aguardando_meta'
+      const semPrazo = opcoes?.prazo !== undefined && deps.agora().getTime() + INTERVALO_MS > opcoes.prazo
+      if (esperado >= ESPERA_MAX_MS || semPrazo) return 'aguardando_meta'
       await deps.esperar(INTERVALO_MS)
     }
 
-    const link = midia ? await deps.meta.linkDaMidia(midia) : null
+    // Grava "publicado" antes de qualquer outra coisa; o link vem depois e não é essencial
     await deps.salvar(id, {
-      situacao: 'publicado', publicado_em: deps.agora().toISOString(), ig_media_id: midia, ig_link: link,
+      situacao: 'publicado', publicado_em: deps.agora().toISOString(), ig_media_id: midia,
       video_path: null, quadro_path: null, erro: null,
     })
-    // O story já está no ar; falha ao apagar a cópia não desfaz nada
-    try { await deps.apagarArquivos(item) } catch (e) { console.error('[fila] não consegui apagar os arquivos de', id, e instanceof Error ? e.message : e) }
+    if (midia) {
+      try {
+        const link = await deps.meta.linkDaMidia(midia)
+        if (link) await deps.salvar(id, { ig_link: link })
+      } catch (e) { registrar('publicado, mas não consegui guardar o link', id, e) }
+    }
+    try { await deps.apagarArquivos(item) } catch (e) { registrar('publicado, mas não consegui apagar os arquivos', id, e) }
     return 'publicado'
   } catch (e) {
     if (publicouNaMeta) {
-      // Saiu no Instagram mas o banco não gravou. O item fica "publicando" com o contêiner:
+      // Saiu no Instagram mas o banco não gravou. Fica "publicando" com o contêiner:
       // a retomada vai ver PUBLISHED na Meta e concluir, sem publicar de novo.
-      console.error('[fila] publicado na Meta, mas a gravação falhou em', id, e instanceof Error ? e.message : e)
+      registrar('publicado na Meta, mas a gravação falhou', id, e)
       return 'publicado'
+    }
+    if (conteiner && !(e instanceof ConteinerRecusado)) {
+      // Já existe contêiner e não sabemos o que houve com ele (pode até ter sido publicado e a
+      // resposta ter se perdido). Não descarta: fica "publicando" e a próxima consulta à Meta decide.
+      registrar('erro com contêiner em aberto; aguardando a Meta', id, e)
+      return 'aguardando_meta'
     }
     if (e instanceof ArquivoAusente) {
       await deps.salvar(id, { situacao: 'falhou', erro: e.message })
       return 'falhou'
     }
+    // Daqui para baixo nada foi publicado: ou o contêiner nem chegou a existir, ou a Meta o recusou
     const erro = e instanceof ConteinerRecusado ? e.message : deps.mensagemDeErro(e)
     const tentativas = item.tentativas + 1
     if (tentativas >= TENTATIVAS_MAX) {
-      await deps.salvar(id, { situacao: 'falhou', tentativas, erro })
+      await deps.salvar(id, { situacao: 'falhou', tentativas, erro, ig_container_id: null })
       return 'falhou'
     }
     await deps.salvar(id, { situacao: 'aprovado', tentativas, erro, ig_container_id: null })
@@ -117,9 +148,10 @@ export async function publicarItem(deps: Deps, id: string, opcoes?: { retomar?: 
   }
 }
 
-/** Um toque do relógio: retoma o que ficou esperando a Meta e publica o que venceu. */
+/** Um toque do relógio: retoma o que ficou esperando a Meta e publica o que venceu, dentro de `limiteMs`. */
 export async function tocarRelogio(deps: DepsDoRelogio, limiteMs: number): Promise<{ publicados: number; aguardando: number; falhas: number }> {
-  const inicio = deps.agora().getTime()
+  const prazo = deps.agora().getTime() + limiteMs
+  const cabeMaisUm = () => deps.agora().getTime() + MARGEM_MS <= prazo
   const resumo = { publicados: 0, aguardando: 0, falhas: 0 }
   const contar = (r: Resultado) => {
     if (r === 'publicado') resumo.publicados++
@@ -129,21 +161,35 @@ export async function tocarRelogio(deps: DepsDoRelogio, limiteMs: number): Promi
 
   for (const item of await deps.emAndamento()) {
     const parado = deps.agora().getTime() - new Date(item.atualizado_em).getTime()
-    if (parado > TRAVA_MIN * 60_000) {
-      await deps.salvar(item.id, { situacao: 'falhou', erro: 'A Meta não terminou de processar o vídeo.' })
-      resumo.falhas++
-    } else if (parado < RETOMAR_APOS_S * 1000) {
-      resumo.aguardando++                       // outra chamada pode estar cuidando dele agora
-    } else if (!item.ig_container_id) {
-      await deps.salvar(item.id, { situacao: 'aprovado' })   // reservado e abandonado antes de criar o contêiner
-    } else {
-      contar(await publicarItem(deps, item.id, { retomar: true }))
+    if (parado < RETOMAR_APOS_S * 1000) { resumo.aguardando++; continue }   // outra chamada pode estar cuidando dele agora
+
+    if (!item.ig_container_id) {
+      // Reservado e abandonado antes de criar o contêiner: nada saiu, volta para a fila
+      if (await deps.tomarPosse(item.id, item.atualizado_em)) await deps.salvar(item.id, { situacao: 'aprovado' })
+      continue
     }
+
+    if (parado > TRAVA_MIN * 60_000) {
+      // Parado há muito tempo: quem decide é a Meta, nunca um palpite
+      let estado: EstadoConteiner | null = null
+      try { estado = await deps.meta.estadoDoConteiner(item.ig_container_id) } catch (e) { registrar('trava: não consegui consultar a Meta', item.id, e) }
+      if (estado !== 'PUBLISHED' && estado !== 'FINISHED') {
+        if (!(await deps.tomarPosse(item.id, item.atualizado_em))) continue
+        await deps.salvar(item.id, estado === null
+          ? { situacao: 'falhou', erro: 'Não consegui confirmar com o Instagram se o story saiu. Confira o perfil antes de tentar de novo.' }
+          : { situacao: 'falhou', erro: 'A Meta não terminou de processar o vídeo.', ig_container_id: null })
+        resumo.falhas++
+        continue
+      }
+    }
+
+    if (!cabeMaisUm()) { resumo.aguardando++; continue }
+    contar(await publicarItem(deps, item.id, { retomar: true, prazo }))
   }
 
   for (const id of await deps.vencidos(NOVOS_POR_TOQUE)) {
-    if (deps.agora().getTime() - inicio > limiteMs) break
-    contar(await publicarItem(deps, id))
+    if (!cabeMaisUm()) break
+    contar(await publicarItem(deps, id, { prazo }))
   }
   return resumo
 }

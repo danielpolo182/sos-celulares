@@ -40,15 +40,18 @@ create unique index if not exists marketing_fila_chave_viva on marketing_fila (f
   where situacao in ('pendente','aprovado','publicando');
 create index if not exists marketing_fila_situacao on marketing_fila (filial_id, situacao, agendado_para);
 
--- Cada loja só enxerga a própria fila, como nas outras tabelas do sistema
+-- Cada loja só LÊ a própria fila. Não há política de escrita: quem grava é o servidor, com a chave de serviço
+-- (ver supabase-migration-marketing-fila-acesso.sql, que corrigiu a primeira versão deste arquivo).
 alter table marketing_config enable row level security;
 alter table marketing_fila enable row level security;
 drop policy if exists rls_filial on marketing_config;
-create policy rls_filial on marketing_config
-  using (filial_id = public.get_filial_id()) with check (filial_id = public.get_filial_id());
+drop policy if exists leitura_da_loja on marketing_config;
+create policy leitura_da_loja on marketing_config for select using (filial_id = public.get_filial_id());
 drop policy if exists rls_filial on marketing_fila;
-create policy rls_filial on marketing_fila
-  using (filial_id = public.get_filial_id()) with check (filial_id = public.get_filial_id());
+drop policy if exists leitura_da_loja on marketing_fila;
+create policy leitura_da_loja on marketing_fila for select using (filial_id = public.get_filial_id());
+revoke insert, update, delete on marketing_config from authenticated, anon;
+revoke insert, update, delete on marketing_fila from authenticated, anon;
 
 -- Pasta privada dos vídeos que ainda não foram conferidos (até 50 MB por arquivo)
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

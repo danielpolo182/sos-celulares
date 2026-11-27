@@ -24,6 +24,12 @@ export class ErroMeta extends Error {
   }
 }
 
+/** Identificadores da Meta são numéricos. Qualquer outra coisa não entra no endereço da chamada. */
+function soDigitos(id: string): string {
+  if (!/^\d+$/.test(id)) throw new ErroMeta('identificador inválido', 0, null)
+  return id
+}
+
 async function chamar(metodo: 'GET' | 'POST', caminho: string, token: string, dados?: Record<string, unknown>): Promise<Record<string, unknown>> {
   let url = `${BASE}/${caminho}`
   let body: string | undefined
@@ -57,25 +63,25 @@ export async function contaInstagram(token: string): Promise<{ id: string; usern
 
 /** Cria o contêiner de um story de vídeo. A Meta baixa o arquivo de `videoUrl`. */
 export async function criarConteinerStory(igId: string, videoUrl: string, token: string): Promise<string> {
-  const r = await chamar('POST', `${igId}/media`, token, { media_type: 'STORIES', video_url: videoUrl })
+  const r = await chamar('POST', `${soDigitos(igId)}/media`, token, { media_type: 'STORIES', video_url: videoUrl })
   return String(r.id)
 }
 
 export async function estadoDoConteiner(conteinerId: string, token: string): Promise<EstadoConteiner> {
-  const r = await chamar('GET', conteinerId, token, { fields: 'status_code' })
+  const r = await chamar('GET', soDigitos(conteinerId), token, { fields: 'status_code' })
   return String(r.status_code) as EstadoConteiner
 }
 
 /** Publica o contêiner pronto e devolve o id da mídia. */
 export async function publicarConteiner(igId: string, conteinerId: string, token: string): Promise<string> {
-  const r = await chamar('POST', `${igId}/media_publish`, token, { creation_id: conteinerId })
+  const r = await chamar('POST', `${soDigitos(igId)}/media_publish`, token, { creation_id: soDigitos(conteinerId) })
   return String(r.id)
 }
 
 /** Link público da mídia; null se a Meta não der (não é motivo para falhar a publicação). */
 export async function linkDaMidia(midiaId: string, token: string): Promise<string | null> {
   try {
-    const r = await chamar('GET', midiaId, token, { fields: 'permalink' })
+    const r = await chamar('GET', soDigitos(midiaId), token, { fields: 'permalink' })
     return typeof r.permalink === 'string' ? r.permalink : null
   } catch {
     return null

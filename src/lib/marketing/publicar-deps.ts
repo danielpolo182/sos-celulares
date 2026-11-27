@@ -12,6 +12,12 @@ const COLUNAS = 'id, filial_id, situacao, video_path, quadro_path, ig_container_
 export function depsReais(supabase: SupabaseClient, token: string): DepsDoRelogio {
   const agora = () => new Date()
   const falhou = (onde: string, mensagem: string): never => { throw new Error(`${onde}: ${mensagem}`) }
+  // O relógio enxerga todas as lojas (cliente de serviço), mas só trabalha para as que têm a fila ligada
+  const lojasLigadas = async (): Promise<string[]> => {
+    const { data, error } = await supabase.from('marketing_config').select('filial_id')
+    if (error) falhou('configuração', error.message)
+    return (data ?? []).map((l) => l.filial_id as string)
+  }
 
   return {
     async reservar(id) {
@@ -26,6 +32,13 @@ export function depsReais(supabase: SupabaseClient, token: string): DepsDoRelogi
       if (error) falhou('carregar', error.message)
       return (data as ItemFila | null) ?? null
     },
+    async tomarPosse(id, atualizadoEmLido) {
+      const { data, error } = await supabase.from('marketing_fila')
+        .update({ atualizado_em: agora().toISOString() })
+        .eq('id', id).eq('situacao', 'publicando').eq('atualizado_em', atualizadoEmLido).select(COLUNAS)
+      if (error) falhou('tomar posse', error.message)
+      return ((data ?? [])[0] as ItemFila | undefined) ?? null
+    },
     async salvar(id, campos) {
       const { error } = await supabase.from('marketing_fila').update({ ...campos, atualizado_em: agora().toISOString() }).eq('id', id)
       if (error) falhou('salvar', error.message)
@@ -33,6 +46,7 @@ export function depsReais(supabase: SupabaseClient, token: string): DepsDoRelogi
     async igUserId(filialId) {
       const { data, error } = await supabase.from('marketing_config').select('ig_user_id').eq('filial_id', filialId).maybeSingle()
       if (error) falhou('configuração', error.message)
+      if (!data) falhou('configuração', 'a loja deste item não tem a fila ligada')   // nunca publica para loja sem linha de configuração
       if (data?.ig_user_id) return data.ig_user_id as string
       const conta = await contaInstagram(token)
       await supabase.from('marketing_config').update({ ig_user_id: conta.id, atualizado_em: agora().toISOString() }).eq('filial_id', filialId)
@@ -62,12 +76,16 @@ export function depsReais(supabase: SupabaseClient, token: string): DepsDoRelogi
     agora,
     esperar: (ms) => new Promise((ok) => setTimeout(ok, ms)),
     async emAndamento() {
-      const { data, error } = await supabase.from('marketing_fila').select(COLUNAS).eq('situacao', 'publicando')
+      const lojas = await lojasLigadas()
+      if (!lojas.length) return []
+      const { data, error } = await supabase.from('marketing_fila').select(COLUNAS).eq('situacao', 'publicando').in('filial_id', lojas)
       if (error) falhou('em andamento', error.message)
       return (data ?? []) as ItemFila[]
     },
     async vencidos(max) {
-      const { data, error } = await supabase.from('marketing_fila').select('id')
+      const lojas = await lojasLigadas()
+      if (!lojas.length) return []
+      const { data, error } = await supabase.from('marketing_fila').select('id').in('filial_id', lojas)
         .eq('situacao', 'aprovado').lte('agendado_para', agora().toISOString())
         .order('agendado_para', { ascending: true }).limit(max)
       if (error) falhou('vencidos', error.message)

@@ -9,7 +9,7 @@ const T0 = Date.parse('2026-11-27T15:00:00Z')
 const iso = (ms) => new Date(ms).toISOString()
 
 function mundo(itens, roteiro = {}) {
-  const chamadas = { criar: 0, estado: 0, publicar: 0, apagar: 0, esperado: 0, vencidosMax: null }
+  const chamadas = { criar: 0, estado: 0, publicar: 0, apagar: 0, esperado: 0, vencidosMax: null, noAr: 0 }
   let relogio = T0
   const banco = new Map(itens.map((i) => [i.id, {
     filial_id: 'F', situacao: 'aprovado', tentativas: 0, ig_container_id: null, video_path: 'F/x/story.mp4',
@@ -23,6 +23,14 @@ function mundo(itens, roteiro = {}) {
       return { ...it }
     },
     carregar: async (id) => (banco.has(id) ? { ...banco.get(id) } : null),
+    // Posse da retomada: só quem leu a versão atual do item leva; o perdedor recebe null
+    tomarPosse: async (id, lido) => {
+      const it = banco.get(id)
+      if (!it || it.situacao !== 'publicando' || it.atualizado_em !== lido) return null
+      relogio += 1
+      it.atualizado_em = iso(relogio)
+      return { ...it }
+    },
     salvar: async (id, campos) => {
       if (roteiro.salvarFalha?.(campos)) throw new Error('banco fora do ar')
       Object.assign(banco.get(id), campos, { atualizado_em: iso(relogio) })
@@ -32,8 +40,19 @@ function mundo(itens, roteiro = {}) {
     apagarArquivos: async () => { chamadas.apagar++ },
     meta: {
       criarConteinerStory: async () => { chamadas.criar++; if (roteiro.criarErro) throw roteiro.criarErro; return 'C' + chamadas.criar },
-      estadoDoConteiner: async () => { chamadas.estado++; const e = roteiro.estados; return typeof e === 'function' ? e(chamadas.estado) : (e ?? 'FINISHED') },
-      publicarConteiner: async () => { chamadas.publicar++; return 'M1' },
+      estadoDoConteiner: async () => {
+        chamadas.estado++
+        if (roteiro.estadoErro?.(chamadas.estado)) throw new ErroMeta('sem resposta da Meta', 0, null)
+        const e = roteiro.estados
+        if (e === undefined) return chamadas.noAr > 0 ? 'PUBLISHED' : 'FINISHED'   // depois de publicado, a Meta diz PUBLISHED
+        return typeof e === 'function' ? e(chamadas.estado) : e
+      },
+      publicarConteiner: async () => {
+        chamadas.publicar++
+        chamadas.noAr++                       // o story foi ao ar de verdade...
+        if (roteiro.respostaPerdida?.(chamadas.publicar)) throw new ErroMeta('sem resposta da Meta', 0, null)   // ...mas a resposta não chegou
+        return 'M1'
+      },
       linkDaMidia: async () => 'https://www.instagram.com/stories/soscelularescolombo/1/',
     },
     mensagemDeErro: mensagemParaTela,
@@ -42,7 +61,7 @@ function mundo(itens, roteiro = {}) {
     emAndamento: async () => [...banco.values()].filter((i) => i.situacao === 'publicando').map((i) => ({ ...i })),
     vencidos: async (max) => { chamadas.vencidosMax = max; return [...banco.values()].filter((i) => i.situacao === 'aprovado').slice(0, max).map((i) => i.id) },
   }
-  return { deps, banco, chamadas }
+  return { deps, banco, chamadas, roteiro, envelhecer: (id, ms) => { banco.get(id).atualizado_em = iso(relogio - ms) } }
 }
 
 let casos = 0
@@ -171,8 +190,81 @@ await caso('relógio: no máximo 3 itens novos por toque', async () => {
 await caso('relógio para de começar itens quando o tempo acaba', async () => {
   const m = mundo(['a', 'b', 'c'].map((id) => ({ id })), { estados: 'IN_PROGRESS' })
   const r = await tocarRelogio(m.deps, 45_000)
-  assert.equal(m.chamadas.criar, 2, 'o primeiro gasta 40 s, o segundo ainda começa, o terceiro fica para o próximo toque')
-  assert.equal(r.aguardando, 2)
+  assert.equal(m.chamadas.criar, 1, 'o primeiro gasta a espera inteira; os outros ficam para o próximo toque')
+  assert.equal(r.aguardando, 1)
+  assert.ok(m.chamadas.esperado <= 45_000, 'nunca espera além do prazo do toque')
+})
+
+// ---- Casos da revisão final: nunca publicar duas vezes ----
+
+await caso('resposta do publicar se perde: o story saiu uma vez e não sai de novo', async () => {
+  const m = mundo([{ id: 'a' }], { respostaPerdida: (n) => n === 1 })
+  assert.equal(await publicarItem(m.deps, 'a'), 'aguardando_meta')
+  assert.equal(m.banco.get('a').situacao, 'publicando', 'não volta para a fila')
+  assert.equal(m.banco.get('a').ig_container_id, 'C1', 'o contêiner não é descartado')
+  m.envelhecer('a', 5 * 60_000)
+  await tocarRelogio(m.deps, 45_000)
+  assert.equal(m.banco.get('a').situacao, 'publicado')
+  assert.deepEqual([m.chamadas.noAr, m.chamadas.criar], [1, 1])
+})
+
+await caso('publicou, o banco não gravou e a consulta seguinte falhou: continua uma publicação só', async () => {
+  let falhas = 0
+  const m = mundo([{ id: 'a' }], { salvarFalha: (c) => c.situacao === 'publicado' && falhas++ === 0 })
+  assert.equal(await publicarItem(m.deps, 'a'), 'publicado')
+  m.envelhecer('a', 5 * 60_000)
+  const consultas = m.chamadas.estado
+  m.roteiro.estadoErro = (n) => n === consultas + 1
+  await tocarRelogio(m.deps, 45_000)
+  assert.equal(m.banco.get('a').situacao, 'publicando', 'sem saber o estado, não mexe')
+  assert.equal(m.banco.get('a').ig_container_id, 'C1')
+  m.envelhecer('a', 5 * 60_000)
+  await tocarRelogio(m.deps, 45_000)
+  assert.equal(m.banco.get('a').situacao, 'publicado')
+  assert.deepEqual([m.chamadas.noAr, m.chamadas.criar], [1, 1])
+})
+
+await caso('trava com o story já no ar: conclui como publicado, não como falha', async () => {
+  const m = mundo([{ id: 'a', situacao: 'publicando', ig_container_id: 'C9' }], { estados: 'PUBLISHED' })
+  m.envelhecer('a', 31 * 60_000)
+  await tocarRelogio(m.deps, 45_000)
+  assert.equal(m.banco.get('a').situacao, 'publicado')
+  assert.equal(m.chamadas.publicar, 0)
+})
+
+await caso('trava sem conseguir consultar a Meta: falha avisando, e guarda o contêiner', async () => {
+  const m = mundo([{ id: 'a', situacao: 'publicando', ig_container_id: 'C9' }], { estadoErro: () => true })
+  m.envelhecer('a', 31 * 60_000)
+  await tocarRelogio(m.deps, 45_000)
+  assert.equal(m.banco.get('a').situacao, 'falhou')
+  assert.match(m.banco.get('a').erro, /Confira o perfil/)
+  assert.equal(m.banco.get('a').ig_container_id, 'C9', 'com o contêiner guardado, tentar de novo consulta antes de publicar')
+})
+
+await caso('dois relógios retomam o mesmo item: publica uma vez', async () => {
+  const m = mundo([{ id: 'a', situacao: 'publicando', ig_container_id: 'C9' }])
+  m.envelhecer('a', 5 * 60_000)
+  await Promise.all([tocarRelogio(m.deps, 45_000), tocarRelogio(m.deps, 45_000)])
+  assert.equal(m.chamadas.publicar, 1)
+  assert.equal(m.banco.get('a').situacao, 'publicado')
+})
+
+await caso('erro ao retomar não descarta o contêiner', async () => {
+  const m = mundo([{ id: 'a', situacao: 'publicando', ig_container_id: 'C9' }], { estadoErro: (n) => n === 1 })
+  assert.equal(await publicarItem(m.deps, 'a', { retomar: true }), 'aguardando_meta')
+  assert.deepEqual([m.banco.get('a').situacao, m.banco.get('a').ig_container_id, m.banco.get('a').tentativas], ['publicando', 'C9', 0])
+})
+
+await caso('prazo: para de esperar antes do limite da chamada', async () => {
+  const m = mundo([{ id: 'a' }], { estados: 'IN_PROGRESS' })
+  assert.equal(await publicarItem(m.deps, 'a', { prazo: T0 + 12_000 }), 'aguardando_meta')
+  assert.ok(m.chamadas.esperado <= 12_000, `esperou ${m.chamadas.esperado} ms`)
+})
+
+await caso('vídeo de outra loja no caminho do item: não assina nem publica', async () => {
+  const m = mundo([{ id: 'a', video_path: 'OUTRA/x/story.mp4' }])
+  assert.equal(await publicarItem(m.deps, 'a'), 'falhou')
+  assert.equal(m.chamadas.criar, 0)
 })
 
 console.log(`publicar: ${casos} casos ok`)
