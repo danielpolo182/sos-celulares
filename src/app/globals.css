@@ -177,9 +177,9 @@ html, body { overflow-x: hidden; max-width: 100%; }
     transform: translateX(-100%);
     transition: transform 0.2s ease;
     z-index: 70 !important;
-    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.35);
   }
-  .octa-sidebar[data-aberto="true"] { transform: none; }
+  /* A sombra só existe com a gaveta aberta: fechada, ela vazava na borda esquerda da tela */
+  .octa-sidebar[data-aberto="true"] { transform: none; box-shadow: 4px 0 24px rgba(0, 0, 0, 0.35); }
 
   .octa-menu-fundo[data-aberto="true"] {
     display: block; position: fixed; inset: 0; z-index: 65;
