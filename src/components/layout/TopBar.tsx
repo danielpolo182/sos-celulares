@@ -33,6 +33,7 @@ export default function TopBar() {
 
   const btn = (label: string, icon: string, href: string, primary = false) => (
     <button
+      title={label}
       onClick={() => router.push(href)}
       style={{
         display: 'flex', alignItems: 'center', gap: 6,
@@ -67,12 +68,12 @@ export default function TopBar() {
       }}
     >
       <i className={`ti ${icon}`} style={{ fontSize: 14 }} aria-hidden="true" />
-      {label}
+      <span className="octa-rotulo">{label}</span>
     </button>
   )
 
   return (
-    <div style={{
+    <div className="octa-topbar" style={{
       height: 48,
       background: '#ffffff',
       borderBottom: '1px solid #e2e8f0',
@@ -97,7 +98,7 @@ export default function TopBar() {
             onMouseLeave={e => { e.currentTarget.style.background = '#fffbeb' }}
           >
             <i className="ti ti-clock-hour-4" style={{ fontSize: 13, color: '#d97706' }} aria-hidden="true" />
-            <span style={{ fontSize: 12, color: '#92400e', fontWeight: 500 }}>{pendencias.os} OS pendentes</span>
+            <span style={{ fontSize: 12, color: '#92400e', fontWeight: 500 }}>{pendencias.os}<span className="octa-rotulo"> OS pendentes</span></span>
           </button>
         )}
 
@@ -109,7 +110,7 @@ export default function TopBar() {
             onMouseLeave={e => { e.currentTarget.style.background = '#f0fdf4' }}
           >
             <i className="ti ti-brand-whatsapp" style={{ fontSize: 13, color: '#16a34a' }} aria-hidden="true" />
-            <span style={{ fontSize: 12, color: '#166534', fontWeight: 500 }}>{pendencias.wa} WA pendentes</span>
+            <span style={{ fontSize: 12, color: '#166534', fontWeight: 500 }}>{pendencias.wa}<span className="octa-rotulo"> WA pendentes</span></span>
           </button>
         )}
 
@@ -121,7 +122,7 @@ export default function TopBar() {
             onMouseLeave={e => { e.currentTarget.style.background = '#f5f3ff' }}
           >
             <i className="ti ti-checklist" style={{ fontSize: 13, color: '#7c3aed' }} aria-hidden="true" />
-            <span style={{ fontSize: 12, color: '#5b21b6', fontWeight: 500 }}>{pendencias.aprov} {pendencias.aprov === 1 ? 'aprovação' : 'aprovações'}</span>
+            <span style={{ fontSize: 12, color: '#5b21b6', fontWeight: 500 }}>{pendencias.aprov}<span className="octa-rotulo"> {pendencias.aprov === 1 ? 'aprovação' : 'aprovações'}</span></span>
           </button>
         )}
       </div>

@@ -164,3 +164,41 @@ tr:hover td { background: #f8fafc; }
 
 html, body { overflow-x: hidden; max-width: 100%; }
 * { min-width: 0; }
+
+/* ── Tela pequena (celular e tablet em pé) ─────────────────────────────────────────────
+   O menu lateral tem 240 px fixos e cobria quase a tela inteira. Abaixo de 900 px ele vira
+   uma gaveta, aberta pelo botão ☰ (Sidebar.tsx), e o conteúdo passa a usar a largura toda.
+   Os layouts de cada seção dão o recuo de 240 px em estilo direto no elemento; por isso as
+   regras abaixo usam !important e miram "o que vem depois do menu" no HTML. */
+.octa-menu-botao, .octa-menu-fundo { display: none; }
+
+@media (max-width: 900px) {
+  .octa-sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    z-index: 70 !important;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.35);
+  }
+  .octa-sidebar[data-aberto="true"] { transform: none; }
+
+  .octa-menu-fundo[data-aberto="true"] {
+    display: block; position: fixed; inset: 0; z-index: 65;
+    background: rgba(15, 23, 42, 0.5);
+  }
+
+  .octa-menu-botao {
+    display: flex; align-items: center; justify-content: center;
+    position: fixed; top: 6px; left: 8px; z-index: 45;
+    width: 36px; height: 36px; border-radius: 8px;
+    border: 1px solid #e2e8f0; background: #fff; color: #0f172a;
+    font-size: 20px; cursor: pointer; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  }
+
+  /* O conteúdo perde o recuo do menu e ganha rolagem lateral onde for mais largo que a tela */
+  .octa-sidebar ~ div, .octa-sidebar ~ main { margin-left: 0 !important; }
+  .octa-sidebar ~ div > main, .octa-sidebar ~ main { overflow-x: auto !important; }
+
+  /* Barra de cima: abre espaço para o botão ☰ e mostra só ícone e número */
+  .octa-topbar { padding-left: 52px !important; padding-right: 10px !important; overflow-x: auto; }
+  .octa-rotulo { display: none; }
+}

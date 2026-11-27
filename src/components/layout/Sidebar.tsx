@@ -168,6 +168,10 @@ export default function Sidebar() {
   const [pendWA, setPendWA] = useState(0)
   const [pendAprov, setPendAprov] = useState(0)
   const [filaLigada, setFilaLigada] = useState(false)
+  // Em tela pequena o menu é uma gaveta: fechada por padrão, abre pelo botão ☰ e fecha ao navegar
+  const caminho = usePathname()
+  const [menuAberto, setMenuAberto] = useState(false)
+  useEffect(() => { setMenuAberto(false) }, [caminho])
   const [waModalAberto, setWaModalAberto] = useState(false)
   const [modulosPermitidos, setModulosPermitidos] = useState<Set<string> | null>(null)
 
@@ -239,7 +243,13 @@ export default function Sidebar() {
       <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" />
 
-      <aside style={{
+      {/* Botão e fundo da gaveta: só aparecem em tela pequena (regras em globals.css) */}
+      <button type="button" className="octa-menu-botao" aria-label="Abrir menu" aria-expanded={menuAberto} onClick={() => setMenuAberto(true)}>
+        <i className="ti ti-menu-2" aria-hidden="true" />
+      </button>
+      <div className="octa-menu-fundo" data-aberto={menuAberto} onClick={() => setMenuAberto(false)} />
+
+      <aside className="octa-sidebar" data-aberto={menuAberto} style={{
         width: 240, minWidth: 240, maxWidth: 240,
         height: '100vh', background: '#1e293b',
         display: 'flex', flexDirection: 'column',
