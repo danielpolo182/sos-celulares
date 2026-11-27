@@ -8,17 +8,20 @@ export default function TopBar() {
   const router = useRouter()
   const pathname = usePathname()
   const supabase = createClient()
-  const [pendencias, setPendencias] = useState({ os: 0, wa: 0 })
+  const [pendencias, setPendencias] = useState({ os: 0, wa: 0, aprov: 0 })
 
   useEffect(() => {
     async function load() {
-      const [{ count }, { data: wa }] = await Promise.all([
+      const [{ count }, { data: wa }, { count: aprov }] = await Promise.all([
         supabase.from('ordens_servico').select('id', { count: 'exact', head: true }).in('status', ['aberta', 'em_andamento']).is('deleted_at', null),
         supabase.from('vw_wa_resumo_dia').select('pendentes'),
+        // Fila de aprovação: a política de loja só deixa contar a própria; sem a tabela, a contagem vem nula
+        supabase.from('marketing_fila').select('id', { count: 'exact', head: true }).in('situacao', ['pendente', 'falhou']),
       ])
       setPendencias({
         os: count ?? 0,
         wa: (wa ?? []).reduce((s: number, r: any) => s + (r.pendentes ?? 0), 0),
+        aprov: aprov ?? 0,
       })
     }
     load()
@@ -107,6 +110,18 @@ export default function TopBar() {
           >
             <i className="ti ti-brand-whatsapp" style={{ fontSize: 13, color: '#16a34a' }} aria-hidden="true" />
             <span style={{ fontSize: 12, color: '#166534', fontWeight: 500 }}>{pendencias.wa} WA pendentes</span>
+          </button>
+        )}
+
+        {pendencias.aprov > 0 && (
+          <button
+            onClick={() => router.push('/aprovacoes')}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 20, border: '1px solid #ede9fe', background: '#f5f3ff', cursor: 'pointer', transition: 'background 0.1s' }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#ede9fe' }}
+            onMouseLeave={e => { e.currentTarget.style.background = '#f5f3ff' }}
+          >
+            <i className="ti ti-checklist" style={{ fontSize: 13, color: '#7c3aed' }} aria-hidden="true" />
+            <span style={{ fontSize: 12, color: '#5b21b6', fontWeight: 500 }}>{pendencias.aprov} {pendencias.aprov === 1 ? 'aprovação' : 'aprovações'}</span>
           </button>
         )}
       </div>

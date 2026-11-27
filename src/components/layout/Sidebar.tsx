@@ -53,6 +53,7 @@ const NAV: NavItem[] = [
       { href: '/clientes',     icon: 'ti-users',            label: 'Clientes' },
       { href: '/crm',          icon: 'ti-speakerphone',     label: 'CRM & Acomp.' },
       { href: '/whatsapp',    icon: 'ti-brand-whatsapp',   label: 'Inbox WhatsApp' },
+      { href: '/aprovacoes',  icon: 'ti-checklist',        label: 'Aprovações' },
     ],
   },
   {
@@ -165,6 +166,8 @@ export default function Sidebar() {
   const [usuario, setUsuario] = useState({ nome: '', papel: '' })
   const [pendOS, setPendOS] = useState(0)
   const [pendWA, setPendWA] = useState(0)
+  const [pendAprov, setPendAprov] = useState(0)
+  const [filaLigada, setFilaLigada] = useState(false)
   const [waModalAberto, setWaModalAberto] = useState(false)
   const [modulosPermitidos, setModulosPermitidos] = useState<Set<string> | null>(null)
 
@@ -198,6 +201,15 @@ export default function Sidebar() {
       ])
       setPendOS(count ?? 0)
       setPendWA((wa ?? []).reduce((s: number, r: any) => s + (r.pendentes ?? 0), 0))
+      // Fila de aprovação de publicações: só existe para a loja com linha em marketing_config.
+      // Erro (tabela inexistente em outra instalação) vale como fila desligada.
+      const [{ data: fila, error: erroFila }, { count: aprov }] = await Promise.all([
+        supabase.from('marketing_config').select('filial_id').limit(1),
+        supabase.from('marketing_fila').select('id', { count: 'exact', head: true }).in('situacao', ['pendente', 'falhou']),
+      ])
+      const ligada = !erroFila && (fila ?? []).length > 0
+      setFilaLigada(ligada)
+      setPendAprov(ligada ? (aprov ?? 0) : 0)
     }
     load()
     const t = setInterval(load, 60000)
@@ -205,6 +217,8 @@ export default function Sidebar() {
   }, [supabase])
 
   function itemVisivel(item: NavItem): boolean {
+    // A fila de aprovação só aparece para a loja que a tem ligada
+    if (item.href === '/aprovacoes' && !filaLigada) return false
     if (!modulosPermitidos) return true
     const modulo = HREF_MODULO[item.href]
     if (!modulo) return true
@@ -260,7 +274,7 @@ export default function Sidebar() {
         </div>
 
         {/* Alertas rápidos */}
-        {(pendOS > 0 || pendWA > 0) && (
+        {(pendOS > 0 || pendWA > 0 || pendAprov > 0) && (
           <div style={{ padding: '8px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {pendOS > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#fcd34d', background: 'rgba(251,191,36,0.12)', padding: '3px 8px', borderRadius: 20 }}>
@@ -273,6 +287,16 @@ export default function Sidebar() {
                 <i className="ti ti-brand-whatsapp" style={{ fontSize: 12 }} aria-hidden="true" />
                 {pendWA} WA
               </div>
+            )}
+            {pendAprov > 0 && (
+              <>
+                {/* Quebra a linha: o contador de aprovações fica abaixo do de WhatsApp */}
+                <div style={{ flexBasis: '100%', height: 0 }} />
+                <button onClick={() => router.push('/aprovacoes')} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#c4b5fd', background: 'rgba(167,139,250,0.14)', padding: '3px 8px', borderRadius: 20, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  <i className="ti ti-checklist" style={{ fontSize: 12 }} aria-hidden="true" />
+                  {pendAprov} {pendAprov === 1 ? 'aprovação' : 'aprovações'}
+                </button>
+              </>
             )}
           </div>
         )}
