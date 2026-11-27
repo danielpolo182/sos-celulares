@@ -126,7 +126,7 @@ export default function AprovacoesPage() {
     <main style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif', color: '#0f172a', paddingBottom: aba === 'aprovar' ? 96 : 24 }}>
       <header style={{ background: '#0f172a', color: '#fff', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14, position: 'sticky', top: 0, zIndex: 5 }}>
         <a href="/dashboard" style={{ color: '#94a3b8', fontSize: 13, textDecoration: 'none' }}>← OctaOS</a>
-        <h1 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>Aprovações</h1>
+        <h1 style={{ fontSize: 17, fontWeight: 700, margin: 0, color: '#fff' }}>Aprovações</h1>
       </header>
 
       <nav role="tablist" style={{ display: 'flex', background: '#fff', borderBottom: '1px solid #e2e8f0', position: 'sticky', top: 49, zIndex: 4 }}>
