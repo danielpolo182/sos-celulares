@@ -2,7 +2,7 @@
 -- no Instagram o que foi aprovado e já está na hora.
 -- Assinaturas conferidas na documentação do Supabase em 27/11/2026 (pg_cron e pg_net).
 --
--- ANTES DE RODAR: troque COLE_AQUI_O_CRON_SECRET pelo valor da variável CRON_SECRET da Vercel.
+-- ANTES DE RODAR: troque COLE_AQUI_O_SEGREDO pelo valor da variável FILA_RELOGIO_SECRET da Vercel.
 -- O valor fica guardado só no banco. Não commitar este arquivo com o valor preenchido.
 
 create extension if not exists pg_cron;
@@ -15,7 +15,7 @@ select cron.unschedule('marketing-fila-relogio')
 select cron.schedule('marketing-fila-relogio', '*/5 * * * *', $$
   select net.http_get(
     url := 'https://www.octaos.com.br/api/marketing/fila/relogio',
-    headers := jsonb_build_object('Authorization', 'Bearer COLE_AQUI_O_CRON_SECRET'),
+    headers := jsonb_build_object('Authorization', 'Bearer COLE_AQUI_O_SEGREDO'),
     timeout_milliseconds := 60000
   );
 $$);
